@@ -39,9 +39,6 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     /** The status-bar touch hook is installed once per process. */
     private val touchHooked = AtomicBoolean(false)
 
-    /** The debug diagnostic dump is written to the log once per process, not on every settings change. */
-    private val diagnosticsLogged = AtomicBoolean(false)
-
     /**
      * A context to read the settings and register the settings receiver with. It is the [Application]
      * once one exists, and the status-bar window's own context on a ROM where the module is injected
@@ -61,6 +58,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
     /** The pulled-down shade's header, handed over by [hookShadeHeader]. */
     private var shadeHeader: View? = null
+
+    /** Sends status and the one-shot diagnostic dump to the app. */
+    private val reporter = HookReporter({ statusBarRoot }, { host?.duo })
 
     /** The ROM adapter, used only to resolve resource ids against SystemUI's package. */
     private val rom = RomDetection.forThisRom(
@@ -86,7 +86,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 host?.duo == null -> scheduleAttach(attempt = 0)
                 else -> monitor?.refresh()
             }
-            report(ctx, stage, settings)
+            reporter.report(ctx, stage, settings)
         }
     }
 
@@ -95,7 +95,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             // LSPosed calls handleLoadPackage once per package in scope; on HyperOS System UI is seen
             // twice (`com.android.systemui` and `system`). Hooking everything twice would double every
             // callback, so only the first load in the process does anything.
-            if (!installed.compareAndSet(false, true)) {
+            if (!ProcessState.installed.compareAndSet(false, true)) {
                 L.i("already installed in this process - skipping duplicate load of ${lp.packageName}")
                 return@guard
             }
@@ -131,7 +131,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      */
     private fun startWithCurrentApplication() {
         L.guard("DuoHook bootstrap") {
-            val ctx = resolveAppContext()
+            val ctx = AppContextResolver.resolveAppContext()
             if (ctx != null) {
                 L.i("Application already created at injection - starting now")
                 start(ctx)
@@ -140,51 +140,13 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     }
 
     /**
-     * Resolves a usable Application/context for the SystemUI process.
-     *
-     * `AndroidAppHelper.currentApplication()` is the documented route, but on a framework that injects the
-     * module after `Application.onCreate` it can be null (issue #9, Vector). Two reflection fallbacks read
-     * the context straight off `ActivityThread`, and the status-bar window's own context is the last resort.
-     */
-    private fun resolveAppContext(): Context? {
-        try {
-            android.app.AndroidAppHelper.currentApplication()?.let { return it }
-        } catch (t: Throwable) {
-            L.w("currentApplication unreadable: ${t.javaClass.simpleName}: ${t.message}")
-        }
-        try {
-            val thread = Class.forName("android.app.ActivityThread")
-            val current = thread.getMethod("currentActivityThread").invoke(null)
-            if (current != null) {
-                // Note: `mSystemContext` is deliberately NOT used. Its package is "android" while the
-                // process uid is SystemUI, so a ContentResolver call from it is rejected with
-                // "Given calling package android does not match caller's uid" - which broke both the
-                // Settings.Global override and the settings provider read. Only contexts whose package is
-                // the app are usable here.
-                val field = thread.getDeclaredField("mInitialApplication").also { it.isAccessible = true }
-                (field.get(current) as? Context)?.let { if (it.packageName != "android") return it }
-                val bound = thread.getDeclaredField("mBoundApplication").also { it.isAccessible = true }
-                    .get(current)
-                if (bound != null) {
-                    val app = bound.javaClass.getDeclaredField("appContext").also { it.isAccessible = true }
-                        .get(bound) as? Context
-                    if (app != null && app.packageName != "android") return app
-                }
-            }
-        } catch (t: Throwable) {
-            L.w("ActivityThread context unreadable: ${t.javaClass.simpleName}: ${t.message}")
-        }
-        return null
-    }
-
-    /**
      * The Application may only be created a moment after the module loads, so a failed resolve is retried
      * briefly instead of giving up - the alternative is the "MainHook loaded" then silence that made the
      * app report the module as never injected.
      */
     private fun bootstrap(attempt: Int = 0) {
-        if (started.get()) return
-        val ctx = resolveAppContext() ?: statusBarRoot?.context
+        if (ProcessState.started.get()) return
+        val ctx = AppContextResolver.resolveAppContext() ?: statusBarRoot?.context
         if (ctx != null) {
             start(ctx)
             return
@@ -208,7 +170,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     private fun adoptExistingStatusBarWindow() {
         if (statusBarRoot != null) return
         L.guard("DuoHook existing window") {
-            val found = findExistingStatusBarWindow() ?: return@guard
+            val found = AppContextResolver.findExistingStatusBarWindow() ?: return@guard
             statusBarRoot = found
             L.i("existing status bar window found: ${found.javaClass.name}")
             scheduleAttach(attempt = 0)
@@ -218,35 +180,12 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         }
     }
 
-    private fun findExistingStatusBarWindow(): View? = try {
-        val cls = Class.forName("android.view.WindowManagerGlobal")
-        val instance = cls.getMethod("getInstance").invoke(null)
-        val roots = cls.getDeclaredField("mViews").also { it.isAccessible = true }.get(instance) as? List<*>
-        roots?.firstNotNullOfOrNull { root ->
-            val view = when (root) {
-                is View -> root
-                null -> null
-                else -> try {
-                    root.javaClass.getDeclaredField("mView").also { it.isAccessible = true }
-                        .get(root) as? View
-                } catch (_: Throwable) {
-                    null
-                }
-            }
-            val type = (view?.layoutParams as? android.view.WindowManager.LayoutParams)?.type
-            if (view != null && (type == TYPE_STATUS_BAR || type == TYPE_NOTIFICATION_SHADE)) view else null
-        }
-    } catch (t: Throwable) {
-        L.w("existing window scan: ${t.javaClass.simpleName}: ${t.message}")
-        null
-    }
-
     /**
      * Everything that needs a live context. Runs once per process, from whichever of
      * [startWithCurrentApplication] or `Application.onCreate` happens first.
      */
     private fun start(ctx: Context) {
-        if (!started.compareAndSet(false, true)) return
+        if (!ProcessState.started.compareAndSet(false, true)) return
         app = ctx
         L.guard("DuoHook start") {
             // The gate is read before anything is hooked: while the module is off it leaves no trace in
@@ -348,44 +287,6 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         }
     }
 
-    /** Tells the app what the module is actually doing, so diagnostics shows facts, not intentions. */
-    private fun report(ctx: Context, stage: Int, settings: ModuleSettings?) {
-        L.guard("DuoHook status report") {
-            val element = host?.duo
-            val renderer = element?.rendererName ?: "none"
-            val status = buildString {
-                append("stage=").append(stage)
-                append(" · renderer=").append(renderer)
-                append(" · attached=").append(element != null)
-                settings?.let {
-                    append(" · size=").append(it.sizePercent).append('%')
-                    append(" · offset=").append(it.offsetX).append("dp")
-                    append(" · percent=").append(it.showPercent)
-                    append(" · rev=").append(it.revision)
-                }
-                append(" · riveAttempts=").append(DuoGuard(ctx).attempts())
-            }
-            L.i("status -> app: $status")
-            DuoSettingsClient.report(ctx, status)
-            reportDiagnostics(ctx, stage, settings, element)
-        }
-    }
-
-    /**
-     * Sends the full diagnostic dump to the app (so its "Save status to a file" button ships it) and
-     * writes it to the log once per process. Always on — not debug-only — so any release user can pull a
-     * complete bug report without a special build.
-     */
-    private fun reportDiagnostics(ctx: Context, stage: Int, settings: ModuleSettings?, element: DuoElement?) {
-        val dump = Diag.collect(ctx, statusBarRoot, stage, settings, element)
-        DuoSettingsClient.reportDump(ctx, dump)
-        if (diagnosticsLogged.compareAndSet(false, true)) {
-            L.i("--- diagnostic dump (debug build) ---")
-            Diag.log(dump)
-            L.i("--- end diagnostic dump ---")
-        }
-    }
-
     private fun hookWindowManagerAddView() {
         val callback = object : XC_MethodHook() {
             override fun afterHookedMethod(param: MethodHookParam) {
@@ -393,13 +294,13 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     val view = param.args.getOrNull(0) as? View ?: return
                     val layoutParams = view.layoutParams ?: return
                     when (XposedHelpers.getIntField(layoutParams, "type")) {
-                        TYPE_STATUS_BAR -> {
+                        AppContextResolver.TYPE_STATUS_BAR -> {
                             if (statusBarRoot != null) return
                             statusBarRoot = view
                             L.i("status bar window found: ${view.javaClass.name}")
                             scheduleAttach(attempt = 0)
                         }
-                        TYPE_NOTIFICATION_SHADE -> {
+                        AppContextResolver.TYPE_NOTIFICATION_SHADE -> {
                             if (shadeRoot != null) return
                             shadeRoot = view
                             L.i("keyguard/shade window found: ${view.javaClass.name} (FR-03b)")
@@ -427,7 +328,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             if (ctx != null) {
                 L.guard("DuoHook attach failed report") {
                     DuoSettingsClient.report(ctx, "attach failed after $MAX_ATTEMPTS attempts - see the diagnostic dump")
-                    reportDiagnostics(ctx, DuoGuard(ctx).stage(), null, host?.duo)
+                    reporter.reportDiagnostics(ctx, DuoGuard(ctx).stage(), null, host?.duo)
                 }
             }
             return
@@ -451,7 +352,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     shadeRoot?.let { shade -> attachExtraBars(shade) }
                     hookStatusBarTouch(root)
                     L.i("Duo attached on attempt $attempt")
-                    report(ctx, DuoGuard(ctx).stage(), null)
+                    reporter.report(ctx, DuoGuard(ctx).stage(), null)
                 } else {
                     scheduleAttach(attempt + 1)
                 }
@@ -665,19 +566,6 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     }
 
     private companion object {
-        /**
-         * Per-process, not per-instance: LSPosed can call `handleLoadPackage` twice in one System UI
-         * process (once for `com.android.systemui`, once for `system`), and every hook must go in once.
-         */
-        val installed = AtomicBoolean(false)
-
-        /** Set by whichever of the Application bootstrap paths runs first, so [start] runs once. */
-        val started = AtomicBoolean(false)
-
-        const val TYPE_STATUS_BAR = 2000
-
-        /** `WindowManager.LayoutParams.TYPE_NOTIFICATION_SHADE`, which is @hide. */
-        const val TYPE_NOTIFICATION_SHADE = 2040
         const val FIRST_DELAY_MS = 2_500L
 
         /** How long a late injection waits for the Application before it relies on the bar's context. */
