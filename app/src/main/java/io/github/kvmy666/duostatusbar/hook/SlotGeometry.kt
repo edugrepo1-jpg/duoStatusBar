@@ -4,6 +4,7 @@ import android.content.Context
 import android.view.View
 import android.view.ViewGroup
 import io.github.kvmy666.duostatusbar.hook.rom.RomAdapter
+import io.github.kvmy666.duostatusbar.hook.rom.RomResources
 
 /**
  * The element's size and position inside the icon strip (FR-03/17).
@@ -66,7 +67,7 @@ internal class SlotGeometry(private val context: Context, private val rom: RomAd
     /** The battery slot's column — 83 px measured on the target device — or the best available estimate. */
     fun measuredWidth(container: ViewGroup): Int {
         val measured = try {
-            val id = context.resources.getIdentifier(rom.batteryId, "id", rom.systemUiPackage)
+            val id = RomResources.id(context, rom, rom.batteryId)
             if (id != 0) container.findViewById<View>(id)?.width ?: 0 else 0
         } catch (_: Throwable) {
             0

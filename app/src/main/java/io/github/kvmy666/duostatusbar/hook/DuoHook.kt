@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.View
@@ -15,6 +16,8 @@ import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.BuildConfig
+import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
+import io.github.kvmy666.duostatusbar.hook.rom.RomResources
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -58,6 +61,14 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
     /** The pulled-down shade's header, handed over by [hookShadeHeader]. */
     private var shadeHeader: View? = null
+
+    /** The ROM adapter, used only to resolve resource ids against SystemUI's package. */
+    private val rom = RomDetection.forThisRom(
+        Build.MANUFACTURER.orEmpty(),
+        Build.BRAND.orEmpty(),
+        Build.PRODUCT.orEmpty(),
+        Build.DISPLAY.orEmpty()
+    )
 
     /**
      * The debounced "settings changed" apply. A drag on the app's size/position slider broadcasts on
@@ -641,9 +652,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                         L.guard("DuoHook stub inflate") {
                             val view = param.result as? View ?: return@guard
                             val ctx = app ?: return@guard
-                            val id = ctx.resources.getIdentifier(
-                                "shade_header_system_icons", "id", "com.android.systemui"
-                            )
+                            val id = RomResources.id(ctx, rom, "shade_header_system_icons")
                             if (id == 0 || view.findViewById<View>(id) == null) return@guard
                             L.i("shade header inflated from a stub: ${view.javaClass.name}")
                             shadeHeader = view

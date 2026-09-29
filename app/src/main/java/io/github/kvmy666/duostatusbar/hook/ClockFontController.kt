@@ -7,6 +7,7 @@ import android.view.ViewGroup
 import android.widget.TextView
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.hook.rom.RomAdapter
+import io.github.kvmy666.duostatusbar.hook.rom.RomResources
 import java.io.File
 
 /**
@@ -36,7 +37,7 @@ internal class ClockFontController(private val context: Context, private val rom
         }
         try {
             val view = root ?: return
-            val id = context.resources.getIdentifier(rom.clockId, "id", rom.systemUiPackage)
+            val id = RomResources.id(context, rom, rom.clockId)
             if (id == 0) return
             // HyperOS 3 nests several views with the same `clock` id; `findViewById` returns the first,
             // which can be a 0x0 duplicate. The real clock is the visible one, so prefer it.

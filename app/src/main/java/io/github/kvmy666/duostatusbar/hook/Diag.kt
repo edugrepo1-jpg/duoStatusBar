@@ -9,6 +9,7 @@ import android.view.WindowManager
 import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
+import io.github.kvmy666.duostatusbar.hook.rom.RomResources
 
 /**
  * The debug-only evidence collector (issue: support Android 14 / ColorOS / One UI).
@@ -96,11 +97,7 @@ internal object Diag {
 
             appendLine("container probes (id -> view):")
             for (name in CANDIDATE_IDS) {
-                val id = try {
-                    context.resources.getIdentifier(name, "id", rom.systemUiPackage)
-                } catch (_: Throwable) {
-                    0
-                }
+                val id = RomResources.id(context, rom, name)
                 if (id == 0) {
                     appendLine("  $name -> no such id")
                     continue

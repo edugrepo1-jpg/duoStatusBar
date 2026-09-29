@@ -8,6 +8,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
+import io.github.kvmy666.duostatusbar.hook.rom.RomResources
 
 /**
  * Puts the Duo element into the status bar and takes the stock icons out of it.
@@ -173,7 +174,7 @@ internal class DuoIconHost(private val context: Context) {
         return try {
             val stage = guard.stage()
             if (stage == DuoGuard.OFF) return false
-            val id = context.resources.getIdentifier(stripId, "id", rom.systemUiPackage)
+            val id = RomResources.id(context, rom, stripId)
             if (id == 0) {
                 L.w("$name: no id for $stripId - leaving its stock icons")
                 return false
@@ -219,10 +220,10 @@ internal class DuoIconHost(private val context: Context) {
     }
 
     private fun findShadeIconsArea(header: View): ViewGroup? {
-        val id = context.resources.getIdentifier("shade_header_system_icons", "id", rom.systemUiPackage)
+        val id = RomResources.id(context, rom, "shade_header_system_icons")
         (if (id != 0) header.findViewById<View>(id) as? ViewGroup else null)?.let { return it }
         // Fall back to the parent of the icon container the controller binds to.
-        val icons = context.resources.getIdentifier("statusIcons", "id", rom.systemUiPackage)
+        val icons = RomResources.id(context, rom, "statusIcons")
         val container = if (icons != 0) header.findViewById<View>(icons) else null
         return container?.parent as? ViewGroup
     }
@@ -804,7 +805,7 @@ internal class DuoIconHost(private val context: Context) {
             L.i("ROM adapter: ${rom.id} (${rom.label}) - ${rom.notes}")
         }
         for (name in rom.containerIds) {
-            val id = context.resources.getIdentifier(name, "id", rom.systemUiPackage)
+            val id = RomResources.id(context, rom, name)
             if (id == 0) continue
             val found = root.findViewById<View>(id)
             L.d("container $name -> ${found?.javaClass?.simpleName ?: "null"}")
@@ -835,7 +836,7 @@ internal class DuoIconHost(private val context: Context) {
      */
     private fun stripAroundAnchors(root: View): ViewGroup? {
         for (anchorName in listOf(rom.batteryId, "statusIcons", "status_icons", "system_icons")) {
-            val id = context.resources.getIdentifier(anchorName, "id", rom.systemUiPackage)
+            val id = RomResources.id(context, rom, anchorName)
             if (id == 0) continue
             val anchor = root.findViewById<View>(id) ?: continue
             val parent = anchor.parent as? ViewGroup ?: continue
@@ -884,11 +885,7 @@ internal class DuoIconHost(private val context: Context) {
      */
     private fun findComposeIconView(root: View): View? {
         for (name in listOf("status_bar_end_side_content", "status_bar_end_side_container")) {
-            val id = try {
-                context.resources.getIdentifier(name, "id", rom.systemUiPackage)
-            } catch (_: Throwable) {
-                0
-            }
+            val id = RomResources.id(context, rom, name)
             if (id == 0) continue
             val area = root.findViewById<View>(id) ?: continue
             findComposeDescendant(area)?.let { return it }
@@ -909,11 +906,7 @@ internal class DuoIconHost(private val context: Context) {
 
     /** The battery view inside [strip], the anchor for the overlay placement. */
     private fun findBattery(strip: ViewGroup): View? {
-        val id = try {
-            context.resources.getIdentifier(rom.batteryId, "id", rom.systemUiPackage)
-        } catch (_: Throwable) {
-            0
-        }
+        val id = RomResources.id(context, rom, rom.batteryId)
         return if (id != 0) strip.findViewById(id) else null
     }
 
