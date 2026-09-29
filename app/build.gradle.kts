@@ -46,7 +46,14 @@ android {
         versionName = "1.3.1"
         // Telegram log delivery. Prefer the relay URL (Worker holds the bot token, so no secret is in the
         // APK); otherwise fall back to the direct bot token; otherwise the button opens the share sheet.
-        buildConfigField("String", "TELEGRAM_RELAY_URL", "\"${secret("TELEGRAM_RELAY_URL")}\"")
+        // The relay URL is public (the Worker enforces its own rate limit), so it is baked into every
+        // build by default; `.env`/CI can still override it. Without this, a CI-built APK has no URL and
+        // the report button silently falls back to the share sheet.
+        buildConfigField(
+            "String",
+            "TELEGRAM_RELAY_URL",
+            "\"${secret("TELEGRAM_RELAY_URL").ifBlank { "https://duo-log-relay.kvmy-duo-logs.workers.dev" }}\""
+        )
         buildConfigField("String", "TELEGRAM_BOT_TOKEN", "\"${secret("TELEGRAM_BOT_TOKEN")}\"")
         buildConfigField("String", "TELEGRAM_CHAT_ID", "\"${secret("TELEGRAM_CHAT_ID")}\"")
         ndk {

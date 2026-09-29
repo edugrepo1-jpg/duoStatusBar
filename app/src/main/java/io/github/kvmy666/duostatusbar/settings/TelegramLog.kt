@@ -32,11 +32,18 @@ internal object TelegramLog {
      * Hidden cooldown between successful sends. Repeated taps (or a stuck finger) cannot spam the bot,
      * and it survives an app restart because the last-sent time is persisted.
      */
-    private const val COOLDOWN_MS = 60_000L
+    internal const val COOLDOWN_MS = 60_000L
 
     /** Whether a relay URL or a bot token was compiled in. False means the share sheet is used. */
     fun configured(): Boolean =
         BuildConfig.TELEGRAM_RELAY_URL.isNotBlank() || BuildConfig.TELEGRAM_BOT_TOKEN.isNotBlank()
+
+    /**
+     * True while [now] is inside the cooldown that started at [lastSentAt]. Pure, so the "the button
+     * cannot spam" rule is pinned by a unit test rather than only exercised on a phone.
+     */
+    internal fun withinCooldown(lastSentAt: Long, now: Long): Boolean =
+        (now - lastSentAt) in 0 until COOLDOWN_MS
 
     /** Uploads [file] to the developer's chat, honouring the hidden client-side cooldown. */
     fun send(context: Context, file: File, caption: String): Result {
@@ -45,9 +52,8 @@ internal object TelegramLog {
         if (relay.isBlank() && token.isBlank()) return Result.FAILED
 
         val now = System.currentTimeMillis()
-        val since = now - DuoPrefs.logSentAt(context)
-        if (since in 0 until COOLDOWN_MS) {
-            L.i("telegram: rate limited (${(COOLDOWN_MS - since) / 1000}s left of the cooldown)")
+        if (withinCooldown(DuoPrefs.logSentAt(context), now)) {
+            L.i("telegram: rate limited")
             return Result.RATE_LIMITED
         }
 
