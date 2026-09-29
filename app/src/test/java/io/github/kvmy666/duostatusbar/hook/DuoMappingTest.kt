@@ -148,6 +148,16 @@ class DuoMappingTest {
         assertEquals(Triple(1f, 1f, 1f), DuoMapping.wifiOpacities(99))
     }
 
+    @Test
+    fun `stock wifi bars map onto duo's three levels`() {
+        // The stock four-bar icon measured against Duo's two arcs + dot (user-reported mapping).
+        assertEquals(0, DuoMapping.wifiBars(0))
+        assertEquals(1, DuoMapping.wifiBars(1))
+        assertEquals(1, DuoMapping.wifiBars(2))
+        assertEquals(2, DuoMapping.wifiBars(3))
+        assertEquals(3, DuoMapping.wifiBars(4))
+    }
+
     // -------------------------------------------------------------------------------- cellular
 
     @Test
@@ -202,6 +212,43 @@ class DuoMappingTest {
     @Test
     fun `the middle slot shows the Wi-Fi by default`() {
         assertEquals(DuoMapping.MIDDLE_WIFI, visual(70).middleMode)
+    }
+
+    @Test
+    fun `network-only ignores airplane and dnd and keeps the connection icons`() {
+        // The user's toggle: the slot is about the network, so DND and airplane never take it.
+        assertEquals(
+            DuoMapping.MIDDLE_WIFI,
+            DuoMapping.middleMode(
+                airplane = false, dnd = true, wifiOn = true, hasNetwork = false,
+                wifiConnected = true, networkOnly = true
+            )
+        )
+        // Airplane on with the toggle on: no Wi-Fi and no label, so the slot empties rather than showing
+        // the plane.
+        assertEquals(
+            DuoMapping.MIDDLE_OFF,
+            DuoMapping.middleMode(
+                airplane = true, dnd = false, wifiOn = false, hasNetwork = false,
+                wifiConnected = false, networkOnly = true
+            )
+        )
+        // Wi-Fi off but on mobile data: the generation label still shows.
+        assertEquals(
+            DuoMapping.MIDDLE_NETWORK,
+            DuoMapping.middleMode(
+                airplane = false, dnd = false, wifiOn = false, hasNetwork = true,
+                wifiConnected = false, networkOnly = true
+            )
+        )
+        // Through the full snapshot, the toggle reaches middleMode.
+        val v = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = true, dnd = true,
+            wifiOn = false, networkText = "5G", networkOnly = true
+        )
+        assertEquals(DuoMapping.MIDDLE_NETWORK, v.middleMode)
+        assertEquals("5G", v.networkText)
     }
 
     @Test

@@ -37,6 +37,10 @@ internal object StockIconHider {
     private var waitingHide: Boolean? = null
     private var waitingDone: ((Boolean) -> Unit)? = null
 
+    /** A queued free-form command (used to restart System UI when root is unavailable). */
+    private var waitingCommand: String? = null
+    private var waitingCommandDone: ((String) -> Unit)? = null
+
     private var permissionCallback: ((Boolean) -> Unit)? = null
     private var listening = false
 
@@ -51,6 +55,7 @@ internal object StockIconHider {
             service = IShellService.Stub.asInterface(binder)
             binding = false
             runWaiting()
+            runWaitingCommand()
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -155,6 +160,59 @@ internal object StockIconHider {
         waitingHide = null
         waitingDone = null
         main.post { done?.invoke(ok) }
+    }
+
+    /**
+     * Runs one shell command through Shizuku and returns its output. Used to restart System UI on a ROM
+     * where `su` is unavailable but Shizuku is running. Best-effort: no Shizuku or no permission calls
+     * [done] with an empty string and changes nothing.
+     */
+    fun exec(context: Context, command: String, done: (String) -> Unit) {
+        if (!isShizukuRunning() || !isPermissionGranted()) {
+            done("")
+            return
+        }
+        waitingCommand = command
+        waitingCommandDone = done
+        if (service != null) {
+            runWaitingCommand()
+            return
+        }
+        if (binding) return
+        binding = true
+        try {
+            val args = Shizuku.UserServiceArgs(
+                ComponentName(context.packageName, ShellService::class.java.name)
+            )
+                .daemon(false)
+                .version(1)
+                .processNameSuffix("duosb")
+                .tag("duosb-shell")
+            Shizuku.bindUserService(args, connection)
+        } catch (t: Throwable) {
+            binding = false
+            L.w("shizuku exec bind: ${t.javaClass.simpleName}: ${t.message}")
+            flushCommand("")
+        }
+    }
+
+    private fun runWaitingCommand() {
+        val svc = service ?: return
+        val command = waitingCommand ?: return
+        val done = waitingCommandDone
+        waitingCommand = null
+        waitingCommandDone = null
+        Thread {
+            val out = runCatching { svc.exec(command) }.getOrDefault("")
+            main.post { done?.invoke(out) }
+        }.start()
+    }
+
+    private fun flushCommand(out: String) {
+        val done = waitingCommandDone
+        waitingCommand = null
+        waitingCommandDone = null
+        main.post { done?.invoke(out) }
     }
 
     /**

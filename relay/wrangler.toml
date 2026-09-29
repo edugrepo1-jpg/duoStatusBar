@@ -1,0 +1,17 @@
+name = "duo-log-relay"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+
+# Strongly-consistent rate limiting: one Durable Object instance per caller IP.
+[[durable_objects.bindings]]
+name = "LIMITER"
+class_name = "RateLimiter"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RateLimiter"]
+
+# Secrets are NOT here. Set them once (they are stored encrypted by Cloudflare):
+#   npx wrangler secret put TELEGRAM_BOT_TOKEN
+#   npx wrangler secret put TELEGRAM_CHAT_ID
+#   npx wrangler secret put RELAY_KEY        # optional shared key

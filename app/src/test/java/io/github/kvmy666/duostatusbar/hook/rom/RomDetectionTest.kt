@@ -39,10 +39,12 @@ class RomDetectionTest {
     }
 
     @Test
-    fun `xiaomi maps to the unverified hyperos adapter`() {
-        val rom = RomDetection.forThisRom("Xiaomi", "Redmi", "aurora", "Redmi/aurora:15")
+    fun `xiaomi maps to the measured hyperos adapter`() {
+        val rom = RomDetection.forThisRom("Xiaomi", "24129PN74G", "dada", "CP2A.260605.016")
         assertEquals("hyperos", rom.id)
-        assertTrue("must admit it is unverified", rom.notes.contains("unverified"))
+        assertEquals("system_icons", rom.containerIds.first())
+        assertTrue("measured on HyperOS 3, not guessed", rom.notes.contains("measured"))
+        assertTrue("the wider strip is a fallback", rom.containerIds.contains("system_icon_area"))
     }
 
     @Test

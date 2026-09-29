@@ -335,18 +335,22 @@
             <Shape name="cell1" id="0:17">
                 <Ellipse x="-27" y="42.7" width="11" height="11" originX="0.5" originY="0.5" name="Path" />
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:71" />
             </Shape>
             <Shape name="cell2" id="0:18">
                 <Ellipse x="-9.5" y="49.7" width="11" height="11" originX="0.5" originY="0.5" name="Path" />
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:72" />
             </Shape>
             <Shape name="cell3" id="0:19">
                 <Ellipse x="8.5" y="50.2" width="11" height="11" originX="0.5" originY="0.5" name="Path" />
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:73" />
             </Shape>
             <Shape name="cell4" id="0:20">
                 <Ellipse x="26" y="44.3" width="11" height="11" originX="0.5" originY="0.5" name="Path" />
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:74" />
             </Shape>
         </Node>
 
@@ -743,26 +747,6 @@
                 </BlendState1DViewModel>
             </StateMachineLayer>
 
-            <!-- CellLevel: one continuous axis, so it cross-fades for free and needs no state per level.
-                 A blend state has NO outgoing transition on purpose - leaving the layer would stop it
-                 advancing, and a machine that stops advancing stops drawing. -->
-            <StateMachineLayer name="CellLevel" id="0:166">
-                <AnyState x="200" y="-120" />
-                <ExitState x="400" y="-120" />
-                <EntryState>
-                    <StateTransition stateToId="0:167" />
-                </EntryState>
-                <BlendState1DViewModel x="200" y="0" id="0:167">
-                    <BindablePropertyNumber>
-                        <DataBindContext sourcePathIds="0:60-0:151" propertyKey="636" />
-                    </BindablePropertyNumber>
-                    <BlendAnimation1D animationId="0:159" value="0" />
-                    <BlendAnimation1D animationId="0:160" value="1" />
-                    <BlendAnimation1D animationId="0:161" value="2" />
-                    <BlendAnimation1D animationId="0:162" value="3" />
-                    <BlendAnimation1D animationId="0:163" value="4" />
-                </BlendState1DViewModel>
-            </StateMachineLayer>
         </StateMachine>
 
         <!-- ============================== entrance ==============================
@@ -946,121 +930,6 @@
                 </KeyedProperty>
             </KeyedObject>
             <KeyedObject objectId="0:15">
-                <KeyedProperty propertyKey="18">
-                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
-                </KeyedProperty>
-            </KeyedObject>
-        </LinearAnimation>
-
-        <LinearAnimation duration="1" name="CellPose0" id="0:159" loopValue="loop">
-            <KeyedObject objectId="0:17">
-                <KeyedProperty propertyKey="18">
-                    <KeyFrameDouble value="0.3" interpolationType="hold" frame="0" />
-                </KeyedProperty>
-            </KeyedObject>
-            <KeyedObject objectId="0:18">
-                <KeyedProperty propertyKey="18">
-                    <KeyFrameDouble value="0.3" interpolationType="hold" frame="0" />
-                </KeyedProperty>
-            </KeyedObject>
-            <KeyedObject objectId="0:19">
-                <KeyedProperty propertyKey="18">
-                    <KeyFrameDouble value="0.3" interpolationType="hold" frame="0" />
-                </KeyedProperty>
-            </KeyedObject>
-            <KeyedObject objectId="0:20">
-                <KeyedProperty propertyKey="18">
-                    <KeyFrameDouble value="0.3" interpolationType="hold" frame="0" />
-                </KeyedProperty>
-            </KeyedObject>
-        </LinearAnimation>
-
-        <LinearAnimation duration="1" name="CellPose1" id="0:160" loopValue="loop">
-            <KeyedObject objectId="0:17">
-                <KeyedProperty propertyKey="18">
-                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
-                </KeyedProperty>
-            </KeyedObject>
-            <KeyedObject objectId="0:18">
-                <KeyedProperty propertyKey="18">
-                    <KeyFrameDouble value="0.3" interpolationType="hold" frame="0" />
-                </KeyedProperty>
-            </KeyedObject>
-            <KeyedObject objectId="0:19">
-                <KeyedProperty propertyKey="18">
-                    <KeyFrameDouble value="0.3" interpolationType="hold" frame="0" />
-                </KeyedProperty>
-            </KeyedObject>
-            <KeyedObject objectId="0:20">
-                <KeyedProperty propertyKey="18">
-                    <KeyFrameDouble value="0.3" interpolationType="hold" frame="0" />
-                </KeyedProperty>
-            </KeyedObject>
-        </LinearAnimation>
-
-        <LinearAnimation duration="1" name="CellPose2" id="0:161" loopValue="loop">
-            <KeyedObject objectId="0:17">
-                <KeyedProperty propertyKey="18">
-                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
-                </KeyedProperty>
-            </KeyedObject>
-            <KeyedObject objectId="0:18">
-                <KeyedProperty propertyKey="18">
-                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
-                </KeyedProperty>
-            </KeyedObject>
-            <KeyedObject objectId="0:19">
-                <KeyedProperty propertyKey="18">
-                    <KeyFrameDouble value="0.3" interpolationType="hold" frame="0" />
-                </KeyedProperty>
-            </KeyedObject>
-            <KeyedObject objectId="0:20">
-                <KeyedProperty propertyKey="18">
-                    <KeyFrameDouble value="0.3" interpolationType="hold" frame="0" />
-                </KeyedProperty>
-            </KeyedObject>
-        </LinearAnimation>
-
-        <LinearAnimation duration="1" name="CellPose3" id="0:162" loopValue="loop">
-            <KeyedObject objectId="0:17">
-                <KeyedProperty propertyKey="18">
-                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
-                </KeyedProperty>
-            </KeyedObject>
-            <KeyedObject objectId="0:18">
-                <KeyedProperty propertyKey="18">
-                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
-                </KeyedProperty>
-            </KeyedObject>
-            <KeyedObject objectId="0:19">
-                <KeyedProperty propertyKey="18">
-                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
-                </KeyedProperty>
-            </KeyedObject>
-            <KeyedObject objectId="0:20">
-                <KeyedProperty propertyKey="18">
-                    <KeyFrameDouble value="0.3" interpolationType="hold" frame="0" />
-                </KeyedProperty>
-            </KeyedObject>
-        </LinearAnimation>
-
-        <LinearAnimation duration="1" name="CellPose4" id="0:163" loopValue="loop">
-            <KeyedObject objectId="0:17">
-                <KeyedProperty propertyKey="18">
-                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
-                </KeyedProperty>
-            </KeyedObject>
-            <KeyedObject objectId="0:18">
-                <KeyedProperty propertyKey="18">
-                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
-                </KeyedProperty>
-            </KeyedObject>
-            <KeyedObject objectId="0:19">
-                <KeyedProperty propertyKey="18">
-                    <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
-                </KeyedProperty>
-            </KeyedObject>
-            <KeyedObject objectId="0:20">
                 <KeyedProperty propertyKey="18">
                     <KeyFrameDouble value="1" interpolationType="hold" frame="0" />
                 </KeyedProperty>

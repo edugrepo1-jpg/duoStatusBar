@@ -50,7 +50,7 @@ object DuoBinder {
     val REVEAL_CHOICES = intArrayOf(500, 750, 1000, 1250, 1500)
 
     /** Number of properties a complete snapshot writes — used to report partial failures. */
-    const val PROPERTY_COUNT = 21
+    const val PROPERTY_COUNT = 19
 
     private const val REVEAL_MS = "revealMs"
     private const val PERCENT_TEXT = "percentText"
@@ -77,9 +77,13 @@ object DuoBinder {
             "rightArc" to v.rightArc,
             "trackOpacity" to v.trackOpacity,
             "percentFontSize" to v.percentFontSize,
-            // The signal ramps are Rive blend layers now: one axis each, not six opacities.
+            // Wi-Fi is a Rive blend layer (one axis); the cellular spheres are bound per sphere so the
+            // dual-SIM split can drive a pair per line.
             "wifiLevel" to v.wifiLevel.toFloat(),
-            "cellLevel" to v.cellLevel.toFloat(),
+            "cell1Opacity" to v.cell1Opacity,
+            "cell2Opacity" to v.cell2Opacity,
+            "cell3Opacity" to v.cell3Opacity,
+            "cell4Opacity" to v.cell4Opacity,
             // The whole middle-slot hand-over is one Rive layer; this only says which occupant.
             "middleMode" to v.middleMode.toFloat()
         )

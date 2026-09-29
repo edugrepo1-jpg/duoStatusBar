@@ -89,6 +89,19 @@ internal class DuoGuard(private val context: Context) {
     fun riveAllowed(): Boolean {
         val attempts = attempts()
         if (attempts < MAX_ATTEMPTS) return true
+        // The breaker is a crash-loop guard, not a life sentence. Two *unrelated* System UI restarts
+        // (the app's Restart button, the watchdog, a theme change) inside the few seconds before Rive has
+        // survived also bump the counter, and the old code then refused Rive forever — which is exactly
+        // the OxygenOS 16 report: `renderer=Canvas, riveAttempts=2`, and no way back without adb. So the
+        // count only stays armed while the last attempt is recent: a real crash loop retries within
+        // seconds and stays blocked, while a device that has been fine for a couple of minutes re-arms
+        // Rive on its next start.
+        val age = lastAttemptAgeMs()
+        if (age > CRASH_WINDOW_MS) {
+            L.i("Rive attempts stale (${age / 1000}s old) - clearing the breaker and trying Rive again")
+            clearRiveAttempts()
+            return true
+        }
         L.w("Rive refused: $attempts failed attempts recorded - clear with: adb shell settings put global $KEY_ATTEMPTS 0")
         return false
     }
@@ -97,6 +110,14 @@ internal class DuoGuard(private val context: Context) {
         Settings.Global.getInt(context.contentResolver, KEY_ATTEMPTS, 0)
     } catch (_: Throwable) {
         0
+    }
+
+    /** How long ago the last attempt was recorded; [Long.MAX_VALUE] when there is no timestamp. */
+    private fun lastAttemptAgeMs(): Long = try {
+        val at = Settings.Global.getLong(context.contentResolver, KEY_ATTEMPT_AT, 0L)
+        if (at <= 0L) Long.MAX_VALUE else System.currentTimeMillis() - at
+    } catch (_: Throwable) {
+        Long.MAX_VALUE
     }
 
     /**
@@ -110,11 +131,13 @@ internal class DuoGuard(private val context: Context) {
     fun noteRiveAttempt() {
         if (!notedThisProcess.compareAndSet(false, true)) return
         put(KEY_ATTEMPTS, attempts() + 1)
+        putLong(KEY_ATTEMPT_AT, System.currentTimeMillis())
     }
 
     /** Call once the drawing has survived its first seconds: the counter only ever counts deaths. */
     fun clearRiveAttempts() {
         put(KEY_ATTEMPTS, 0)
+        putLong(KEY_ATTEMPT_AT, 0L)
     }
 
     /** Set once per process; see [noteRiveAttempt]. */
@@ -157,10 +180,19 @@ internal class DuoGuard(private val context: Context) {
         const val KEY_STAGE = "duo_statusbar_stage"
         const val KEY_ATTEMPTS = "duo_statusbar_rive_attempts"
 
+        /** Wall-clock ms of the last Rive attempt, so the breaker can recognise a stale count. */
+        const val KEY_ATTEMPT_AT = "duo_statusbar_rive_attempt_at"
+
         /** Wall-clock ms of the last time the module ran inside SystemUI; 0 means it never has. */
         const val KEY_LAST_LOAD = "duo_statusbar_last_load"
         /** How many *processes* may die to Rive before it is given up on. */
         private const val MAX_ATTEMPTS = 2
+
+        /**
+         * How long a full attempt count stays armed. A crash loop retries inside this window and stays
+         * blocked; a device that has been healthy longer than this re-arms Rive on its next start.
+         */
+        private const val CRASH_WINDOW_MS = 120_000L
 
         /** Sentinel for "the user never set an override": `getInt` cannot return null, so it needs one. */
         private const val ABSENT = -1

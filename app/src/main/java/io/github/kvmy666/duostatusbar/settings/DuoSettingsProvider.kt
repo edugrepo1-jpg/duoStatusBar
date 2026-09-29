@@ -126,7 +126,9 @@ class DuoSettingsProvider : ContentProvider() {
             if (settings.departureEnabled) 1 else 0,
             if (settings.chargingEnabled) 1 else 0,
             settings.iconColor,
-            if (settings.hideOtherIcons) 1 else 0
+            if (settings.hideOtherIcons) 1 else 0,
+            if (settings.networkOnly) 1 else 0,
+            settings.simChoice
         )
     }
 }

@@ -71,7 +71,13 @@ internal object RootLogs {
      * LSPosed has injected anything — and it is the root prompt users of other modules expect.
      */
     fun restartSystemUi(): Boolean = try {
-        Runtime.getRuntime().exec(arrayOf("su", "-c", "pkill -f com.android.systemui")).waitFor()
+        // Different ROMs keep different tools, so every spelling is tried in turn: `pkill -f` (AOSP),
+        // `killall` (some vendors) and `pidof` + `kill -9` (the one that survives SELinux-restricted
+        // pkill). `true` makes the script succeed even when the process was already gone.
+        val script = "pkill -f com.android.systemui; " +
+            "killall com.android.systemui 2>/dev/null; " +
+            "kill -9 ${'$'}(pidof com.android.systemui) 2>/dev/null; true"
+        Runtime.getRuntime().exec(arrayOf("su", "-c", script)).waitFor()
         true
     } catch (t: Throwable) {
         L.w("root restart failed: ${t.javaClass.simpleName}: ${t.message}")

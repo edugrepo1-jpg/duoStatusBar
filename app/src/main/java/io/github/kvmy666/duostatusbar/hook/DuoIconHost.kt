@@ -29,9 +29,28 @@ import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
  */
 internal class DuoIconHost(private val context: Context) {
 
+    /** Where the element view is actually added. Usually the strip; see [overlay]. */
     private var host: ViewGroup? = null
     private var root: View? = null
     private var element: DuoElement? = null
+
+    /**
+     * The strip the stock icons live in and are hidden from. Normally the same as [host]; on a ROM whose
+     * strip is a custom container that refuses foreign children (HyperOS's `MiuiStatusBatteryContainer`
+     * measured the element 0x0 and nothing drew), [host] is a standard ancestor and this stays the strip.
+     */
+    private var hideStrip: ViewGroup? = null
+
+    /**
+     * True when the element is drawn *outside* the icon strip and positioned over the battery. HyperOS 3
+     * is the measured case: `system_icons` is a `MiuiStatusBatteryContainer` that lays out only its own
+     * children, so the element was silently 0x0. The element instead goes into the bar's plain
+     * `FrameLayout` and is anchored to the battery, whose layout is kept (INVISIBLE) for the anchor.
+     */
+    private var overlay = false
+
+    /** The battery the overlay is anchored to; null unless [overlay]. */
+    private var anchorBattery: View? = null
 
     /**
      * FR-03b: the status bar is not one bar. Read out of the device's SystemUI
@@ -309,14 +328,23 @@ internal class DuoIconHost(private val context: Context) {
     val iconColor: String get() = settings.iconColor
 
     /**
+     * Whether the middle slot is restricted to the network icons (Wi-Fi + 5G/4G) and never shows DND or
+     * airplane — asked by the state monitor on every render.
+     */
+    val networkOnly: Boolean get() = settings.networkOnly
+
+    /** Which cellular line the spheres follow on a dual-SIM phone: "auto", "sim1" or "sim2". */
+    val simChoice: String get() = settings.simChoice
+
+    /**
      * FR-08/08b: hides the stock views per the user's choice — everything, or only what Duo replaces.
      * One place so the main bar, the keyguard bar and the shade header can never disagree.
      */
-    private fun hideStock(container: ViewGroup, keep: View?) {
+    private fun hideStock(container: ViewGroup, keep: View?, keepLayout: View? = null) {
         if (settings.hideOtherIcons) {
-            hider.hideAllExcept(container, keep)
+            hider.hideAllExcept(container, keep, keepLayout)
         } else {
-            hider.hideReplaced(container, keep)
+            hider.hideReplaced(container, keep, keepLayout)
         }
     }
 
@@ -417,10 +445,16 @@ internal class DuoIconHost(private val context: Context) {
                 view.layoutParams = layoutParamsFor(target, side)
                 view.requestLayout()
             }
-            view.translationX = settings.offsetX * context.resources.displayMetrics.density
-            // The strip sits low in the window, so centring on it wastes the space above. Centre the
-            // element in the whole status bar instead, which is what lets it grow to the window height.
-            view.translationY = geometry.windowCenterShiftY(target, root)
+            if (overlay) {
+                // The parent is a plain FrameLayout that places children top-left, so the element is moved
+                // onto the battery by translation; the battery keeps its layout (INVISIBLE) to measure.
+                anchorOnBattery(view, target, side)
+            } else {
+                view.translationX = settings.offsetX * context.resources.displayMetrics.density
+                // The strip sits low in the window, so centring on it wastes the space above. Centre the
+                // element in the whole status bar instead, which is what lets it grow to the window height.
+                view.translationY = geometry.windowCenterShiftY(target, root)
+            }
             gestures.install(view, settings.tapAction, settings.doubleTapAction, settings.longPressAction)
         } catch (t: Throwable) {
             L.w("applyLayout: ${t.message}")
@@ -464,12 +498,27 @@ internal class DuoIconHost(private val context: Context) {
                 }
                 return false
             }
-            val target = findStatusIconsHost(statusBarRoot)
+            var target = findStatusIconsHost(statusBarRoot)
+            var composeAnchor: View? = null
+            if (target == null) {
+                // Android 17 AOSP draws the status bar icons with Compose: there is no View strip to
+                // inject into, only a `ComposeView`. The element is drawn in the surrounding ViewGroup
+                // and anchored on that Compose view, which is hidden with INVISIBLE so it keeps its place.
+                val compose = findComposeIconView(statusBarRoot)
+                val parent = compose?.parent as? ViewGroup
+                if (compose != null && parent != null) {
+                    L.i("Compose status bar: no View strip; drawing in ${parent.javaClass.simpleName} " +
+                            "and hiding ${compose.javaClass.simpleName}")
+                    composeAnchor = compose
+                    target = parent
+                }
+            }
             if (target == null) {
                 L.w("system_icons not found - status bar left untouched")
                 return false
             }
             root = statusBarRoot
+            hideStrip = target
             // Pin the slot width now, while the battery view still has its real width: once the stock
             // icons are hidden it reads 0 and the fallback would change the size mid-session.
             val basePx = geometry.measuredWidth(target)
@@ -481,11 +530,27 @@ internal class DuoIconHost(private val context: Context) {
             logOnce.once("facts") {
                 DuoSbFacts.report(context, statusBarRoot, target, geometry.widthPx(target))
             }
+            // The element's real parent: the strip, unless the ROM's strip is a custom container that
+            // refuses foreign children. HyperOS 3's MiuiStatusBatteryContainer measured it 0x0 - the icons
+            // hid and nothing drew - so there the element goes into a plain FrameLayout ancestor and is
+            // anchored over the battery.
+            val parent = chooseElementParent(target, statusBarRoot)
+            overlay = parent !== target
+            // Anchor on the battery when there is one; on a Compose bar there is no battery id, so the
+            // Compose icon view is the anchor instead (it keeps its layout, hidden with INVISIBLE).
+            anchorBattery = if (overlay) (findBattery(target) ?: composeAnchor) else null
+            if (overlay && anchorBattery == null) {
+                // No battery to anchor to: fall back to the strip rather than draw at a random spot.
+                overlay = false
+            }
+            L.i("element container: ${parent.javaClass.simpleName}" +
+                    if (overlay) " (overlay on ${anchorBattery?.javaClass?.simpleName}, strip ${target.javaClass.simpleName})" else "")
+            val container = if (overlay) parent else target
             val side = geometry.sidePx(target, root)
-            allowOverflow(target)
-            candidate.ui.layoutParams = layoutParamsFor(target, side)
-            target.addView(candidate.ui)
-            host = target
+            allowOverflow(container)
+            candidate.ui.layoutParams = layoutParamsFor(container, side)
+            container.addView(candidate.ui)
+            host = container
             element = candidate
             applyLayout()
             clock.apply(root, settings.systemClockFont)
@@ -506,10 +571,19 @@ internal class DuoIconHost(private val context: Context) {
     private fun onElementReady(candidate: DuoElement, target: ViewGroup) {
         if (element !== candidate) return
         try {
-            hideStock(target, candidate.ui)
+            // In overlay mode the element is not a child of the strip, so nothing is "kept" there; the
+            // battery keeps its layout instead so the anchor stays valid (and survives rotation).
+            hideStock(
+                target,
+                if (overlay) null else candidate.ui,
+                if (overlay) anchorBattery else null
+            )
+            // Hiding may have changed the strip's layout, so the overlay anchor is re-read after it.
+            applyLayout()
             candidate.reveal(settings.revealMs)
             val width = candidate.ui.layoutParams?.width ?: 0
-            L.i("Duo injected into ${target.javaClass.simpleName} (${width}px wide, ${settings.sizePercent}%)")
+            L.i("Duo injected into ${target.javaClass.simpleName} (${width}px wide, ${settings.sizePercent}%)" +
+                    if (overlay) " - overlaid over the battery" else "")
         } catch (t: Throwable) {
             L.w("onReady: ${t.javaClass.simpleName}: ${t.message}")
         }
@@ -530,14 +604,15 @@ internal class DuoIconHost(private val context: Context) {
             L.e("Canvas fallback failed: ${t.javaClass.simpleName}: ${t.message}")
             return
         }
+        val container = host ?: target
         try {
             candidate.teardown()
-            target.removeView(candidate.ui)
+            (candidate.ui.parent as? ViewGroup)?.removeView(candidate.ui)
         } catch (t: Throwable) {
             L.w("fallback remove: ${t.message}")
         }
-        canvas.ui.layoutParams = layoutParamsFor(target, geometry.widthPx(target), ViewGroup.LayoutParams.MATCH_PARENT)
-        target.addView(canvas.ui)
+        canvas.ui.layoutParams = layoutParamsFor(container, geometry.widthPx(target), ViewGroup.LayoutParams.MATCH_PARENT)
+        container.addView(canvas.ui)
         element = canvas
         applyLayout()
         canvas.onReady { onElementReady(canvas, target) }
@@ -606,8 +681,7 @@ internal class DuoIconHost(private val context: Context) {
         reapplyExtraHiding()
         // The clock is re-inflated with the strip on some ROMs, so its font is re-applied here too.
         clock.apply(root, settings.systemClockFont)
-        val target = host ?: return
-        val keep = element?.ui ?: return
+        val strip = hideStrip ?: host ?: return
         // Never hide the stock icons over an element that is not drawing yet: a layout pass can arrive
         // before Rive has bound its view model, and hiding then would leave a blank stretch of status bar.
         if (!(element?.isReady ?: false)) return
@@ -619,7 +693,12 @@ internal class DuoIconHost(private val context: Context) {
             return
         }
         try {
-            hideStock(target, keep)
+            // Hide in the strip, never in the element's own (overlay) parent.
+            hideStock(
+                strip,
+                if (overlay) null else element?.ui,
+                if (overlay) anchorBattery else null
+            )
         } catch (t: Throwable) {
             L.w("reapplyHiding: ${t.message}")
         }
@@ -637,11 +716,15 @@ internal class DuoIconHost(private val context: Context) {
         if (view.parent === target && view.isAttachedToWindow) return true
         return try {
             (view.parent as? ViewGroup)?.removeView(view)
-            val fresh = root?.let { findStatusIconsHost(it) } ?: target
-            host = fresh
-            fresh.addView(view)
+            val barRoot = root
+            val fresh = barRoot?.let { findStatusIconsHost(it) } ?: hideStrip ?: target
+            hideStrip = fresh
+            if (overlay) anchorBattery = findBattery(fresh) ?: anchorBattery
+            val parent = if (overlay && barRoot != null) chooseElementParent(fresh, barRoot) else fresh
+            host = parent
+            parent.addView(view)
             applyLayout()
-            L.i("element re-attached into ${fresh.javaClass.simpleName} after the strip was rebuilt")
+            L.i("element re-attached into ${parent.javaClass.simpleName} after the strip was rebuilt")
             true
         } catch (t: Throwable) {
             L.w("re-attach failed: ${t.javaClass.simpleName}: ${t.message}")
@@ -669,6 +752,9 @@ internal class DuoIconHost(private val context: Context) {
         clock.restore()
         geometry.reset()
         host = null
+        hideStrip = null
+        overlay = false
+        anchorBattery = null
         root = null
     }
 
@@ -722,7 +808,16 @@ internal class DuoIconHost(private val context: Context) {
             if (id == 0) continue
             val found = root.findViewById<View>(id)
             L.d("container $name -> ${found?.javaClass?.simpleName ?: "null"}")
-            (found as? ViewGroup)?.let { return it }
+            if (found is ViewGroup) {
+                // A GONE strip is a legacy leftover, not the real one. Android 17 AOSP keeps a
+                // `system_icons` LinearLayout that is GONE forever while the icons are drawn by Compose,
+                // so injecting there produced a 0x0 element and nothing appeared (Pixel 9 report).
+                if (found.visibility == View.GONE) {
+                    L.i("container $name is GONE - skipping it (likely a legacy/Compose strip)")
+                    continue
+                }
+                return found
+            }
         }
         val anchor = stripAroundAnchors(root)
         if (anchor != null) {
@@ -746,9 +841,101 @@ internal class DuoIconHost(private val context: Context) {
             val parent = anchor.parent as? ViewGroup ?: continue
             // Never hand back the status-bar window itself: injecting there would fight the bar's layout.
             if (parent === root) continue
+            // A GONE parent is a legacy/Compose leftover, not a strip we can draw in.
+            if (parent.visibility == View.GONE) continue
             return parent
         }
         return null
+    }
+
+    /**
+     * Where the element view should be added.
+     *
+     * The strip itself when it is a plain Android layout. When it is a custom container — HyperOS 3's
+     * `MiuiStatusBatteryContainer` is the measured one — it lays out only its own children and left the
+     * injected view at 0×0, so the icons disappeared and nothing replaced them. In that case the element
+     * goes into the nearest plain `FrameLayout` ancestor (the bar's own icon layer) and is anchored over
+     * the battery by [anchorOnBattery]; the strip is still what gets hidden, by [hideStrip].
+     */
+    private fun chooseElementParent(strip: ViewGroup, barRoot: View): ViewGroup {
+        if (isStandardLayout(strip)) return strip
+        var view: View? = strip.parent as? View
+        while (view != null) {
+            if (view.javaClass.name == "android.widget.FrameLayout" && view is ViewGroup) return view
+            view = view.parent as? View
+        }
+        return (barRoot as? ViewGroup)?.takeIf { it !== strip } ?: strip
+    }
+
+    /** A layout whose measurement the module trusts to honour a child's requested size. */
+    private fun isStandardLayout(view: ViewGroup): Boolean = when (view.javaClass.name) {
+        "android.widget.FrameLayout",
+        "android.widget.LinearLayout",
+        "android.widget.RelativeLayout",
+        "android.widget.GridLayout" -> true
+        else -> false
+    }
+
+    /**
+     * The Compose view that draws the Wi-Fi/cellular/battery cluster, on a status bar with no View strip
+     * (Android 17 AOSP). Only the end-side area is searched, so the centre clock's Compose view is never
+     * mistaken for the icon cluster. The outer `ComposeView` is preferred over the inner
+     * `AndroidComposeView`: hiding the outer one hides everything it draws.
+     */
+    private fun findComposeIconView(root: View): View? {
+        for (name in listOf("status_bar_end_side_content", "status_bar_end_side_container")) {
+            val id = try {
+                context.resources.getIdentifier(name, "id", rom.systemUiPackage)
+            } catch (_: Throwable) {
+                0
+            }
+            if (id == 0) continue
+            val area = root.findViewById<View>(id) ?: continue
+            findComposeDescendant(area)?.let { return it }
+        }
+        return null
+    }
+
+    /** First `*ComposeView` in the subtree (top-down), or null. */
+    private fun findComposeDescendant(view: View): View? {
+        if (view.javaClass.name.endsWith("ComposeView")) return view
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                findComposeDescendant(view.getChildAt(i))?.let { return it }
+            }
+        }
+        return null
+    }
+
+    /** The battery view inside [strip], the anchor for the overlay placement. */
+    private fun findBattery(strip: ViewGroup): View? {
+        val id = try {
+            context.resources.getIdentifier(rom.batteryId, "id", rom.systemUiPackage)
+        } catch (_: Throwable) {
+            0
+        }
+        return if (id != 0) strip.findViewById(id) else null
+    }
+
+    /**
+     * Moves [view] so its centre sits on the battery's centre, measured in the element parent's
+     * coordinates. The battery is hidden with INVISIBLE (not GONE) in overlay mode, so its frame is real
+     * and survives a rotation; the user's horizontal nudge still applies.
+     */
+    private fun anchorOnBattery(view: View, parent: ViewGroup, side: Int) {
+        val battery = anchorBattery ?: return
+        try {
+            val parentLocation = IntArray(2)
+            val batteryLocation = IntArray(2)
+            parent.getLocationInWindow(parentLocation)
+            battery.getLocationInWindow(batteryLocation)
+            val density = context.resources.displayMetrics.density
+            view.translationX = batteryLocation[0] + battery.width / 2f - parentLocation[0] -
+                    side / 2f + settings.offsetX * density
+            view.translationY = batteryLocation[1] + battery.height / 2f - parentLocation[1] - side / 2f
+        } catch (t: Throwable) {
+            L.w("overlay anchor: ${t.javaClass.simpleName}: ${t.message}")
+        }
     }
 
     private companion object {

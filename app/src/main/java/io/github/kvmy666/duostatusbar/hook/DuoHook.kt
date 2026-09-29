@@ -38,7 +38,13 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
     /** The debug diagnostic dump is written to the log once per process, not on every settings change. */
     private val diagnosticsLogged = AtomicBoolean(false)
-    private var app: Application? = null
+
+    /**
+     * A context to read the settings and register the settings receiver with. It is the [Application]
+     * once one exists, and the status-bar window's own context on a ROM where the module is injected
+     * after the Application was created (see [start]).
+     */
+    private var app: Context? = null
     private var host: DuoIconHost? = null
     private var monitor: DuoStateMonitor? = null
     private var statusBarRoot: View? = null
@@ -75,8 +81,26 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
     fun install() {
         L.guard("DuoHook install") {
+            // LSPosed calls handleLoadPackage once per package in scope; on HyperOS System UI is seen
+            // twice (`com.android.systemui` and `system`). Hooking everything twice would double every
+            // callback, so only the first load in the process does anything.
+            if (!installed.compareAndSet(false, true)) {
+                L.i("already installed in this process - skipping duplicate load of ${lp.packageName}")
+                return@guard
+            }
             L.i("=== Duo Status Bar ${BuildConfig.VERSION_NAME} (code ${BuildConfig.VERSION_CODE}) ===")
+            // The window hook goes in *now*, not from Application.onCreate. On HyperOS 16 and One UI the
+            // Application is created before LSPosed injects the module, so an Application.onCreate hook
+            // fires too late (or never) and the status-bar window - already added - was never seen. The
+            // users' logs show exactly that: "MainHook loaded" then silence, and the element never drew.
+            // Watching addView from the first instant of the process catches the window on every ROM.
+            hookWindowManagerAddView()
             hookApplication()
+            // If the Application already exists (injected late), start now; otherwise Application.onCreate
+            // calls [start] the moment it fires, and [bootstrap] retries in case neither is ready yet.
+            adoptExistingStatusBarWindow()
+            startWithCurrentApplication()
+            bootstrap()
         }
     }
 
@@ -86,6 +110,162 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         return DuoIconHost(ctx).also { host = it }
     }
 
+    /**
+     * Bootstraps from the Application that is already alive, if there is one.
+     *
+     * This is the other half of the early-attach fix: when the module is injected after the Application
+     * was created, `Application.onCreate` never runs again, so the heartbeat, the settings receiver and
+     * the extra hooks would never be installed. `AndroidAppHelper.currentApplication()` is the Xposed
+     * API for exactly this case; it is null when a normal onCreate is still coming.
+     */
+    private fun startWithCurrentApplication() {
+        L.guard("DuoHook bootstrap") {
+            val ctx = resolveAppContext()
+            if (ctx != null) {
+                L.i("Application already created at injection - starting now")
+                start(ctx)
+            }
+        }
+    }
+
+    /**
+     * Resolves a usable Application/context for the SystemUI process.
+     *
+     * `AndroidAppHelper.currentApplication()` is the documented route, but on a framework that injects the
+     * module after `Application.onCreate` it can be null (issue #9, Vector). Two reflection fallbacks read
+     * the context straight off `ActivityThread`, and the status-bar window's own context is the last resort.
+     */
+    private fun resolveAppContext(): Context? {
+        try {
+            android.app.AndroidAppHelper.currentApplication()?.let { return it }
+        } catch (t: Throwable) {
+            L.w("currentApplication unreadable: ${t.javaClass.simpleName}: ${t.message}")
+        }
+        try {
+            val thread = Class.forName("android.app.ActivityThread")
+            val current = thread.getMethod("currentActivityThread").invoke(null)
+            if (current != null) {
+                // Note: `mSystemContext` is deliberately NOT used. Its package is "android" while the
+                // process uid is SystemUI, so a ContentResolver call from it is rejected with
+                // "Given calling package android does not match caller's uid" - which broke both the
+                // Settings.Global override and the settings provider read. Only contexts whose package is
+                // the app are usable here.
+                val field = thread.getDeclaredField("mInitialApplication").also { it.isAccessible = true }
+                (field.get(current) as? Context)?.let { if (it.packageName != "android") return it }
+                val bound = thread.getDeclaredField("mBoundApplication").also { it.isAccessible = true }
+                    .get(current)
+                if (bound != null) {
+                    val app = bound.javaClass.getDeclaredField("appContext").also { it.isAccessible = true }
+                        .get(bound) as? Context
+                    if (app != null && app.packageName != "android") return app
+                }
+            }
+        } catch (t: Throwable) {
+            L.w("ActivityThread context unreadable: ${t.javaClass.simpleName}: ${t.message}")
+        }
+        return null
+    }
+
+    /**
+     * The Application may only be created a moment after the module loads, so a failed resolve is retried
+     * briefly instead of giving up - the alternative is the "MainHook loaded" then silence that made the
+     * app report the module as never injected.
+     */
+    private fun bootstrap(attempt: Int = 0) {
+        if (started.get()) return
+        val ctx = resolveAppContext() ?: statusBarRoot?.context
+        if (ctx != null) {
+            start(ctx)
+            return
+        }
+        if (attempt >= MAX_BOOTSTRAP_ATTEMPTS) {
+            L.w("no Application context after $MAX_BOOTSTRAP_ATTEMPTS attempts - waiting for the status-bar window")
+            return
+        }
+        handler.postDelayed({
+            L.guard("DuoHook bootstrap retry") { bootstrap(attempt + 1) }
+        }, BOOTSTRAP_RETRY_MS)
+    }
+
+    /**
+     * Adopts a status-bar window that was added before the module was injected.
+     *
+     * When injection is late, `WindowManagerImpl.addView` already fired and the addView hook will never see
+     * the window, so it is read back from `WindowManagerGlobal.mViews` - the process's own list of added
+     * windows - by its layout-params type.
+     */
+    private fun adoptExistingStatusBarWindow() {
+        if (statusBarRoot != null) return
+        L.guard("DuoHook existing window") {
+            val found = findExistingStatusBarWindow() ?: return@guard
+            statusBarRoot = found
+            L.i("existing status bar window found: ${found.javaClass.name}")
+            scheduleAttach(attempt = 0)
+            // Now that a SystemUI-owned context exists, the bootstrap can succeed even when the
+            // ActivityThread lookups did not.
+            bootstrap()
+        }
+    }
+
+    private fun findExistingStatusBarWindow(): View? = try {
+        val cls = Class.forName("android.view.WindowManagerGlobal")
+        val instance = cls.getMethod("getInstance").invoke(null)
+        val roots = cls.getDeclaredField("mViews").also { it.isAccessible = true }.get(instance) as? List<*>
+        roots?.firstNotNullOfOrNull { root ->
+            val view = when (root) {
+                is View -> root
+                null -> null
+                else -> try {
+                    root.javaClass.getDeclaredField("mView").also { it.isAccessible = true }
+                        .get(root) as? View
+                } catch (_: Throwable) {
+                    null
+                }
+            }
+            val type = (view?.layoutParams as? android.view.WindowManager.LayoutParams)?.type
+            if (view != null && (type == TYPE_STATUS_BAR || type == TYPE_NOTIFICATION_SHADE)) view else null
+        }
+    } catch (t: Throwable) {
+        L.w("existing window scan: ${t.javaClass.simpleName}: ${t.message}")
+        null
+    }
+
+    /**
+     * Everything that needs a live context. Runs once per process, from whichever of
+     * [startWithCurrentApplication] or `Application.onCreate` happens first.
+     */
+    private fun start(ctx: Context) {
+        if (!started.compareAndSet(false, true)) return
+        app = ctx
+        L.guard("DuoHook start") {
+            // The gate is read before anything is hooked: while the module is off it leaves no trace in
+            // this process at all, so a fresh install cannot affect the status bar until asked to.
+            val guard = DuoGuard(ctx)
+            val stage = guard.stage()
+            // Heartbeat before the gate: it is how the app tells "LSPosed never injected the module"
+            // apart from "the module ran but is switched off". Two signals: a Settings.Global stamp, and
+            // a provider report. The provider needs no permission, so the About screen cannot show a
+            // false "never" on a ROM that denies SystemUI WRITE_SECURE_SETTINGS.
+            L.guard("DuoHook heartbeat") {
+                guard.noteLoaded()
+                DuoSettingsClient.report(ctx, "loaded · stage=$stage")
+                DuoSettingsClient.reportFallback(ctx, "")
+            }
+            if (stage == DuoGuard.OFF) {
+                L.i("gated off - nothing hooked. Enable with: ${guard.enableHint}, then restart SystemUI")
+                return@guard
+            }
+            L.i("application ready: ${ctx.packageName} (stage $stage)")
+            ensureHost(ctx)
+            hookShadeHeader()
+            hookStatusIconContainer()
+            hookBarAppearance()
+            hookSettingsChanges(ctx)
+            // The window may already have been captured by the early addView hook; attach now.
+            statusBarRoot?.let { scheduleAttach(attempt = 0) }
+        }
+    }
+
     private fun hookApplication() {
         L.guard("DuoHook hook Application") {
             XposedHelpers.findAndHookMethod(
@@ -93,36 +273,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 object : XC_MethodHook() {
                     override fun afterHookedMethod(param: MethodHookParam) {
                         L.guard("DuoHook Application.onCreate") {
-                            val ctx = param.thisObject as Application
-                            app = ctx
-                            // The gate is read before anything is hooked: while the module is off it
-                            // leaves no trace in this process at all, so a fresh install cannot affect
-                            // the status bar until someone asks it to.
-                            val guard = DuoGuard(ctx)
-                            val stage = guard.stage()
-                            // Heartbeat before the gate: it is how the app tells "LSPosed never injected
-                            // the module" apart from "the module ran but is switched off". Two signals:
-                            // a Settings.Global stamp, and a provider report. The provider needs no
-                            // permission, so the About screen cannot show a false "never" on a ROM that
-                            // denies SystemUI WRITE_SECURE_SETTINGS (the Global write then fails silently).
-                            L.guard("DuoHook heartbeat") {
-                                guard.noteLoaded()
-                                DuoSettingsClient.report(ctx, "loaded · stage=$stage")
-                                // A fresh load clears any previous fallback alert; a fallback during this
-                                // run is reported from DuoIconHost when it happens.
-                                DuoSettingsClient.reportFallback(ctx, "")
-                            }
-                            if (stage == DuoGuard.OFF) {
-                                L.i("gated off - nothing hooked. Enable with: ${guard.enableHint}, then restart SystemUI")
-                                return@guard
-                            }
-                            L.i("application ready: ${ctx.packageName} (stage $stage)")
-                            ensureHost(ctx)
-                            hookWindowManagerAddView()
-                            hookShadeHeader()
-                            hookStatusIconContainer()
-                            hookBarAppearance()
-                            hookSettingsChanges(ctx)
+                            start(param.thisObject as Application)
                         }
                     }
                 }
@@ -244,12 +395,24 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     private fun scheduleAttach(attempt: Int) {
         if (attempt > MAX_ATTEMPTS) {
             L.i("giving up after $MAX_ATTEMPTS attempts - status bar left untouched")
+            // A ROM the module could not attach on must still leave evidence: send the same diagnostic
+            // dump as a successful attach, so a report names the ids/probes that were tried. Without
+            // this, the Samsung One UI user's report was just "loaded · stage=2" with nothing to act on.
+            val ctx = app ?: statusBarRoot?.context
+            if (ctx != null) {
+                L.guard("DuoHook attach failed report") {
+                    DuoSettingsClient.report(ctx, "attach failed after $MAX_ATTEMPTS attempts - see the diagnostic dump")
+                    reportDiagnostics(ctx, DuoGuard(ctx).stage(), null, host?.duo)
+                }
+            }
             return
         }
         handler.postDelayed({
             L.guard("DuoHook attach #$attempt") {
                 val root = statusBarRoot ?: return@guard
-                val ctx = app ?: return@guard
+                // Prefer the Application, but fall back to the bar window's own context: on a ROM where
+                // the module is injected late the Application may never have been captured.
+                val ctx = app ?: root.context
                 val attached = ensureHost(ctx).attach(root)
                 if (attached) {
                     if (monitor == null) {
@@ -379,17 +542,28 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      */
     private fun hookStatusIconContainer() {
         L.guard("DuoHook icon container") {
-            val cls = XposedHelpers.findClass(
-                "com.android.systemui.statusbar.phone.StatusIconContainer", lp.classLoader
+            val names = listOf(
+                "com.android.systemui.statusbar.phone.StatusIconContainer",
+                "com.android.systemui.statusbar.views.MiuiStatusIconContainer"
             )
-            XposedBridge.hookAllMethods(cls, "addView", object : XC_MethodHook() {
+            val callback = object : XC_MethodHook() {
                 override fun afterHookedMethod(param: MethodHookParam) {
                     L.guard("DuoHook icon added") {
                         val child = param.args.firstOrNull() as? View ?: return@guard
                         host?.onStatusIconAdded(child)
                     }
                 }
-            })
+            }
+            var hooked = 0
+            for (name in names) {
+                try {
+                    val cls = XposedHelpers.findClass(name, lp.classLoader)
+                    XposedBridge.hookAllMethods(cls, "addView", callback)
+                    hooked++
+                } catch (_: Throwable) {
+                }
+            }
+            L.i("status icon container hooks installed: $hooked")
         }
     }
 
@@ -468,11 +642,24 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     }
 
     private companion object {
+        /**
+         * Per-process, not per-instance: LSPosed can call `handleLoadPackage` twice in one System UI
+         * process (once for `com.android.systemui`, once for `system`), and every hook must go in once.
+         */
+        val installed = AtomicBoolean(false)
+
+        /** Set by whichever of the Application bootstrap paths runs first, so [start] runs once. */
+        val started = AtomicBoolean(false)
+
         const val TYPE_STATUS_BAR = 2000
 
         /** `WindowManager.LayoutParams.TYPE_NOTIFICATION_SHADE`, which is @hide. */
         const val TYPE_NOTIFICATION_SHADE = 2040
         const val FIRST_DELAY_MS = 2_500L
+
+        /** How long a late injection waits for the Application before it relies on the bar's context. */
+        const val BOOTSTRAP_RETRY_MS = 500L
+        const val MAX_BOOTSTRAP_ATTEMPTS = 20
 
         /** After a shade drag settles, the ROM re-shows its icon views once more. */
         const val SHADE_SETTLE_MS = 400L

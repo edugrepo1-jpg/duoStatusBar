@@ -91,7 +91,20 @@ class SettingsChannelTest {
         assertEquals(1000, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_REVEAL_MS)])
         // FR-15b / FR-08b: the two newest columns must travel too, or the module would never see them.
         assertEquals("auto", row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_ICON_COLOR)])
-        assertEquals(1, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_HIDE_OTHER_ICONS)])
+        // Default is now FR-08b (keep the other icons), so an untouched setting travels as 0.
+        assertEquals(0, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_HIDE_OTHER_ICONS)])
+        // The network-only toggle must cross the channel too, defaulting off.
+        assertEquals(0, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_NETWORK_ONLY)])
+        // The dual-SIM line choice travels as a string, defaulting to the automatic data line.
+        assertEquals("auto", row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_SIM_CHOICE)])
+    }
+
+    @Test
+    fun `the network-only toggle travels through the channel`() {
+        DuoPrefs.write(context, DuoSettings(networkOnly = true))
+        assertEquals(true, DuoPrefs.read(context).networkOnly)
+        val row = DuoSettingsProvider.rowFor(DuoPrefs.read(context), revision = 1L)
+        assertEquals(1, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_NETWORK_ONLY)])
     }
 
     @Test

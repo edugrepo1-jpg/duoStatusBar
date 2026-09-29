@@ -175,6 +175,19 @@ object DuoMapping {
         if (closed) 0f else halfArc(charging) * ((level.coerceIn(50, 100) - 50) / 50f)
 
     /**
+     * Maps the phone's Wi-Fi bar count onto Duo's three levels, so the ring agrees with the stock icon.
+     *
+     * The stock icon has four bars (1..4); Duo draws two arcs plus the dot (1..3). The user's mapping,
+     * measured against the real icon: 1 and 2 bars -> 1, 3 bars -> 2, 4 bars -> 3. 0 is "no signal".
+     */
+    fun wifiBars(stockLevel: Int): Int = when {
+        stockLevel <= 0 -> 0
+        stockLevel <= 2 -> 1
+        stockLevel == 3 -> 2
+        else -> 3
+    }
+
+    /**
      * Wi-Fi layers, bottom-up: nothing connected dims everything, then the dot, the middle arc and
      * finally the outer arc appear as the signal improves (FR-25).
      */
@@ -221,7 +234,12 @@ object DuoMapping {
         /** The cellular generation, e.g. "5G"; ignored unless the slot is actually holding it. */
         networkText: String = "",
         /** Whether the charging journey plays; false shows the bolt instantly. */
-        animateCharge: Boolean = true
+        animateCharge: Boolean = true,
+        /**
+         * The "network icons only" switch: true keeps the middle slot to Wi-Fi + 5G/4G and never lets
+         * airplane or DND occupy it (the user's toggle, FR-06).
+         */
+        networkOnly: Boolean = false
     ): DuoVisual {
         // The middle slot holds exactly one occupant (FR-06/FR-16): airplane wins, then DND, then
         // Wi-Fi; with Wi-Fi off the slot shows the cellular generation instead. The hand-over itself
@@ -230,7 +248,7 @@ object DuoMapping {
         // Wi-Fi only owns the slot when it is the active data path: a connected-but-internet-less AP
         // still leaves the phone on mobile data, so the slot shows the cellular generation instead of a
         // Wi-Fi glyph while the user is plainly on 4G/5G (user-reported).
-        val mode = middleMode(airplane, dnd, wifiOn, networkText.isNotEmpty(), wifiConnected)
+        val mode = middleMode(airplane, dnd, wifiOn, networkText.isNotEmpty(), wifiConnected, networkOnly)
         val (outer, middle, dot) = wifiOpacities(wifiLevel)
         val cells = cellOpacities(if (airplane) 0 else cellLevel)
         val percent = if (showPercent && !charging) level.toString() else ""
@@ -283,8 +301,15 @@ object DuoMapping {
         dnd: Boolean,
         wifiOn: Boolean = true,
         hasNetwork: Boolean = false,
-        wifiConnected: Boolean = true
+        wifiConnected: Boolean = true,
+        networkOnly: Boolean = false
     ): Int = when {
+        // The "network icons only" switch: the slot is about the connection, so DND and airplane are
+        // deliberately ignored and neither can take it.
+        networkOnly && wifiOn && wifiConnected -> MIDDLE_WIFI
+        networkOnly && hasNetwork -> MIDDLE_NETWORK
+        networkOnly && wifiOn -> MIDDLE_WIFI
+        networkOnly -> MIDDLE_OFF
         airplane -> MIDDLE_AIRPLANE
         dnd -> MIDDLE_DND
         wifiOn && wifiConnected -> MIDDLE_WIFI

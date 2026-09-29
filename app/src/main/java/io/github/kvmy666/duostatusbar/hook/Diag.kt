@@ -37,6 +37,11 @@ internal object Diag {
         "status_bar_end_side_content",
         "status_bar_end_side_container",
         "status_bar_start_side_content",
+        // HyperOS / One UI spellings, so an adapter can be added from one report without a second round.
+        "status_bar_icons",
+        "system_icon_area",
+        "systemIcons",
+        "status_icons",
         "battery",
         "clock",
         "clock_for_fake",
@@ -127,7 +132,8 @@ internal object Diag {
                 appendLine("    size=${it.sizePercent}% offset=${it.offsetX}dp live=${it.liveApply} rev=${it.revision}")
                 appendLine("    animations=${it.animationsEnabled} arrival=${it.arrivalEnabled} " +
                         "departure=${it.departureEnabled} charging=${it.chargingEnabled}")
-                appendLine("    clockFont=${it.systemClockFont} revealMs=${it.revealMs}")
+                appendLine("    clockFont=${it.systemClockFont} revealMs=${it.revealMs} " +
+                        "networkOnly=${it.networkOnly}")
             }
         }
     } catch (t: Throwable) {
@@ -174,9 +180,11 @@ internal object Diag {
             val airplane = SystemReaders.isAirplaneOn(context)
             sb.appendLine("  wifiEnabled=${SystemReaders.isWifiEnabled(context, false)} " +
                     "wifiActive=${SystemReaders.isWifiActive(context, false)} " +
+                    "wifiValidated=${SystemReaders.isWifiValidated(context)} " +
                     "wifiLevel=${SystemReaders.wifiLevel(context, -1)}")
             sb.appendLine("  cellLevel=${SystemReaders.cellLevel(context, airplane, -1)} " +
-                    "generation=${SystemReaders.networkGeneration(context, airplane, "?")}")
+                    "generation=${SystemReaders.networkGeneration(context, airplane, "?")} " +
+                    "cellLevels=${SystemReaders.cellLevels(context, airplane)}")
             sb.appendLine("  airplane=$airplane saver=${SystemReaders.isPowerSaveOn(context)} " +
                     "dnd=${SystemReaders.isDndOn(context)}")
         } catch (t: Throwable) {

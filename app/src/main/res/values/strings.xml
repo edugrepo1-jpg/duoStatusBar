@@ -44,6 +44,17 @@
     <string name="settings_icon_color_auto">Match status bar</string>
     <string name="settings_icon_color_black">Black</string>
     <string name="settings_icon_color_white">White</string>
+    <string name="settings_network_only">Show only Wi-Fi and 5G/4G</string>
+    <string name="settings_network_only_detail">Keeps the middle of the ring to the Wi-Fi icon and the 5G/4G label. When on, Do Not Disturb and Airplane never replace them.</string>
+    <string name="settings_sim">Cellular line</string>
+    <string name="settings_sim_detail">On a dual-SIM phone, which line the four signal spheres follow.</string>
+    <string name="settings_sim_auto">Automatic (data line)</string>
+    <string name="settings_sim_1">SIM 1</string>
+    <string name="settings_sim_2">SIM 2</string>
+
+    <!-- Customize -->
+    <string name="section_customize">Customize your Duo</string>
+    <string name="settings_customize_detail">Size, position and colour — make the ring yours.</string>
 
     <!-- Tap actions -->
     <string name="section_actions">Tap actions</string>
@@ -91,12 +102,18 @@
     <string name="settings_module_never">The module has not loaded into System UI yet. In LSPosed, enable Duo Status Bar and tick System UI in its scope, then reboot (or restart System UI).</string>
     <string name="settings_module_loaded">Module loaded into System UI at %1$s</string>
     <string name="settings_module_loaded_recent">Module is loaded into System UI (see status above)</string>
-    <string name="settings_recheck">Refresh status</string>
-    <string name="settings_share">Share status</string>
-    <string name="settings_save_file">Save status to a file</string>
-    <string name="settings_collect_log">Collect full log (root)</string>
+    <string name="settings_problem">What went wrong? (optional)</string>
+    <string name="settings_problem_hint">Describe the problem in a few words, then report it</string>
+    <string name="settings_collect_log">Send the bug to the developer</string>
+    <string name="settings_collect_log_detail">Packs your description, the module status and the logs into one report and sends it straight to the developer. If that is unavailable, you can share or save it instead.</string>
+    <string name="settings_log_sent">Log sent to the developer. Thank you!</string>
+    <string name="settings_log_wait">A log was sent a moment ago — please wait a minute before sending again.</string>
+    <string name="settings_export_log">Export log to a file</string>
+    <string name="settings_log_saved">Log saved.</string>
+    <string name="settings_log_save_failed">Couldn\'t save the log.</string>
     <string name="settings_collecting">Collecting…</string>
     <string name="settings_history">Recent activity</string>
     <string name="settings_donate">Support the developer</string>
+    <string name="settings_log_share_title">Send Duo log</string>
     <string name="settings_version">Duo Status Bar %1$s</string>
 </resources>

@@ -103,26 +103,42 @@ internal object RomDetection {
         systemUiPackage = AOSP,
         containerIds = listOf(
             "system_icons",
-            "system_icons_container",
+            "systemIcons",
             "statusIcons",
-            "status_bar_contents",
-            "status_bar_end_side_content"
+            "status_icons",
+            "system_icons_container",
+            "status_bar_contents"
         ),
         batteryId = "battery",
-        notes = "unverified: no Samsung device measured; AOSP ids first, then One UI spellings"
+        notes = "unverified: no Samsung device measured; AOSP ids first, then One UI spellings " +
+            "(systemIcons/status_icons); the battery/status-icons parent fallback covers the rest"
     )
 
     /**
-     * No Xiaomi device has been tested. The ids are the AOSP ones plus the spellings seen in MIUI trees, and
-     * the adapter says so: if the strip resolves, good; if not, the log says which ids were tried.
+     * Measured on the Xiaomi 24129PN74G (HyperOS 3, Android 17, SDK 37). HyperOS keeps the AOSP id
+     * `system_icons` but re-hosts it: it is a `MiuiStatusBatteryContainer` that holds the stock
+     * `statusIcons`, the Wi-Fi/cellular combos and the battery, sitting inside `system_icon_area`
+     * (a `MiuiNotificationStatusContainer`). The module injects into `system_icons`, which is why the
+     * element appears with the battery correctly.
+     *
+     * `system_icon_area` is the first fallback: it is the wider strip the same container lives in, so a
+     * build that renames `system_icons` still attaches beside the icons. `status_bar_icons` is the
+     * `FrameLayout` above both. The AOSP name stays first so a stock-AOSP Xiaomi needs no special case.
      */
     private fun hyperOs(): RomAdapter = RomAdapter(
         id = "hyperos",
-        label = "HyperOS / MIUI (unverified)",
+        label = "HyperOS / MIUI",
         systemUiPackage = AOSP,
-        containerIds = listOf("system_icons", "system_icons_container", "statusIcons"),
+        containerIds = listOf(
+            "system_icons",
+            "system_icon_area",
+            "status_bar_icons",
+            "statusIcons",
+            "system_icons_container"
+        ),
         batteryId = "battery",
-        notes = "unverified: no Xiaomi device available to measure; AOSP ids first, then MIUI spellings"
+        notes = "measured on HyperOS 3 (24129PN74G, Android 17): system_icons -> " +
+            "MiuiStatusBatteryContainer holding statusIcons + battery; system_icon_area is the parent"
     )
 
     private fun aosp(): RomAdapter = RomAdapter(

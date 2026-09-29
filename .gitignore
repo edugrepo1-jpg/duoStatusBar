@@ -22,6 +22,9 @@ keystore.properties
 .env
 .env.*
 
+# ---- Cloudflare wrangler local state (account id, logs) ----
+.wrangler/
+
 # ---- reverse-engineering artefacts ----
 # SystemUI/system files pulled from the device: local analysis only, never published.
 reverse/
@@ -41,6 +44,9 @@ rive/**/build/
 logcat/
 *.log
 *.txt.tmp
+# user-submitted diagnostics: private device data (SSIDs, hardware ids) - keep locally, never publish
+duo-diagnostics-*.txt
+diagnose from users/
 # pulled from the device by tools/dump-lsposed-scope.py - regenerate rather than commit
 docs/evidence/modules_config.db*
 docs/evidence/*-statusbar.png

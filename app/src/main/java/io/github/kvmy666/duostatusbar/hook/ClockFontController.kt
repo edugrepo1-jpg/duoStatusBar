@@ -3,6 +3,7 @@ package io.github.kvmy666.duostatusbar.hook
 import android.content.Context
 import android.graphics.Typeface
 import android.view.View
+import android.view.ViewGroup
 import android.widget.TextView
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.hook.rom.RomAdapter
@@ -37,7 +38,12 @@ internal class ClockFontController(private val context: Context, private val rom
             val view = root ?: return
             val id = context.resources.getIdentifier(rom.clockId, "id", rom.systemUiPackage)
             if (id == 0) return
-            val clock = view.findViewById<View>(id) as? TextView ?: return
+            // HyperOS 3 nests several views with the same `clock` id; `findViewById` returns the first,
+            // which can be a 0x0 duplicate. The real clock is the visible one, so prefer it.
+            val matches = ArrayList<TextView>()
+            collectClocks(view, id, matches)
+            val clock = matches.firstOrNull { it.isShown && it.width > 0 }
+                ?: matches.firstOrNull() ?: return
             if (clockView !== clock) {
                 clockView = clock
                 clockOriginalTypeface = clock.typeface
@@ -52,6 +58,14 @@ internal class ClockFontController(private val context: Context, private val rom
             }
         } catch (t: Throwable) {
             L.w("clock font: ${t.javaClass.simpleName}: ${t.message}")
+        }
+    }
+
+    /** Every `TextView` in the subtree carrying [id], in tree order. */
+    private fun collectClocks(view: View, id: Int, out: MutableList<TextView>) {
+        if (view.id == id && view is TextView) out.add(view)
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) collectClocks(view.getChildAt(i), id, out)
         }
     }
 

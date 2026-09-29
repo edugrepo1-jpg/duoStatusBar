@@ -4,8 +4,10 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +23,7 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -28,6 +31,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -51,6 +55,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -66,6 +71,7 @@ import io.github.kvmy666.duostatusbar.settings.DuoActions
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
 import io.github.kvmy666.duostatusbar.settings.StockIconHider
+import io.github.kvmy666.duostatusbar.settings.TelegramLog
 import io.github.kvmy666.duostatusbar.settings.UpdateChecker
 import io.github.kvmy666.duostatusbar.settings.UpdateWorker
 import java.io.File
@@ -99,6 +105,10 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
     var query by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     var collecting by remember { mutableStateOf(false) }
+    var problem by remember { mutableStateOf("") }
+    var logSent by remember { mutableStateOf(false) }
+    var exporting by remember { mutableStateOf(false) }
+    var pendingExport by remember { mutableStateOf("") }
     var moduleLoadAt by remember { mutableStateOf(DuoPrefs.moduleLoadTime(context)) }
     var fallback by remember { mutableStateOf(DuoPrefs.fallback(context)) }
     var checkUpdates by remember { mutableStateOf(DuoPrefs.checkUpdates(context)) }
@@ -108,6 +118,24 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
     val notifPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { }
+
+    // Export: the system file picker, so the log can be saved anywhere (Downloads, Drive, …) and shown
+    // to anyone — independent of Telegram or a live network.
+    val exportLog = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri ->
+        if (uri != null) {
+            val text = pendingExport
+            val ok = runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { it.write(text.toByteArray()) }
+            }.isSuccess
+            Toast.makeText(
+                context,
+                if (ok) R.string.settings_log_saved else R.string.settings_log_save_failed,
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
 
     /** Settings search: a row is shown when the query appears in its label or its detail. */
     fun matches(vararg text: String): Boolean =
@@ -147,11 +175,32 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineSmall)
-        Text(
-            text = stringResource(R.string.app_tagline),
-            style = MaterialTheme.typography.bodyMedium
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(CircleShape)
+                    .background(BRAND_WINE),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(R.mipmap.ic_launcher_foreground),
+                    contentDescription = null,
+                    modifier = Modifier.size(38.dp)
+                )
+            }
+            Column(Modifier.padding(start = 14.dp)) {
+                Text(
+                    stringResource(R.string.app_name),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = stringResource(R.string.app_tagline),
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
 
         OutlinedTextField(
             value = query,
@@ -192,14 +241,25 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
 
         // ------------------------------------------------------------------ Battery icon
         if (matches(
-                stringResource(R.string.section_element), stringResource(R.string.settings_master),
+                stringResource(R.string.section_customize), stringResource(R.string.section_element),
+                stringResource(R.string.settings_master),
                 stringResource(R.string.settings_master_detail), stringResource(R.string.settings_percent),
                 stringResource(R.string.settings_percent_detail), stringResource(R.string.settings_size),
                 stringResource(R.string.settings_position), stringResource(R.string.settings_live_apply)
             )
-        ) Card {
+        ) Card(
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                SectionTitle(stringResource(R.string.section_element))
+                SectionTitle(stringResource(R.string.section_customize))
+                Text(
+                    text = stringResource(R.string.settings_customize_detail),
+                    style = MaterialTheme.typography.bodySmall
+                )
                 SettingSwitch(
                     label = stringResource(R.string.settings_master),
                     detail = stringResource(R.string.settings_master_detail),
@@ -265,7 +325,13 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                 stringResource(R.string.settings_anim_speed), stringResource(R.string.settings_anim_arrival),
                 stringResource(R.string.settings_anim_departure), stringResource(R.string.settings_anim_charging)
             )
-        ) Card {
+        ) Card(
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 SectionTitle(stringResource(R.string.section_animations))
                 SettingSwitch(
@@ -325,8 +391,15 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
         // ------------------------------------------------------------------- Appearance
         if (matches(stringResource(R.string.section_look), stringResource(R.string.settings_renderer),
                 stringResource(R.string.settings_renderer_detail), stringResource(R.string.settings_clock_font),
-                stringResource(R.string.settings_icon_color))
-        ) Card {
+                stringResource(R.string.settings_icon_color), stringResource(R.string.settings_network_only),
+                stringResource(R.string.settings_sim))
+        ) Card(
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 SectionTitle(stringResource(R.string.section_look))
                 SettingSwitch(
@@ -351,6 +424,26 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                     selectedKey = settings.iconColor,
                     enabled = settings.enabled
                 ) { update(settings.copy(iconColor = it)) }
+                SettingSwitch(
+                    label = stringResource(R.string.settings_network_only),
+                    detail = stringResource(R.string.settings_network_only_detail),
+                    checked = settings.networkOnly,
+                    enabled = settings.enabled
+                ) { update(settings.copy(networkOnly = it)) }
+                OptionPicker(
+                    label = stringResource(R.string.settings_sim),
+                    options = listOf(
+                        "auto" to stringResource(R.string.settings_sim_auto),
+                        "sim1" to stringResource(R.string.settings_sim_1),
+                        "sim2" to stringResource(R.string.settings_sim_2)
+                    ),
+                    selectedKey = settings.simChoice,
+                    enabled = settings.enabled
+                ) { update(settings.copy(simChoice = it)) }
+                Text(
+                    text = stringResource(R.string.settings_sim_detail),
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
         }
 
@@ -360,7 +453,13 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
         if (matches(stringResource(R.string.section_icons), stringResource(R.string.settings_hide_icons),
                 stringResource(R.string.settings_hide_icons_detail),
                 stringResource(R.string.settings_hide_other_icons))
-        ) Card {
+        ) Card(
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionTitle(stringResource(R.string.section_icons))
                 SettingSwitch(
@@ -377,7 +476,13 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
         val autoExpand = remember { DuoActions.isAutoExpandInstalled(context) }
         if (matches(stringResource(R.string.section_actions), stringResource(R.string.settings_tap),
                 stringResource(R.string.settings_double_tap), stringResource(R.string.settings_long_press))
-        ) Card {
+        ) Card(
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 SectionTitle(stringResource(R.string.section_actions))
                 Text(
@@ -409,9 +514,15 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
         // ------------------------------------------------------------------------ About
         val emptyStatus = stringResource(R.string.settings_no_status)
         if (matches(stringResource(R.string.section_about), stringResource(R.string.settings_status),
-                stringResource(R.string.settings_share), stringResource(R.string.settings_save_file),
+                stringResource(R.string.settings_collect_log),
                 stringResource(R.string.settings_check_updates), stringResource(R.string.settings_donate))
-        ) Card {
+        ) Card(
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionTitle(stringResource(R.string.section_about))
                 Text(
@@ -436,41 +547,50 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                         )
                     }
                 }
-                Button(
-                    onClick = {
-                        // Reuses the settings broadcast: the module re-resolves the stage, re-applies the
-                        // layout and reports again, which is exactly what "did it take effect?" means.
-                        context.sendBroadcast(Intent(DuoPrefs.ACTION_SETTINGS_CHANGED))
-                    },
+                // Let the user say what went wrong; it travels with the log so a fix can start from the
+                // description rather than from a guess. Then one button packs status + logs and sends them.
+                OutlinedTextField(
+                    value = problem,
+                    onValueChange = { problem = it; logSent = false },
+                    label = { Text(stringResource(R.string.settings_problem)) },
+                    placeholder = { Text(stringResource(R.string.settings_problem_hint)) },
+                    minLines = 2,
                     modifier = Modifier.fillMaxWidth()
-                ) { Text(stringResource(R.string.settings_recheck)) }
-                Button(
-                    onClick = { shareText(context, buildDiagnostics(settings, status, history, dump, moduleLoadAt)) },
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text(stringResource(R.string.settings_share)) }
-                Button(
-                    onClick = {
-                        val file = writeDiagnostics(
-                            context,
-                            buildDiagnostics(settings, status, history, dump, moduleLoadAt)
-                        )
-                        if (file != null) shareFile(context, file)
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text(stringResource(R.string.settings_save_file)) }
-                // Always available (not debug-only): the module dump above only exists once LSPosed has
-                // injected the module. When it has not, this is the only way to see why (LSPosed's log,
-                // logcat, build props). Requires root, which every LSPosed user has.
+                )
                 Button(
                     onClick = {
                         collecting = true
+                        logSent = false
                         scope.launch {
                             val logs = withContext(Dispatchers.IO) { RootLogs.collect() }
                             collecting = false
-                            val report = buildDiagnostics(settings, status, history, dump, moduleLoadAt) +
-                                    "\n\n===== root log capture =====\n" + logs
+                            val message = problem.trim()
+                            val report = buildFullReport(
+                                problem, settings, status, history, dump, moduleLoadAt, logs
+                            )
                             val file = writeDiagnostics(context, report)
-                            if (file != null) shareFile(context, file)
+                            if (file == null) {
+                                shareText(context, report)
+                            } else {
+                                val caption = message.take(200).ifBlank { "Duo Status Bar log" }
+                                val result = withContext(Dispatchers.IO) {
+                                    TelegramLog.send(context, file, caption)
+                                }
+                                when (result) {
+                                    TelegramLog.Result.SENT -> {
+                                        logSent = true
+                                        Toast.makeText(
+                                            context, R.string.settings_log_sent, Toast.LENGTH_LONG
+                                        ).show()
+                                    }
+                                    TelegramLog.Result.RATE_LIMITED -> Toast.makeText(
+                                        context, R.string.settings_log_wait, Toast.LENGTH_LONG
+                                    ).show()
+                                    TelegramLog.Result.FAILED ->
+                                        fileUri(context, file)?.let { shareLog(context, it) }
+                                            ?: shareText(context, report)
+                                }
+                            }
                         }
                     },
                     enabled = !collecting,
@@ -479,6 +599,43 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                     Text(
                         stringResource(
                             if (collecting) R.string.settings_collecting else R.string.settings_collect_log
+                        )
+                    )
+                }
+                if (logSent) {
+                    Text(
+                        text = stringResource(R.string.settings_log_sent),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.settings_collect_log_detail),
+                    style = MaterialTheme.typography.bodySmall
+                )
+                // Export: save the same report anywhere with the system file picker, independent of
+                // Telegram or a network. The escape hatch when the upload path is not available.
+                OutlinedButton(
+                    onClick = {
+                        exporting = true
+                        logSent = false
+                        scope.launch {
+                            val logs = withContext(Dispatchers.IO) { RootLogs.collect() }
+                            exporting = false
+                            pendingExport = buildFullReport(
+                                problem, settings, status, history, dump, moduleLoadAt, logs
+                            )
+                            val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+                            exportLog.launch("duo-log-$stamp.txt")
+                        }
+                    },
+                    enabled = !exporting && !collecting,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        stringResource(
+                            if (exporting) R.string.settings_collecting else R.string.settings_export_log
                         )
                     )
                 }
@@ -543,7 +700,15 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                 Button(
                     onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(DONATE_URL))) },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text(stringResource(R.string.settings_donate)) }
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_paypal),
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.settings_donate))
+                }
                 Text(
                     text = stringResource(R.string.settings_version, BuildConfig.VERSION_NAME),
                     style = MaterialTheme.typography.bodySmall
@@ -555,6 +720,9 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
 
 /** FR-28: where the support button goes. */
 private const val DONATE_URL = "https://paypal.me/kroomfahd"
+
+/** Red Wine (FR-11): the app icon's background, reused for the header badge. */
+private val BRAND_WINE = Color(0xFF7B1E3A)
 
 /** Where a fallback report goes: the developer's Telegram, and the issue tracker. */
 private const val TELEGRAM_CHAT_URL = "https://t.me/kvmy1"
@@ -572,13 +740,19 @@ private val TELEGRAM_PACKAGES = listOf(
  */
 private fun sendLogOnTelegram(context: Context, report: String) {
     val file = writeDiagnostics(context, report)
+    // Preferred: the bot uploads it straight to the developer's chat, no user step.
+    if (file != null &&
+        TelegramLog.send(context, file, "Duo Status Bar fallback report") == TelegramLog.Result.SENT
+    ) return
+    // Bot not configured or offline: hand the file to Telegram if installed, else open the chat.
+    val uri = file?.let { fileUri(context, it) }
     val telegram = TELEGRAM_PACKAGES.firstOrNull { pkg ->
         runCatching { context.packageManager.getApplicationInfo(pkg, 0) }.isSuccess
     }
-    if (file != null && telegram != null) {
+    if (uri != null && telegram != null) {
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
-            putExtra(Intent.EXTRA_STREAM, file)
+            putExtra(Intent.EXTRA_STREAM, uri)
             putExtra(Intent.EXTRA_TEXT, "Duo Status Bar log")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             setPackage(telegram)
@@ -610,14 +784,28 @@ private fun openGitHubIssue(context: Context, fallback: String, status: String) 
 /** FR-25: the five arrival speeds, slowest first, matching [DuoPrefs.REVEAL_CHOICES] reversed. */
 private val SPEED_LABELS = listOf("Slow", "Relaxed", "Normal", "Brisk", "Fast")
 
-/** Asks the module to restart System UI so a size change takes effect. */
+/**
+ * Asks the module to restart System UI so a size change takes effect.
+ *
+ * The module lives inside System UI, so the broadcast is the clean path when it is loaded. When it is
+ * not (it has never reported), nothing receives the broadcast and the button looks dead, so System UI
+ * is restarted directly — root first, then Shizuku — which is what makes the button work on a ROM
+ * without `su` as long as Shizuku is running.
+ */
 private fun restartSystemUi(context: Context) {
     context.sendBroadcast(Intent(DuoPrefs.ACTION_RESTART_SYSTEMUI))
-    // If the module is not running inside SystemUI (it has never reported), the broadcast has no
-    // receiver and the button looks dead. A rooted device can restart SystemUI directly; this is the
-    // path other modules use and it is what makes the button work before LSPosed has injected anything.
-    if (DuoPrefs.status(context).isBlank()) {
-        Thread { runCatching { RootLogs.restartSystemUi() } }.start()
+    if (DuoPrefs.moduleLoadTime(context) <= 0L) {
+        Thread {
+            val ok = runCatching { RootLogs.restartSystemUi() }.getOrDefault(false)
+            if (!ok && StockIconHider.isShizukuRunning() && StockIconHider.isPermissionGranted()) {
+                StockIconHider.exec(
+                    context,
+                    "pkill -f com.android.systemui || killall com.android.systemui || " +
+                        "kill -9 ${'$'}(pidof com.android.systemui)",
+                    {}
+                )
+            }
+        }.start()
     }
 }
 
@@ -651,6 +839,27 @@ private fun buildDiagnostics(
         }
     }
 
+/** The complete bug report: the user's description, the diagnostics, then the root log capture. */
+private fun buildFullReport(
+    problem: String,
+    settings: DuoSettings,
+    status: String,
+    history: List<String>,
+    dump: String,
+    moduleLoadAt: Long,
+    logs: String
+): String = buildString {
+    val message = problem.trim()
+    if (message.isNotEmpty()) {
+        appendLine("user message:")
+        appendLine(message)
+        appendLine()
+    }
+    append(buildDiagnostics(settings, status, history, dump, moduleLoadAt))
+    append("\n\n===== root log capture =====\n")
+    append(logs)
+}
+
 private fun formatTimestamp(ms: Long): String =
     SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(ms))
 
@@ -662,14 +871,20 @@ private fun shareText(context: Context, report: String) {
     context.startActivity(Intent.createChooser(send, "Share diagnostics"))
 }
 
-private fun shareFile(context: Context, file: Uri) {
+/**
+ * Hands the collected log to a share sheet, where the user picks Telegram (the developer, @kvmy1),
+ * another app, or "Save to Files" — one button, "send it" or "keep it", as the user prefers.
+ */
+private fun shareLog(context: Context, file: Uri) {
     val share = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(Intent.EXTRA_STREAM, file)
-        putExtra(Intent.EXTRA_TEXT, "Duo Status Bar diagnostics")
+        putExtra(Intent.EXTRA_TEXT, "Duo Status Bar log — @kvmy1")
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
-    context.startActivity(Intent.createChooser(share, "Save diagnostics"))
+    context.startActivity(
+        Intent.createChooser(share, context.getString(R.string.settings_log_share_title))
+    )
 }
 
 /**
@@ -679,18 +894,20 @@ private fun shareFile(context: Context, file: Uri) {
  * the app's external files dir and is handed out through a FileProvider, so nothing else is exposed.
  * Returns null (and the caller shares nothing) if the directory is unavailable.
  */
-private fun writeDiagnostics(context: Context, report: String): Uri? = try {
-    val dir = context.getExternalFilesDir("diagnostics")
-    if (dir == null) {
-        null
-    } else {
-        val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
-        val file = File(dir, "duo-diagnostics-$stamp.txt")
-        file.writeText(report)
-        FileProvider.getUriForFile(context, "${context.packageName}.files", file)
-    }
+private fun writeDiagnostics(context: Context, report: String): File? = try {
+    val dir = context.getExternalFilesDir("diagnostics") ?: return null
+    val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+    File(dir, "duo-diagnostics-$stamp.txt").apply { writeText(report) }
 } catch (t: Throwable) {
     L.w("diagnostics file: ${t.javaClass.simpleName}: ${t.message}")
+    null
+}
+
+/** A shareable Uri for a written diagnostics [file], or null if the FileProvider cannot serve it. */
+private fun fileUri(context: Context, file: File): Uri? = try {
+    FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+} catch (t: Throwable) {
+    L.w("diagnostics uri: ${t.javaClass.simpleName}: ${t.message}")
     null
 }
 

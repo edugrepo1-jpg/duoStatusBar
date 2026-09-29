@@ -40,6 +40,8 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     private var wifiOn = true
     /** Whether Wi-Fi is the active data path; false means the phone is really on mobile data. */
     private var wifiActive = true
+    /** Whether that active Wi-Fi path is validated (has real internet); see [SystemReaders.isWifiValidated]. */
+    private var wifiValidated = true
     /** The cellular generation shown when Wi-Fi is off: "5G"/"4G"/"3G"/"2G", or empty. */
     private var networkText = ""
     private var registered = false
@@ -266,8 +268,17 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     fun refresh() {        try {
             wifiOn = SystemReaders.isWifiEnabled(context, wifiOn)
             wifiActive = SystemReaders.isWifiActive(context, wifiActive)
+            wifiValidated = SystemReaders.isWifiValidated(context)
             wifiLevel = SystemReaders.wifiLevel(context, wifiLevel)
-            cellLevel = SystemReaders.cellLevel(context, airplane, cellLevel)
+            // On a dual-SIM phone the user chooses which line the spheres follow; "auto" is the default
+            // data line, which the default TelephonyManager already reports.
+            val levels = SystemReaders.cellLevels(context, airplane)
+            cellLevel = when {
+                levels.size < 2 -> SystemReaders.cellLevel(context, airplane, cellLevel)
+                host.simChoice == "sim1" -> levels.getOrElse(0) { cellLevel }
+                host.simChoice == "sim2" -> levels.getOrElse(1) { levels.getOrElse(0) { cellLevel } }
+                else -> SystemReaders.cellLevel(context, airplane, cellLevel)
+            }
             networkText = SystemReaders.networkGeneration(context, airplane, networkText)
             render()
         } catch (t: Throwable) {
@@ -314,11 +325,28 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
      * FR-15b: black or white for the element, matching the bar. A manual choice in the app wins; "auto"
      * uses the colour captured from SystemUI's own icons, falling back to the system day/night setting.
      */
-    private fun fgColor(): Int = when (host.iconColor) {
-        "black" -> BarTint.BLACK
-        "white" -> BarTint.WHITE
-        else -> BarTint.fgColor(context)
+    private fun fgColor(): Int {
+        val color = when (host.iconColor) {
+            "black" -> BarTint.BLACK
+            "white" -> BarTint.WHITE
+            else -> BarTint.fgColor(context)
+        }
+        // Log only on a real change: it names the colour and where it came from, which is the one fact a
+        // "the colour does not follow the bar" report is missing.
+        if (color != lastFg) {
+            lastFg = color
+            val name = when (color) {
+                BarTint.BLACK -> "black"
+                BarTint.WHITE -> "white"
+                else -> "0x${color.toString(16)}"
+            }
+            L.i("icon colour -> $name (setting=${host.iconColor})")
+        }
+        return color
     }
+
+    /** The last colour handed to the drawing, so the log line above fires only on a change. */
+    private var lastFg = Int.MIN_VALUE
     private fun render() {
         // Every element the host owns - the main bar's and, on the lock screen, the keyguard bar's.
         if (host.duo == null) return
@@ -335,9 +363,10 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                     dnd = dnd,
                     visible = visible,
                     wifiOn = wifiOn,
-                    wifiConnected = wifiActive && wifiLevel > 0,
+                    wifiConnected = wifiActive && wifiValidated && wifiLevel > 0,
                     networkText = networkText,
-                    animateCharge = host.chargingEnabled
+                    animateCharge = host.chargingEnabled,
+                    networkOnly = host.networkOnly
                 )
             host.render(visual)
         } catch (t: Throwable) {

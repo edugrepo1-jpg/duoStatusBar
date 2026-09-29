@@ -27,7 +27,7 @@ RIVE = os.environ.get("RIVE_CLI") or os.path.join(
 
 VIEWPORT = "120x120"
 SCALE = 2  # the GIF is shown at 2x, so it stays crisp on a HiDPI screen
-FRAME_MS = 60
+FRAME_MS = 120  # twice as slow as the first cut: the motion reads better in a README
 HOLD = 5  # how many times a settled frame is repeated
 
 

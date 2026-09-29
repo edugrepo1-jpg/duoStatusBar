@@ -29,6 +29,12 @@ class StockIconHiderTest {
         fun getSlot(): String = slot
     }
 
+    /** An OEM icon view with no readable slot, named like ColorOS's. */
+    private class OplusModernStatusBarMobileView(context: Context) : View(context)
+
+    /** A non-replaced icon view whose name must not match. */
+    private class BluetoothHeadsetView(context: Context) : View(context)
+
     @Test
     fun `wifi, mobile and battery slots are the ones Duo replaces`() {
         val hider = StockIconHider()
@@ -55,6 +61,13 @@ class StockIconHiderTest {
         assertEquals(View.GONE, wifi.visibility)
         assertEquals(View.VISIBLE, silent.visibility)
         assertEquals(View.VISIBLE, alarm.visibility)
+    }
+
+    @Test
+    fun `an OEM icon with no slot is matched by its class, others are not`() {
+        val hider = StockIconHider()
+        assertTrue(hider.isReplaced(OplusModernStatusBarMobileView(context)))
+        assertFalse(hider.isReplaced(BluetoothHeadsetView(context)))
     }
 
     @Test

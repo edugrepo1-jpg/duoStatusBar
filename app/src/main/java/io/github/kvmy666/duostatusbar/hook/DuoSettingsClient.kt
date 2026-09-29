@@ -36,7 +36,11 @@ internal data class ModuleSettings(
     /** "auto" follows the bar's own icon colour; "black"/"white" are manual overrides. */
     val iconColor: String,
     /** False leaves the icons Duo does not replace (silent, vibrate, alarm…) visible. */
-    val hideOtherIcons: Boolean
+    val hideOtherIcons: Boolean,
+    /** True keeps the middle slot to Wi-Fi + 5G/4G and never shows DND or airplane there. */
+    val networkOnly: Boolean,
+    /** Which cellular line the spheres show on a dual-SIM phone: "auto", "sim1" or "sim2". */
+    val simChoice: String
 ) {
     companion object {
         val DEFAULT = ModuleSettings(
@@ -57,7 +61,9 @@ internal data class ModuleSettings(
             departureEnabled = true,
             chargingEnabled = true,
             iconColor = "auto",
-            hideOtherIcons = true
+            hideOtherIcons = false,
+            networkOnly = false,
+            simChoice = "auto"
         )
     }
 }
@@ -95,7 +101,9 @@ internal object DuoSettingsClient {
                     departureEnabled = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_DEPARTURE)) == 1,
                     chargingEnabled = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_CHARGING)) == 1,
                     iconColor = cursor.getString(cursor.getColumnIndexOrThrow(DuoPrefs.COL_ICON_COLOR)) ?: "auto",
-                    hideOtherIcons = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_HIDE_OTHER_ICONS)) == 1
+                    hideOtherIcons = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_HIDE_OTHER_ICONS)) == 1,
+                    networkOnly = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_NETWORK_ONLY)) == 1,
+                    simChoice = cursor.getString(cursor.getColumnIndexOrThrow(DuoPrefs.COL_SIM_CHOICE)) ?: "auto"
                 )
             }
         } ?: ModuleSettings.DEFAULT

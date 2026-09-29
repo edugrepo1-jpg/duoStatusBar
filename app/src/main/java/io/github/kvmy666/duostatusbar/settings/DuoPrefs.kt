@@ -77,7 +77,19 @@ data class DuoSettings(
      * Whether the status icons Duo does *not* replace (silent, vibrate, alarm, clock…) stay hidden.
      * True is the classic look: only the ring. False leaves them visible beside the ring.
      */
-    val hideOtherIcons: Boolean = true
+    val hideOtherIcons: Boolean = false,
+    /**
+     * FR-06: keep the middle slot to the network icons only — the Wi-Fi glyph and the 5G/4G label — and
+     * never show Do Not Disturb or Airplane there. Off is the original behaviour (airplane > DND > Wi-Fi >
+     * generation). On, the slot follows the connection only, so the ring stays quiet about DND and
+     * airplane mode.
+     */
+    val networkOnly: Boolean = false,
+    /**
+     * Which cellular line the four spheres show on a dual-SIM phone: `"auto"` (the default data line),
+     * `"sim1"` or `"sim2"`. Single-SIM phones ignore it.
+     */
+    val simChoice: String = "auto"
 )
 
 object DuoPrefs {
@@ -111,6 +123,8 @@ object DuoPrefs {
     const val COL_CHARGING = "charging_enabled"
     const val COL_ICON_COLOR = "icon_color"
     const val COL_HIDE_OTHER_ICONS = "hide_other_icons"
+    const val COL_NETWORK_ONLY = "network_only"
+    const val COL_SIM_CHOICE = "sim_choice"
 
     /** The column set the module expects; kept in one place so both sides cannot drift. */
     val COLUMNS = arrayOf(
@@ -118,7 +132,7 @@ object DuoPrefs {
         COL_LIVE_APPLY, COL_CLOCK_FONT, COL_REVISION,
         COL_TAP, COL_DOUBLE_TAP, COL_LONG_PRESS, COL_REVEAL_MS,
         COL_ANIMATIONS, COL_ARRIVAL, COL_DEPARTURE, COL_CHARGING,
-        COL_ICON_COLOR, COL_HIDE_OTHER_ICONS
+        COL_ICON_COLOR, COL_HIDE_OTHER_ICONS, COL_NETWORK_ONLY, COL_SIM_CHOICE
     )
 
     private const val PREFS = "duo_settings"
@@ -130,6 +144,7 @@ object DuoPrefs {
     private const val KEY_FALLBACK = "last_fallback"
     private const val KEY_CHECK_UPDATES = "check_updates"
     private const val KEY_UPDATE_NOTIFIED = "update_notified"
+    private const val KEY_LOG_SENT_AT = "log_sent_at"
     private const val HISTORY_LIMIT = 20
 
     fun read(context: Context): DuoSettings {
@@ -151,7 +166,9 @@ object DuoPrefs {
             doubleTapAction = p.getString(COL_DOUBLE_TAP, "no_action") ?: "no_action",
             longPressAction = p.getString(COL_LONG_PRESS, "no_action") ?: "no_action",
             iconColor = p.getString(COL_ICON_COLOR, "auto") ?: "auto",
-            hideOtherIcons = p.getBoolean(COL_HIDE_OTHER_ICONS, true)
+            hideOtherIcons = p.getBoolean(COL_HIDE_OTHER_ICONS, false),
+            networkOnly = p.getBoolean(COL_NETWORK_ONLY, false),
+            simChoice = p.getString(COL_SIM_CHOICE, "auto") ?: "auto"
         )
     }
 
@@ -177,6 +194,8 @@ object DuoPrefs {
             .putString(COL_LONG_PRESS, settings.longPressAction)
             .putString(COL_ICON_COLOR, settings.iconColor)
             .putBoolean(COL_HIDE_OTHER_ICONS, settings.hideOtherIcons)
+            .putBoolean(COL_NETWORK_ONLY, settings.networkOnly)
+            .putString(COL_SIM_CHOICE, settings.simChoice)
             .putLong(KEY_REVISION, next)
             .apply()
         return next
@@ -223,6 +242,20 @@ object DuoPrefs {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KEY_CHECK_UPDATES, value)
+            .apply()
+    }
+
+    /**
+     * When a log was last sent to the developer, so the send button can apply a hidden cooldown and the
+     * bot cannot be spammed by repeated taps. Wall-clock ms, or 0 when never.
+     */
+    fun logSentAt(context: Context): Long =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_LOG_SENT_AT, 0L)
+
+    fun writeLogSentAt(context: Context, at: Long) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putLong(KEY_LOG_SENT_AT, at)
             .apply()
     }
 

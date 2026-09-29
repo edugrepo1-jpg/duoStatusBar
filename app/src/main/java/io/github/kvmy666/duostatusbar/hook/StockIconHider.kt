@@ -16,12 +16,19 @@ internal class StockIconHider {
     private val hiddenOriginals = ArrayList<HiddenState>()
     private val logOnce = LogOnce()
 
-    /** Hides every child of [container] except [keep], remembering each one's original state. */
-    fun hideAllExcept(container: ViewGroup, keep: View?) {
+    /**
+     * Hides every child of [container] except [keep], remembering each one's original state.
+     *
+     * [keepLayout] is hidden with [hideKeepLayout] instead (INVISIBLE, layout untouched). The overlay path
+     * uses it for the battery: the element is drawn outside this container and positioned from the
+     * battery, so the battery must keep a real position to measure against - and that position has to
+     * survive a rotation, which a GONE 0x0 view cannot.
+     */
+    fun hideAllExcept(container: ViewGroup, keep: View?, keepLayout: View? = null) {
         for (i in 0 until container.childCount) {
             val child = container.getChildAt(i)
             if (child === keep) continue
-            hide(child)
+            if (child === keepLayout) hideKeepLayout(child) else hide(child)
         }
         logOnce.once("hide") {
             L.i("stock status-bar views removed (GONE + 0x0), not overlaid - FR-08")
@@ -37,13 +44,13 @@ internal class StockIconHider {
      * view whose slot cannot be read is left alone unless it is plainly the battery, so an unmeasured
      * ROM keeps the user's other icons rather than losing them.
      */
-    fun hideReplaced(container: ViewGroup, keep: View?) {
+    fun hideReplaced(container: ViewGroup, keep: View?, keepLayout: View? = null) {
         for (i in 0 until container.childCount) {
             val child = container.getChildAt(i)
             if (child === keep) continue
             when {
-                isReplaced(child) -> hide(child)
-                child is ViewGroup -> hideReplaced(child, keep)
+                isReplaced(child) -> if (child === keepLayout) hideKeepLayout(child) else hide(child)
+                child is ViewGroup -> hideReplaced(child, keep, keepLayout)
             }
         }
         logOnce.once("hide-replaced") {
@@ -51,15 +58,35 @@ internal class StockIconHider {
         }
     }
 
+    /**
+     * Hides [view] but keeps it laid out: `INVISIBLE`, not `GONE`/0x0. The stock view stops drawing but
+     * keeps its real position, which the overlay path needs as its anchor. Remembered like any other hide,
+     * so switching off restores it exactly.
+     */
+    fun hideKeepLayout(view: View) {
+        if (view.visibility == View.INVISIBLE) return
+        rememberOriginal(view)
+        view.visibility = View.INVISIBLE
+    }
+
     /** True when [view] is one of the icons Duo replaces; see [hideReplaced]. */
     fun isReplaced(view: View): Boolean {
-        val slot = slotOf(view)
+        val slot = slotOf(view)?.lowercase()
         if (slot != null) {
-            val s = slot.lowercase()
-            return s == "battery" || s.startsWith("wifi") || s.startsWith("mobile")
+            return slot == "battery" || slot.startsWith("wifi") || slot.startsWith("mobile")
         }
-        // No readable slot: a battery view is still replaced, anything else is left for the user.
-        return view.javaClass.simpleName.contains("battery", ignoreCase = true)
+        // No readable slot: fall back to the view's own id and class so OEM builds that spell the mobile
+        // or Wi-Fi icon without a slot still hide it (ColorOS `OplusModernStatusBarMobileView`, etc.).
+        val idName = try {
+            if (view.id == View.NO_ID) null else view.resources.getResourceEntryName(view.id)?.lowercase()
+        } catch (_: Throwable) {
+            null
+        }
+        if (idName != null && (idName == "battery" || idName.contains("wifi") || idName.contains("mobile"))) {
+            return true
+        }
+        val cls = view.javaClass.simpleName.lowercase()
+        return cls.contains("battery") || cls.contains("wifi") || cls.contains("mobile")
     }
 
     /** `StatusBarIconView.getSlot()`, or the OEM `getSlotTag()`; null when neither exists. */

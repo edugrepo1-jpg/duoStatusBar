@@ -13,6 +13,25 @@ val keystoreProperties = Properties().apply {
     }
 }
 
+/**
+ * Local secrets from the git-ignored `.env`, or the environment (CI). The Telegram bot token is baked
+ * into the APK so the "Collect full log" button can upload the file to the developer's chat in one tap;
+ * it is a dedicated bot token that can be revoked, never a personal one.
+ */
+val localEnv = Properties().apply {
+    val file = rootProject.file(".env")
+    if (file.exists()) {
+        file.readLines()
+            .filter { it.contains("=") && !it.trimStart().startsWith("#") }
+            .forEach { line ->
+                val at = line.indexOf('=')
+                setProperty(line.substring(0, at).trim(), line.substring(at + 1).trim())
+            }
+    }
+}
+
+fun secret(name: String): String = System.getenv(name) ?: localEnv.getProperty(name) ?: ""
+
 android {
     namespace = "io.github.kvmy666.duostatusbar"
     compileSdk = 36
@@ -23,8 +42,13 @@ android {
         // exist on 14, and nothing in the module needs an API-35 call. targetSdk stays 36.
         minSdk = 34
         targetSdk = 36
-        versionCode = 7
-        versionName = "1.2.0"
+        versionCode = 12
+        versionName = "1.3.0"
+        // Telegram log delivery. Prefer the relay URL (Worker holds the bot token, so no secret is in the
+        // APK); otherwise fall back to the direct bot token; otherwise the button opens the share sheet.
+        buildConfigField("String", "TELEGRAM_RELAY_URL", "\"${secret("TELEGRAM_RELAY_URL")}\"")
+        buildConfigField("String", "TELEGRAM_BOT_TOKEN", "\"${secret("TELEGRAM_BOT_TOKEN")}\"")
+        buildConfigField("String", "TELEGRAM_CHAT_ID", "\"${secret("TELEGRAM_CHAT_ID")}\"")
         ndk {
             abiFilters += "arm64-v8a"
         }
