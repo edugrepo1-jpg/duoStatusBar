@@ -268,16 +268,30 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
     private fun hookApplication() {
         L.guard("DuoHook hook Application") {
-            XposedHelpers.findAndHookMethod(
-                "android.app.Application", lp.classLoader, "onCreate",
-                object : XC_MethodHook() {
-                    override fun afterHookedMethod(param: MethodHookParam) {
-                        L.guard("DuoHook Application.onCreate") {
-                            start(param.thisObject as Application)
-                        }
+            val callback = object : XC_MethodHook() {
+                override fun afterHookedMethod(param: MethodHookParam) {
+                    L.guard("DuoHook Application.onCreate") {
+                        start(param.thisObject as Application)
                     }
                 }
-            )
+            }
+            // The base class covers every ROM whose Application calls super.onCreate(). The concrete
+            // SystemUI Applications are hooked too, for GSI/Vector ROMs (issue #9, PR #8) where the
+            // framework can bypass the base `android.app.Application.onCreate` lifecycle. Each name is
+            // optional - a ROM that does not have it is simply skipped - and `start` runs once regardless
+            // of how many fire (it is guarded by a process-wide flag).
+            for (name in listOf(
+                "android.app.Application",
+                "com.android.systemui.SystemUIApplication",
+                "com.android.systemui.MiuiSystemUIApplication"
+            )) {
+                try {
+                    XposedHelpers.findAndHookMethod(name, lp.classLoader, "onCreate", callback)
+                    L.i("Application.onCreate hook installed on $name")
+                } catch (_: Throwable) {
+                    // Not present on this ROM.
+                }
+            }
         }
     }
 
