@@ -133,6 +133,9 @@ internal class DuoIconHost(private val context: Context) {
         Build.PRODUCT.orEmpty(),
         Build.DISPLAY.orEmpty()
     )
+
+    /** Resolves the strip and the element's parent view from the tree; see [ContainerFinder]. */
+    private val finder = ContainerFinder(context, rom, logOnce)
     private var settings = ModuleSettings.DEFAULT
 
     /** Size and position maths; owns the size/slot base captured once at attach (FR-03/17). */
@@ -190,7 +193,7 @@ internal class DuoIconHost(private val context: Context) {
             if (target === host) return true // same strip as the main bar: nothing extra to do
             // Centre on the *bar*, not the window it lives in: the shade window is the whole screen, so
             // centring on it put the element 1300 px down the lock screen (measured).
-            val bar = findBar(target) ?: target
+            val bar = finder.findBar(target) ?: target
             attachInto(name, target, bar, center = true, elementRoot = root, stage = stage, logClass = bar.javaClass.simpleName)
         } catch (t: Throwable) {
             L.e("$name attach: ${t.javaClass.simpleName}: ${t.message}")
@@ -207,7 +210,7 @@ internal class DuoIconHost(private val context: Context) {
      */
     fun attachShadeHeader(header: View): Boolean {
         if (extras.any { it.name == "shade header" }) return true
-        val area = findShadeIconsArea(header)
+        val area = finder.findShadeIconsArea(header)
         if (area == null) {
             logOnce.once("missing:shade header") {
                 L.w("shade header: no icon area found in ${header.javaClass.simpleName}")
@@ -217,15 +220,6 @@ internal class DuoIconHost(private val context: Context) {
         // Centred on the header, not the icon area: the area is a 0x0 strip at the header's end
         // (measured - it is laid out later), and the header is what has a real height to cap against.
         return attachExtraView("shade header", area, header, center = false)
-    }
-
-    private fun findShadeIconsArea(header: View): ViewGroup? {
-        val id = RomResources.id(context, rom, "shade_header_system_icons")
-        (if (id != 0) header.findViewById<View>(id) as? ViewGroup else null)?.let { return it }
-        // Fall back to the parent of the icon container the controller binds to.
-        val icons = RomResources.id(context, rom, "statusIcons")
-        val container = if (icons != 0) header.findViewById<View>(icons) else null
-        return container?.parent as? ViewGroup
     }
 
     /** Attaches into an already-known container (the shade header's icon area). */
@@ -499,13 +493,13 @@ internal class DuoIconHost(private val context: Context) {
                 }
                 return false
             }
-            var target = findStatusIconsHost(statusBarRoot)
+            var target = finder.findStatusIconsHost(statusBarRoot)
             var composeAnchor: View? = null
             if (target == null) {
                 // Android 17 AOSP draws the status bar icons with Compose: there is no View strip to
                 // inject into, only a `ComposeView`. The element is drawn in the surrounding ViewGroup
                 // and anchored on that Compose view, which is hidden with INVISIBLE so it keeps its place.
-                val compose = findComposeIconView(statusBarRoot)
+                val compose = finder.findComposeIconView(statusBarRoot)
                 val parent = compose?.parent as? ViewGroup
                 if (compose != null && parent != null) {
                     L.i("Compose status bar: no View strip; drawing in ${parent.javaClass.simpleName} " +
@@ -535,11 +529,11 @@ internal class DuoIconHost(private val context: Context) {
             // refuses foreign children. HyperOS 3's MiuiStatusBatteryContainer measured it 0x0 - the icons
             // hid and nothing drew - so there the element goes into a plain FrameLayout ancestor and is
             // anchored over the battery.
-            val parent = chooseElementParent(target, statusBarRoot)
+            val parent = finder.chooseElementParent(target, statusBarRoot)
             overlay = parent !== target
             // Anchor on the battery when there is one; on a Compose bar there is no battery id, so the
             // Compose icon view is the anchor instead (it keeps its layout, hidden with INVISIBLE).
-            anchorBattery = if (overlay) (findBattery(target) ?: composeAnchor) else null
+            anchorBattery = if (overlay) (finder.findBattery(target) ?: composeAnchor) else null
             if (overlay && anchorBattery == null) {
                 // No battery to anchor to: fall back to the strip rather than draw at a random spot.
                 overlay = false
@@ -718,10 +712,10 @@ internal class DuoIconHost(private val context: Context) {
         return try {
             (view.parent as? ViewGroup)?.removeView(view)
             val barRoot = root
-            val fresh = barRoot?.let { findStatusIconsHost(it) } ?: hideStrip ?: target
+            val fresh = barRoot?.let { finder.findStatusIconsHost(it) } ?: hideStrip ?: target
             hideStrip = fresh
-            if (overlay) anchorBattery = findBattery(fresh) ?: anchorBattery
-            val parent = if (overlay && barRoot != null) chooseElementParent(fresh, barRoot) else fresh
+            if (overlay) anchorBattery = finder.findBattery(fresh) ?: anchorBattery
+            val parent = if (overlay && barRoot != null) finder.chooseElementParent(fresh, barRoot) else fresh
             host = parent
             parent.addView(view)
             applyLayout()
@@ -774,141 +768,6 @@ internal class DuoIconHost(private val context: Context) {
     }
 
     // ----------------------------------------------------------------------------- internals
-
-    /**
-     * The keyguard's status bar itself - `com.android.systemui.statusbar.phone.KeyguardStatusBarView`,
-     * read out of the device's SystemUI (`reverse/SystemUI-device.apk`, `layout/keyguard_status_bar.xml`),
-     * not guessed. Walking up from the strip rather than looking the id up keeps it working on a ROM
-     * that spells the id differently, and gives the right height to centre the element in.
-     */
-    private fun findBar(strip: View): View? {
-        var view: View? = strip
-        while (view != null) {
-            val name = view.javaClass.simpleName
-            if (name.contains("KeyguardStatusBar") || name.contains("ShadeHeader")) return view
-            view = view.parent as? View
-        }
-        return null
-    }
-
-    /**
-     * Finds the strip the element goes into.
-     *
-     * First the ROM adapter's ids are probed in order. When none resolves — an unmeasured ROM such as
-     * ColorOS 14/16 or One UI — the strip is found by what it must *contain*: every ROM's icon strip holds
-     * the battery and/or the status-icons container, so walking up from those finds the parent without
-     * knowing its id. That fallback is what lets a device we have never seen attach instead of doing
-     * nothing, and the diagnostic dump records exactly which path was taken.
-     */
-    private fun findStatusIconsHost(root: View): ViewGroup? {
-        logOnce.once("rom") {
-            L.i("ROM adapter: ${rom.id} (${rom.label}) - ${rom.notes}")
-        }
-        for (name in rom.containerIds) {
-            val id = RomResources.id(context, rom, name)
-            if (id == 0) continue
-            val found = root.findViewById<View>(id)
-            L.d("container $name -> ${found?.javaClass?.simpleName ?: "null"}")
-            if (found is ViewGroup) {
-                // A GONE strip is a legacy leftover, not the real one. Android 17 AOSP keeps a
-                // `system_icons` LinearLayout that is GONE forever while the icons are drawn by Compose,
-                // so injecting there produced a 0x0 element and nothing appeared (Pixel 9 report).
-                if (found.visibility == View.GONE) {
-                    L.i("container $name is GONE - skipping it (likely a legacy/Compose strip)")
-                    continue
-                }
-                return found
-            }
-        }
-        val anchor = stripAroundAnchors(root)
-        if (anchor != null) {
-            L.i("container id not found (tried ${rom.containerIds}) - using the strip around " +
-                    "battery/status icons: ${anchor.javaClass.simpleName}")
-            return anchor
-        }
-        L.w("no container id resolved (tried ${rom.containerIds}) - status bar left untouched")
-        return null
-    }
-
-    /**
-     * The last-resort strip: the direct parent of the battery view, or of the status-icons container. Its
-     * parent is what the ROM put the strip's children in, whatever the ROM calls that container.
-     */
-    private fun stripAroundAnchors(root: View): ViewGroup? {
-        for (anchorName in listOf(rom.batteryId, "statusIcons", "status_icons", "system_icons")) {
-            val id = RomResources.id(context, rom, anchorName)
-            if (id == 0) continue
-            val anchor = root.findViewById<View>(id) ?: continue
-            val parent = anchor.parent as? ViewGroup ?: continue
-            // Never hand back the status-bar window itself: injecting there would fight the bar's layout.
-            if (parent === root) continue
-            // A GONE parent is a legacy/Compose leftover, not a strip we can draw in.
-            if (parent.visibility == View.GONE) continue
-            return parent
-        }
-        return null
-    }
-
-    /**
-     * Where the element view should be added.
-     *
-     * The strip itself when it is a plain Android layout. When it is a custom container — HyperOS 3's
-     * `MiuiStatusBatteryContainer` is the measured one — it lays out only its own children and left the
-     * injected view at 0×0, so the icons disappeared and nothing replaced them. In that case the element
-     * goes into the nearest plain `FrameLayout` ancestor (the bar's own icon layer) and is anchored over
-     * the battery by [anchorOnBattery]; the strip is still what gets hidden, by [hideStrip].
-     */
-    private fun chooseElementParent(strip: ViewGroup, barRoot: View): ViewGroup {
-        if (isStandardLayout(strip)) return strip
-        var view: View? = strip.parent as? View
-        while (view != null) {
-            if (view.javaClass.name == "android.widget.FrameLayout" && view is ViewGroup) return view
-            view = view.parent as? View
-        }
-        return (barRoot as? ViewGroup)?.takeIf { it !== strip } ?: strip
-    }
-
-    /** A layout whose measurement the module trusts to honour a child's requested size. */
-    private fun isStandardLayout(view: ViewGroup): Boolean = when (view.javaClass.name) {
-        "android.widget.FrameLayout",
-        "android.widget.LinearLayout",
-        "android.widget.RelativeLayout",
-        "android.widget.GridLayout" -> true
-        else -> false
-    }
-
-    /**
-     * The Compose view that draws the Wi-Fi/cellular/battery cluster, on a status bar with no View strip
-     * (Android 17 AOSP). Only the end-side area is searched, so the centre clock's Compose view is never
-     * mistaken for the icon cluster. The outer `ComposeView` is preferred over the inner
-     * `AndroidComposeView`: hiding the outer one hides everything it draws.
-     */
-    private fun findComposeIconView(root: View): View? {
-        for (name in listOf("status_bar_end_side_content", "status_bar_end_side_container")) {
-            val id = RomResources.id(context, rom, name)
-            if (id == 0) continue
-            val area = root.findViewById<View>(id) ?: continue
-            findComposeDescendant(area)?.let { return it }
-        }
-        return null
-    }
-
-    /** First `*ComposeView` in the subtree (top-down), or null. */
-    private fun findComposeDescendant(view: View): View? {
-        if (view.javaClass.name.endsWith("ComposeView")) return view
-        if (view is ViewGroup) {
-            for (i in 0 until view.childCount) {
-                findComposeDescendant(view.getChildAt(i))?.let { return it }
-            }
-        }
-        return null
-    }
-
-    /** The battery view inside [strip], the anchor for the overlay placement. */
-    private fun findBattery(strip: ViewGroup): View? {
-        val id = RomResources.id(context, rom, rom.batteryId)
-        return if (id != 0) strip.findViewById(id) else null
-    }
 
     /**
      * Moves [view] so its centre sits on the battery's centre, measured in the element parent's
