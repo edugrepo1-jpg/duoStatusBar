@@ -1,3 +1,19 @@
+# Duo Status Bar 1.3.1 — stable
+
+A code-health release: **no behavior change**. The internals were split into focused files and the
+ROM-facing surface is now documented and defended:
+
+- `DuoMapping` → `RingGeometry` / `SignalMapping` / `Colors`.
+- `SystemReaders` → `WifiReader` / `CellReader` / `DeviceStateReader`.
+- `DuoHook` → `AppContextResolver` / `HookReporter` / `ProcessState`.
+- `DuoIconHost` → `ContainerFinder`; the settings screen → per-section composables + `LogReporter`.
+- Duplicated resource-id lookups route through one `RomResources.id` helper.
+- New `docs/rom-contract.md` records exactly what must not change (probes, reflection targets, hide
+  semantics, log strings) and the diagnostic-diff procedure used to prove a refactor is behavior-freezing.
+
+Every step was verified against the on-device diagnostic dump (identical) plus the unit tests, lint and CI
+guards. Nothing about how the element attaches, hides icons or draws changed.
+
 # Duo Status Bar 1.3.0 — stable
 
 The 1.3 line graduates from beta. Everything below shipped through the betas and is now the stable

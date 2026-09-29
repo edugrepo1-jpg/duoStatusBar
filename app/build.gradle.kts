@@ -42,8 +42,8 @@ android {
         // exist on 14, and nothing in the module needs an API-35 call. targetSdk stays 36.
         minSdk = 34
         targetSdk = 36
-        versionCode = 12
-        versionName = "1.3.0"
+        versionCode = 13
+        versionName = "1.3.1"
         // Telegram log delivery. Prefer the relay URL (Worker holds the bot token, so no secret is in the
         // APK); otherwise fall back to the direct bot token; otherwise the button opens the share sheet.
         buildConfigField("String", "TELEGRAM_RELAY_URL", "\"${secret("TELEGRAM_RELAY_URL")}\"")
