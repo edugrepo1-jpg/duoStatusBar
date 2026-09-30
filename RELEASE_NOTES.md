@@ -1,3 +1,16 @@
+# Duo Status Bar 1.3.2-beta.2 — pre-release
+
+Adds a fix from the **Samsung Galaxy S25 Ultra (SM-S948N)** report and a new way to reach the developer.
+
+- **Samsung One UI 8 (Android 16, flagship "IndicatorGarden") now draws.** The report showed the module
+  attached but the element measured **0×0** on the main bar: One UI 8 leaves the AOSP `system_icons` in the
+  tree as a dead stub (its icons measure 0×0) while the real cluster is a `CombinedStatusView` drawn
+  beside it. Duo now detects that shape, anchors the element over the real `CombinedStatusView`, and hides
+  it — so the ring appears instead of an empty gap. Gated to that exact layout, so other ROMs are
+  untouched. *(Unverified on-device — a fresh dump from the S25U is welcome.)*
+- **Contact the developer.** A new button under **Send the bug to the developer** opens Telegram
+  (`@kvmy1`) directly, for questions that are not bug reports.
+
 # Duo Status Bar 1.3.2-beta.1 — pre-release
 
 Fixes straight from the 30 Sep logs: a **realme/ColorOS (RMX5200)** report where the module loaded but

@@ -154,6 +154,61 @@ internal class ContainerFinder(
         return if (id != 0) strip.findViewById(id) else null
     }
 
+    /**
+     * Samsung One UI 8 (Android 16) draws the status-bar icon cluster with a custom `CombinedStatusView`
+     * inside the new "IndicatorGarden" layout and leaves the AOSP `system_icons` in the tree as a dead
+     * stub (its Wi-Fi/cellular/battery children measure 0x0). Injecting into that stub drew a 0x0 element
+     * and hid nothing — the SM-S948N report. Detecting the combined view is how the host knows to anchor
+     * on the real cluster instead.
+     */
+    fun findCombinedStatusView(root: View): View? = findByName(root, "CombinedStatusView")
+
+    private fun findByName(view: View, needle: String): View? {
+        if (view.javaClass.simpleName.contains(needle)) return view
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) findByName(view.getChildAt(i), needle)?.let { return it }
+        }
+        return null
+    }
+
+    /**
+     * True when [strip] holds no laid-out stock icon — a legacy stub, not a real strip. Checked at attach,
+     * before anything is hidden, so a working ROM (whose icons are still measured) never matches.
+     */
+    fun isStubStrip(strip: ViewGroup): Boolean {
+        val battery = findBattery(strip)
+        val iconsId = RomResources.id(context, rom, "statusIcons")
+        val icons = if (iconsId != 0) strip.findViewById<View>(iconsId) else null
+        val batteryEmpty = battery == null || battery.width == 0
+        val iconsEmpty = icons == null || icons.width == 0
+        return batteryEmpty && iconsEmpty
+    }
+
+    /**
+     * The bar's own plain `FrameLayout` layer to draw in for the One UI 8 overlay, skipping the tiny stub
+     * frames that sit inside the (invisible) old end-side content and would clip the element. Falls back to
+     * the status-bar window's first `FrameLayout` child when no frame is wide enough yet.
+     */
+    fun findOverlayContainer(strip: ViewGroup, barRoot: View): ViewGroup {
+        val minWidth = barRoot.width / 2
+        var view: View? = strip
+        while (view != null) {
+            if (view.javaClass.name == "android.widget.FrameLayout" && view is ViewGroup &&
+                (minWidth <= 0 || view.width >= minWidth)
+            ) {
+                return view
+            }
+            view = view.parent as? View
+        }
+        if (barRoot is ViewGroup) {
+            for (i in 0 until barRoot.childCount) {
+                val child = barRoot.getChildAt(i)
+                if (child is ViewGroup && child.javaClass.name == "android.widget.FrameLayout") return child
+            }
+        }
+        return strip.parent as? ViewGroup ?: strip
+    }
+
     fun findShadeIconsArea(header: View): ViewGroup? {
         val id = RomResources.id(context, rom, "shade_header_system_icons")
         (if (id != 0) header.findViewById<View>(id) as? ViewGroup else null)?.let { return it }

@@ -365,6 +365,7 @@ internal fun AboutSection(
     val emptyStatus = stringResource(R.string.settings_no_status)
     if (matches(stringResource(R.string.section_about), stringResource(R.string.settings_status),
             stringResource(R.string.settings_collect_log),
+            stringResource(R.string.settings_contact_developer),
             stringResource(R.string.settings_check_updates), stringResource(R.string.settings_donate))
     ) Card(
         shape = RoundedCornerShape(22.dp),
@@ -417,6 +418,17 @@ internal fun AboutSection(
                         if (collecting) R.string.settings_collecting else R.string.settings_collect_log
                     )
                 )
+            }
+            // Direct line to the developer's Telegram, for a question that is not a bug report.
+            OutlinedButton(
+                onClick = {
+                    runCatching {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TELEGRAM_CHAT_URL)))
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.settings_contact_developer))
             }
             if (logSent) {
                 Text(

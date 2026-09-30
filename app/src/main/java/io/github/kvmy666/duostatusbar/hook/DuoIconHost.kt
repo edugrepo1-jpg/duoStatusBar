@@ -54,6 +54,16 @@ internal class DuoIconHost(private val context: Context) {
     private var anchorBattery: View? = null
 
     /**
+     * True when the overlay anchor is Samsung One UI 8's `CombinedStatusView` rather than a battery. It is
+     * not a child of the hidden strip, so it is hidden directly ([anchorOriginalVisibility] remembers what
+     * to put back) and it has to be re-found on re-attach instead of falling back to the stub battery.
+     */
+    private var overlayOnCombined = false
+
+    /** The anchor's visibility before the overlay hid it, so teardown can put the stock cluster back. */
+    private var anchorOriginalVisibility: Int? = null
+
+    /**
      * FR-03b: the status bar is not one bar. Read out of the device's SystemUI
      * (`reverse/SystemUI-device.apk`), three of them carry their own icon strip:
      *
@@ -443,6 +453,7 @@ internal class DuoIconHost(private val context: Context) {
             if (overlay) {
                 // The parent is a plain FrameLayout that places children top-left, so the element is moved
                 // onto the battery by translation; the battery keeps its layout (INVISIBLE) to measure.
+                hideOverlayAnchor()
                 anchorOnBattery(view, target, side)
             } else {
                 view.translationX = settings.offsetX * context.resources.displayMetrics.density
@@ -529,7 +540,7 @@ internal class DuoIconHost(private val context: Context) {
             // refuses foreign children. HyperOS 3's MiuiStatusBatteryContainer measured it 0x0 - the icons
             // hid and nothing drew - so there the element goes into a plain FrameLayout ancestor and is
             // anchored over the battery.
-            val parent = finder.chooseElementParent(target, statusBarRoot)
+            var parent = finder.chooseElementParent(target, statusBarRoot)
             overlay = parent !== target
             // Anchor on the battery when there is one; on a Compose bar there is no battery id, so the
             // Compose icon view is the anchor instead (it keeps its layout, hidden with INVISIBLE).
@@ -537,6 +548,19 @@ internal class DuoIconHost(private val context: Context) {
             if (overlay && anchorBattery == null) {
                 // No battery to anchor to: fall back to the strip rather than draw at a random spot.
                 overlay = false
+            }
+            // Samsung One UI 8 (Android 16): the AOSP `system_icons` is a dead stub and the real cluster is
+            // a `CombinedStatusView` drawn beside it. Injecting into the stub drew a 0x0 element and hid
+            // nothing (SM-S948N). When the strip is a stub and that view exists, anchor on it and draw in
+            // the bar's own FrameLayout layer. Gated on both conditions, so no other ROM reaches this path.
+            val combined = finder.findCombinedStatusView(statusBarRoot)
+            if (combined != null && finder.isStubStrip(target)) {
+                parent = finder.findOverlayContainer(target, statusBarRoot)
+                overlay = true
+                overlayOnCombined = true
+                anchorBattery = combined
+                L.i("One UI 8 layout: strip ${target.javaClass.simpleName} is a stub - drawing in " +
+                        "${parent.javaClass.simpleName} anchored over ${combined.javaClass.simpleName}")
             }
             L.i("element container: ${parent.javaClass.simpleName}" +
                     if (overlay) " (overlay on ${anchorBattery?.javaClass?.simpleName}, strip ${target.javaClass.simpleName})" else "")
@@ -573,6 +597,7 @@ internal class DuoIconHost(private val context: Context) {
                 if (overlay) null else candidate.ui,
                 if (overlay) anchorBattery else null
             )
+            hideOverlayAnchor()
             // Hiding may have changed the strip's layout, so the overlay anchor is re-read after it.
             applyLayout()
             candidate.reveal(settings.revealMs)
@@ -694,6 +719,7 @@ internal class DuoIconHost(private val context: Context) {
                 if (overlay) null else element?.ui,
                 if (overlay) anchorBattery else null
             )
+            hideOverlayAnchor()
         } catch (t: Throwable) {
             L.w("reapplyHiding: ${t.message}")
         }
@@ -714,8 +740,25 @@ internal class DuoIconHost(private val context: Context) {
             val barRoot = root
             val fresh = barRoot?.let { finder.findStatusIconsHost(it) } ?: hideStrip ?: target
             hideStrip = fresh
-            if (overlay) anchorBattery = finder.findBattery(fresh) ?: anchorBattery
-            val parent = if (overlay && barRoot != null) finder.chooseElementParent(fresh, barRoot) else fresh
+            val combined = if (overlayOnCombined && barRoot != null) {
+                finder.findCombinedStatusView(barRoot)
+            } else {
+                null
+            }
+            val parent = when {
+                combined != null -> {
+                    // A fresh CombinedStatusView after a rotation/re-inflate: re-anchor on it, in the bar's
+                    // own layer, exactly as the first attach did.
+                    if (anchorBattery !== combined) anchorOriginalVisibility = null
+                    anchorBattery = combined
+                    barRoot?.let { finder.findOverlayContainer(fresh, it) } ?: fresh
+                }
+                overlay && barRoot != null -> {
+                    anchorBattery = finder.findBattery(fresh) ?: anchorBattery
+                    finder.chooseElementParent(fresh, barRoot)
+                }
+                else -> fresh
+            }
             host = parent
             parent.addView(view)
             applyLayout()
@@ -744,12 +787,20 @@ internal class DuoIconHost(private val context: Context) {
         extras.clear()
         element = null
         hider.restore()
+        // The One UI 8 anchor is hidden directly (it is not in the strip the hider restores), so its own
+        // visibility is put back here or the stock cluster would be left invisible after teardown.
+        try {
+            anchorOriginalVisibility?.let { anchorBattery?.visibility = it }
+        } catch (_: Throwable) {
+        }
         clock.restore()
         geometry.reset()
         host = null
         hideStrip = null
         overlay = false
+        overlayOnCombined = false
         anchorBattery = null
+        anchorOriginalVisibility = null
         root = null
     }
 
@@ -774,6 +825,25 @@ internal class DuoIconHost(private val context: Context) {
      * coordinates. The battery is hidden with INVISIBLE (not GONE) in overlay mode, so its frame is real
      * and survives a rotation; the user's horizontal nudge still applies.
      */
+    /**
+     * Keeps the overlay anchor out of sight without tearing down its layout.
+     *
+     * On the One UI 8 path the anchor (`CombinedStatusView`) is not a child of the hidden strip, so the
+     * strip's hide pass never reaches it — this is what actually removes the stock cluster. On the other
+     * overlay paths the anchor is a child of the strip and is already set INVISIBLE by the hide pass, so
+     * this is a harmless re-assertion.
+     */
+    private fun hideOverlayAnchor() {
+        if (!overlay) return
+        val anchor = anchorBattery ?: return
+        try {
+            if (anchorOriginalVisibility == null) anchorOriginalVisibility = anchor.visibility
+            anchor.visibility = View.INVISIBLE
+        } catch (t: Throwable) {
+            L.w("anchor hide: ${t.javaClass.simpleName}: ${t.message}")
+        }
+    }
+
     private fun anchorOnBattery(view: View, parent: ViewGroup, side: Int) {
         val battery = anchorBattery ?: return
         try {

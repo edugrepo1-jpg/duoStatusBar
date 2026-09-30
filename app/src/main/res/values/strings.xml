@@ -105,6 +105,7 @@
     <string name="settings_problem">What went wrong? (optional)</string>
     <string name="settings_problem_hint">Describe the problem in a few words, then report it</string>
     <string name="settings_collect_log">Send the bug to the developer</string>
+    <string name="settings_contact_developer">Contact the developer on Telegram</string>
     <string name="settings_collect_log_detail">Packs your description, the module status and the logs into one report and sends it straight to the developer. If that is unavailable, you can share or save it instead.</string>
     <string name="settings_log_sent">Log sent to the developer. Thank you!</string>
     <string name="settings_log_wait">A log was sent a moment ago — please wait a minute before sending again.</string>
