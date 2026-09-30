@@ -43,8 +43,16 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME}"
           VERSION_NAME="${TAG#*-}"
+          # A tag whose version carries "beta" is a pre-release: it must not be marked Latest, and it must
+          # not be promoted to the LSPosed store as the current stable build.
+          case "$VERSION_NAME" in
+            *beta*) PRERELEASE=true ;;
+            *) PRERELEASE=false ;;
+          esac
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${PRERELEASE}" >> "$GITHUB_OUTPUT"
+          echo "Building ${VERSION_NAME} (prerelease=${PRERELEASE})"
 
       - name: Rename APK
         run: mv app/build/outputs/apk/release/app-release.apk DuoStatusBar-${{ steps.version.outputs.name }}.apk
@@ -56,12 +64,15 @@ jobs:
           name: v${{ steps.version.outputs.name }}
           files: DuoStatusBar-${{ steps.version.outputs.name }}.apk
           body_path: RELEASE_NOTES.md
-          make_latest: true
+          # Betas are pre-releases: never Latest, never promoted as stable below.
+          prerelease: ${{ steps.version.outputs.prerelease }}
+          make_latest: ${{ steps.version.outputs.prerelease == 'false' }}
 
       - name: Publish to Xposed-Modules-Repo
         env:
           GH_TOKEN: ${{ secrets.XPOSED_REPO_TOKEN }}
-        if: env.GH_TOKEN != ''
+        # Stable releases only: a beta must never become the store's "Latest".
+        if: env.GH_TOKEN != '' && steps.version.outputs.prerelease == 'false'
         run: |
           TAG="${{ steps.version.outputs.tag }}"
           VERSION="${{ steps.version.outputs.name }}"
