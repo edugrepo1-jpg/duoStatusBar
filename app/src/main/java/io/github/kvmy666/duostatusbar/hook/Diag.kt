@@ -123,6 +123,18 @@ internal object Diag {
 
             appendLine("module:")
             appendLine("  stage=$stage attempts=${DuoGuard(context).attempts()}")
+            // Where the stage came from, and whether the app's provider actually answered. Without these a
+            // "stage=0" report cannot be told apart from "the provider was unreachable" - the ColorOS/realme
+            // failure mode - so the next fix would be a guess.
+            val override = DuoGuard(context).override()
+            appendLine(
+                "  stageSource=" + when {
+                    override != null -> "adb-override ($override)"
+                    DuoSettingsClient.providerUnreachable -> "default (provider unreachable)"
+                    else -> "app-settings"
+                }
+            )
+            appendLine("  provider=${if (DuoSettingsClient.providerUnreachable) "unreachable" else "ok"}")
             appendLine("  renderer=${element?.rendererName ?: "none"} ready=${element?.isReady ?: false}")
             settings?.let {
                 appendLine("  settings: enabled=${it.enabled} useRive=${it.useRive} showPercent=${it.showPercent}")

@@ -71,6 +71,12 @@ internal class DuoGuard(private val context: Context) {
         return resolved
     }
 
+    /**
+     * The adb/developer override in force (0/1/2), or null when absent. Exposed for the diagnostic dump so
+     * a report can tell "the module is off" from "an override is pinning it off" without adb access.
+     */
+    fun override(): Int? = globalStage()
+
     /** The adb/developer override, or null when it has not been set (absent means "ask the app"). */
     private fun globalStage(): Int? = try {
         Settings.Global.getInt(context.contentResolver, KEY_STAGE, ABSENT).let { value ->

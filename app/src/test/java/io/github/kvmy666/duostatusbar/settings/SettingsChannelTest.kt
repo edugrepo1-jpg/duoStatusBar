@@ -1,13 +1,20 @@
 package io.github.kvmy666.duostatusbar.settings
 
+import android.content.ContentProvider
+import android.content.ContentValues
 import android.content.Context
+import android.database.Cursor
+import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
+import io.github.kvmy666.duostatusbar.hook.DuoSettingsClient
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowContentResolver
 
 /**
  * The app ↔ module channel is the newest surface and the one with the least device coverage, so its contract
@@ -120,6 +127,32 @@ class SettingsChannelTest {
         // 624 is nearer 500 than 750; 626 tips the other way. The boundary is the midpoint.
         assertEquals(500, DuoPrefs.nearestReveal(624))
         assertEquals(750, DuoPrefs.nearestReveal(626))
+    }
+
+    @Test
+    fun `a provider that cannot be reached is not mistaken for the user switching the module off`() {
+        // The ColorOS/realme boot failure: the provider does not answer. It has to be read as
+        // "unreachable" (so the module retries), never as the default `enabled=false` (which would pin the
+        // module to stage 0 and make it look switched off). A provider that returns no cursor is exactly
+        // what a dead one does on device.
+        val dead = object : ContentProvider() {
+            override fun onCreate() = true
+            override fun query(
+                uri: Uri, projection: Array<out String>?, selection: String?,
+                selectionArgs: Array<out String>?, sortOrder: String?
+            ): Cursor? = null
+            override fun getType(uri: Uri): String? = null
+            override fun insert(uri: Uri, values: ContentValues?): Uri? = null
+            override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = 0
+            override fun update(
+                uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?
+            ): Int = 0
+        }
+        ShadowContentResolver.registerProviderInternal(DuoPrefs.AUTHORITY, dead)
+
+        val result = DuoSettingsClient.read(context)
+        assertFalse("an unreachable provider must not look like an explicit 'off'", result.enabled)
+        assertTrue("the failure has to be distinguishable to the stage logic", DuoSettingsClient.providerUnreachable)
     }
 
     @Test

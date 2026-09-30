@@ -353,24 +353,45 @@ private val BRAND_WINE = Color(0xFF7B1E3A)
 /**
  * Asks the module to restart System UI so a size change takes effect.
  *
- * The module lives inside System UI, so the broadcast is the clean path when it is loaded. When it is
- * not (it has never reported), nothing receives the broadcast and the button looks dead, so System UI
- * is restarted directly — root first, then Shizuku — which is what makes the button work on a ROM
- * without `su` as long as Shizuku is running.
+ * The module lives inside System UI, so killing its own process is the clean path — no root, no prompt.
+ * The broadcast only reaches it when it is actually listening, though, and the old code assumed "the
+ * module has loaded at least once" meant exactly that. It did not: a module that is injected but gated off
+ * (the ColorOS/realme report: loaded, `stage=0`, no report) never registered the receiver, so the button
+ * was silently dead. Now a fresh module load is the success signal: if System UI does not come back with a
+ * newer load stamp, the app falls back to root, then to Shizuku — which is what makes the button work on a
+ * ROM without `su` as long as Shizuku is running.
  */
 private fun restartSystemUi(context: Context) {
+    val before = DuoPrefs.moduleLoadTime(context)
     context.sendBroadcast(Intent(DuoPrefs.ACTION_RESTART_SYSTEMUI))
-    if (DuoPrefs.moduleLoadTime(context) <= 0L) {
-        Thread {
-            val ok = runCatching { RootLogs.restartSystemUi() }.getOrDefault(false)
-            if (!ok && StockIconHider.isShizukuRunning() && StockIconHider.isPermissionGranted()) {
-                StockIconHider.exec(
-                    context,
-                    "pkill -f com.android.systemui || killall com.android.systemui || " +
-                        "kill -9 ${'$'}(pidof com.android.systemui)",
-                    {}
-                )
-            }
-        }.start()
+    Thread {
+        if (before > 0L && moduleReloadedSince(context, before)) return@Thread
+        val ok = runCatching { RootLogs.restartSystemUi() }.getOrDefault(false)
+        if (!ok && StockIconHider.isShizukuRunning() && StockIconHider.isPermissionGranted()) {
+            StockIconHider.exec(
+                context,
+                "pkill -f com.android.systemui || killall com.android.systemui || " +
+                    "kill -9 ${'$'}(pidof com.android.systemui)",
+                {}
+            )
+        }
+    }.start()
+}
+
+/**
+ * Whether System UI came back with a newer module-load stamp within [timeoutMs] of the restart request.
+ * The module stamps `Settings.Global` before it does anything else, so a newer value is direct proof that
+ * the restart happened and the module (or at least LSPosed) came back.
+ */
+private fun moduleReloadedSince(context: Context, before: Long, timeoutMs: Long = 2_500L): Boolean {
+    val deadline = System.currentTimeMillis() + timeoutMs
+    while (true) {
+        if (DuoPrefs.moduleLoadTime(context) > before) return true
+        if (System.currentTimeMillis() >= deadline) return false
+        try {
+            Thread.sleep(250)
+        } catch (_: InterruptedException) {
+            return DuoPrefs.moduleLoadTime(context) > before
+        }
     }
 }

@@ -1,3 +1,25 @@
+# Duo Status Bar 1.3.2-beta.1 — pre-release
+
+Fixes straight from the 30 Sep logs: a **realme/ColorOS (RMX5200)** report where the module loaded but
+resolved to `stage 0`, posted **no status** and never drew — and a **Samsung One UI** report that was
+healthy, which proved the element itself was fine and pinned the failure to the app↔module channel.
+
+- **Restart System UI now actually works on every ROM.** It only ever worked when the module was already
+  enabled and listening. The broadcast receiver was registered *after* the enable gate, so on a ROM where
+  the module read itself as "off" (ColorOS/realme) nobody received the tap and the button was dead — and
+  the app's root/Shizuku fallback was skipped whenever the module had loaded at least once. The receiver
+  is now installed *before* the gate, and the app waits for a fresh module-load stamp before falling back
+  to root, then Shizuku.
+- **The module no longer mistakes an unreadable provider for "off".** On ColorOS/realme the first settings
+  read can land before the app process is ready; the module used to take the default (`enabled=false`) and
+  give up as `stage 0`. It now recognises "provider unreachable" separately from "the user switched it
+  off", retries the read a few times, and re-reads on every app change — so enabling it live works.
+- **The next report is conclusive.** The diagnostic dump now records where the stage came from
+  (`adb-override` / `app-settings` / `default (provider unreachable)`) and whether the settings provider
+  answered, so a `stage=0` report can be told apart from a broken channel without another round-trip.
+- **Android 13 (API 33) is now the floor** (was 14). Best-effort: all newer APIs are guarded and the
+  AOSP probes exist on 13, but the OEM adapters were measured on 14+, so a 13 report is welcome.
+
 # Duo Status Bar 1.3.1 — stable
 
 A code-health release: **no behavior change**. The internals were split into focused files and the

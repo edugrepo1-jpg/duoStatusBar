@@ -38,12 +38,14 @@ android {
 
     defaultConfig {
         applicationId = "io.github.kvmy666.duostatusbar"
-        // Android 14 (API 34) is the floor: the hook targets AOSP/ColorOS/One UI SystemUI views that
-        // exist on 14, and nothing in the module needs an API-35 call. targetSdk stays 36.
-        minSdk = 34
+        // Android 13 (API 33) is the floor. Every API the module uses above 33 is guarded
+        // (`RECEIVER_EXPORTED`, `POST_NOTIFICATIONS`), and the view probes it depends on exist on 13 as
+        // well. Support is best-effort: the ROM adapters were measured on 14+, so 13 attaches through the
+        // AOSP path and reports through the diagnostic dump if anything is off. targetSdk stays 36.
+        minSdk = 33
         targetSdk = 36
-        versionCode = 13
-        versionName = "1.3.1"
+        versionCode = 14
+        versionName = "1.3.2-beta.1"
         // Telegram log delivery. Prefer the relay URL (Worker holds the bot token, so no secret is in the
         // APK); otherwise fall back to the direct bot token; otherwise the button opens the share sheet.
         // The relay URL is public (the Worker enforces its own rate limit), so it is baked into every

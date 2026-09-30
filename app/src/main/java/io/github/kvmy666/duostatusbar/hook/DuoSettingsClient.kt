@@ -77,41 +77,71 @@ internal object DuoSettingsClient {
 
     private val uri: Uri get() = Uri.parse("content://${DuoPrefs.AUTHORITY}")
 
+    /**
+     * Whether the *last* [read] could not reach the app's provider at all, as opposed to the provider
+     * answering "the module is off". The two are indistinguishable in [ModuleSettings.DEFAULT] (both are
+     * `enabled=false`) but need opposite handling: "off" is the user's wish, "unreachable" must not be
+     * mistaken for it. ColorOS/realme showed exactly that failure — the module loaded, read nothing and
+     * fell back to `stage 0`, so the element never drew even though the app's master switch was on.
+     */
+    @Volatile
+    var providerUnreachable: Boolean = false
+        private set
+
     fun read(context: Context): ModuleSettings = try {
         val started = android.os.SystemClock.elapsedRealtime()
-        val result = context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-            if (!cursor.moveToFirst()) {
-                ModuleSettings.DEFAULT
-            } else {
-                ModuleSettings(
-                    enabled = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_ENABLED)) == 1,
-                    useRive = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_USE_RIVE)) == 1,
-                    showPercent = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_SHOW_PERCENT)) == 1,
-                    sizePercent = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_SIZE_PERCENT)),
-                    offsetX = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_OFFSET_X)),
-                    liveApply = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_LIVE_APPLY)) == 1,
-                    systemClockFont = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_CLOCK_FONT)) == 1,
-                    revealMs = DuoPrefs.nearestReveal(cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_REVEAL_MS))),
-                    revision = cursor.getLong(cursor.getColumnIndexOrThrow(DuoPrefs.COL_REVISION)),
-                    tapAction = cursor.getString(cursor.getColumnIndexOrThrow(DuoPrefs.COL_TAP)) ?: "no_action",
-                    doubleTapAction = cursor.getString(cursor.getColumnIndexOrThrow(DuoPrefs.COL_DOUBLE_TAP)) ?: "no_action",
-                    longPressAction = cursor.getString(cursor.getColumnIndexOrThrow(DuoPrefs.COL_LONG_PRESS)) ?: "no_action",
-                    animationsEnabled = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_ANIMATIONS)) == 1,
-                    arrivalEnabled = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_ARRIVAL)) == 1,
-                    departureEnabled = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_DEPARTURE)) == 1,
-                    chargingEnabled = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_CHARGING)) == 1,
-                    iconColor = cursor.getString(cursor.getColumnIndexOrThrow(DuoPrefs.COL_ICON_COLOR)) ?: "auto",
-                    hideOtherIcons = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_HIDE_OTHER_ICONS)) == 1,
-                    networkOnly = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_NETWORK_ONLY)) == 1,
-                    simChoice = cursor.getString(cursor.getColumnIndexOrThrow(DuoPrefs.COL_SIM_CHOICE)) ?: "auto"
-                )
+        val cursor = context.contentResolver.query(uri, null, null, null, null)
+        if (cursor == null) {
+            // A provider that answers always returns a row (see DuoSettingsProvider), so a null cursor is
+            // "could not be reached", never "the module is off".
+            providerUnreachable = true
+            L.w("settings provider returned no cursor - treating as unreachable, not as off")
+            ModuleSettings.DEFAULT
+        } else {
+            // The provider always adds a row when it answers (see DuoSettingsProvider.rowFor), so an empty
+            // cursor means the authority was answered by something else - also "unreachable", not "off".
+            var rowRead = false
+            val result = cursor.use { c ->
+                if (!c.moveToFirst()) {
+                    ModuleSettings.DEFAULT
+                } else {
+                    rowRead = true
+                    ModuleSettings(
+                        enabled = c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_ENABLED)) == 1,
+                        useRive = c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_USE_RIVE)) == 1,
+                        showPercent = c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_SHOW_PERCENT)) == 1,
+                        sizePercent = c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_SIZE_PERCENT)),
+                        offsetX = c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_OFFSET_X)),
+                        liveApply = c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_LIVE_APPLY)) == 1,
+                        systemClockFont = c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_CLOCK_FONT)) == 1,
+                        revealMs = DuoPrefs.nearestReveal(c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_REVEAL_MS))),
+                        revision = c.getLong(c.getColumnIndexOrThrow(DuoPrefs.COL_REVISION)),
+                        tapAction = c.getString(c.getColumnIndexOrThrow(DuoPrefs.COL_TAP)) ?: "no_action",
+                        doubleTapAction = c.getString(c.getColumnIndexOrThrow(DuoPrefs.COL_DOUBLE_TAP)) ?: "no_action",
+                        longPressAction = c.getString(c.getColumnIndexOrThrow(DuoPrefs.COL_LONG_PRESS)) ?: "no_action",
+                        animationsEnabled = c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_ANIMATIONS)) == 1,
+                        arrivalEnabled = c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_ARRIVAL)) == 1,
+                        departureEnabled = c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_DEPARTURE)) == 1,
+                        chargingEnabled = c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_CHARGING)) == 1,
+                        iconColor = c.getString(c.getColumnIndexOrThrow(DuoPrefs.COL_ICON_COLOR)) ?: "auto",
+                        hideOtherIcons = c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_HIDE_OTHER_ICONS)) == 1,
+                        networkOnly = c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_NETWORK_ONLY)) == 1,
+                        simChoice = c.getString(c.getColumnIndexOrThrow(DuoPrefs.COL_SIM_CHOICE)) ?: "auto"
+                    )
+                }
             }
-        } ?: ModuleSettings.DEFAULT
-        // Logged because this is a synchronous binder call from System UI's boot path: if it is ever slow,
-        // it is slow there, and that deserves a number rather than a guess.
-        L.i("settings read in ${android.os.SystemClock.elapsedRealtime() - started} ms (rev ${result.revision})")
-        result
+            providerUnreachable = !rowRead
+            if (!rowRead) {
+                L.w("settings provider returned no row - treating as unreachable, not as off")
+            } else {
+                // Logged because this is a synchronous binder call from System UI's boot path: if it is
+                // ever slow, it is slow there, and that deserves a number rather than a guess.
+                L.i("settings read in ${android.os.SystemClock.elapsedRealtime() - started} ms (rev ${result.revision})")
+            }
+            result
+        }
     } catch (t: Throwable) {
+        providerUnreachable = true
         L.w("settings unreadable (${t.javaClass.simpleName}: ${t.message}) - using defaults")
         ModuleSettings.DEFAULT
     }

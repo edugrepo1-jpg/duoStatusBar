@@ -188,20 +188,47 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         if (!ProcessState.started.compareAndSet(false, true)) return
         app = ctx
         L.guard("DuoHook start") {
-            // The gate is read before anything is hooked: while the module is off it leaves no trace in
-            // this process at all, so a fresh install cannot affect the status bar until asked to.
+            // The settings/restart receiver goes in *before* the gate. It is the app's only way to reach a
+            // module that read itself as "off": "Restart System UI" and a live enable both arrive here.
+            // Registering it after the gate (as before) left the button dead on every ROM where the stage
+            // resolved to 0 - exactly the ColorOS/realme report, where the provider was briefly unreachable
+            // at boot and the module then never listened again. The receiver changes nothing while the
+            // module is off; it only reacts to our own custom actions.
+            hookSettingsChanges(ctx)
+            enable(ctx, attempt = 0)
+        }
+    }
+
+    /**
+     * Resolves the stage and, when the module is on, hooks and attaches. The stage is read - and, when the
+     * provider could not be reached, re-read - because "unreadable" is not "the user turned it off": on
+     * ColorOS/realme the first read at boot can fail while the app process is still coming up, and
+     * treating that as "off" is what made the element silently never appear (stage 0, no report).
+     */
+    private fun enable(ctx: Context, attempt: Int) {
+        L.guard("DuoHook enable #$attempt") {
             val guard = DuoGuard(ctx)
             val stage = guard.stage()
-            // Heartbeat before the gate: it is how the app tells "LSPosed never injected the module"
-            // apart from "the module ran but is switched off". Two signals: a Settings.Global stamp, and
-            // a provider report. The provider needs no permission, so the About screen cannot show a
-            // false "never" on a ROM that denies SystemUI WRITE_SECURE_SETTINGS.
-            L.guard("DuoHook heartbeat") {
-                guard.noteLoaded()
-                DuoSettingsClient.report(ctx, "loaded · stage=$stage")
-                DuoSettingsClient.reportFallback(ctx, "")
+            if (attempt == 0) {
+                // Heartbeat before the gate: it is how the app tells "LSPosed never injected the module"
+                // apart from "the module ran but is switched off". Two signals: a Settings.Global stamp,
+                // and a provider report. The provider needs no permission, so the About screen cannot show
+                // a false "never" on a ROM that denies SystemUI WRITE_SECURE_SETTINGS.
+                L.guard("DuoHook heartbeat") {
+                    guard.noteLoaded()
+                    DuoSettingsClient.report(ctx, "loaded · stage=$stage")
+                    DuoSettingsClient.reportFallback(ctx, "")
+                }
             }
             if (stage == DuoGuard.OFF) {
+                // Retry only while the provider itself was unreachable; a real "off" answer is final.
+                if (DuoSettingsClient.providerUnreachable && attempt < MAX_STAGE_RETRIES) {
+                    L.w("settings provider unreachable (attempt ${attempt + 1}/$MAX_STAGE_RETRIES) - retrying")
+                    handler.postDelayed({
+                        L.guard("DuoHook enable retry") { enable(ctx, attempt + 1) }
+                    }, STAGE_RETRY_MS)
+                    return@guard
+                }
                 L.i("gated off - nothing hooked. Enable with: ${guard.enableHint}, then restart SystemUI")
                 return@guard
             }
@@ -210,7 +237,6 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             hookShadeHeader()
             hookStatusIconContainer()
             hookBarAppearance()
-            hookSettingsChanges(ctx)
             // The window may already have been captured by the early addView hook; attach now.
             statusBarRoot?.let { scheduleAttach(attempt = 0) }
         }
@@ -582,5 +608,13 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         const val SETTINGS_DEBOUNCE_MS = 250L
         const val RETRY_MS = 2_000L
         const val MAX_ATTEMPTS = 6
+
+        /**
+         * How many times a boot-time stage read is retried when the settings provider is unreachable, and
+         * the gap between them. Covers the app process still starting on ColorOS/realme without mistaking a
+         * genuinely switched-off module (whose provider answers) for a broken one.
+         */
+        const val MAX_STAGE_RETRIES = 5
+        const val STAGE_RETRY_MS = 1_500L
     }
 }
