@@ -8,21 +8,29 @@
     * `offset` rotates the trimmed window; start=0 end=0.3222 offset=0.8389 centres it on top.
     * Stroke effects (TrimPath) nest INSIDE the Stroke, not beside the path.
 
-  Design coordinates live in a 120x120 box with the ring centred at (59.5, 61.5). Everything is
-  parented to one Node placed at that centre, so children are written relative to it and the whole
-  element can be scaled as a body (the reveal animation scales this Node).
+  Design coordinates live in a 120x136 box. The ring is still the original 120-square, centred
+  on the group at (60, 77.5); the extra 16 units are empty space above it. Everything is parented
+  to that one Node, so children are written relative to the ring centre and the whole element can
+  be scaled as a body (the reveal animation scales this Node).
 -->
 <Rive version="1" kind="fragment">
-    <Artboard width="120" height="120" name="Duo" id="0:2" viewModelId="0:60" viewModelInstanceId="0:61" defaultStateMachineId="0:90">
+    <Artboard width="120" height="136" name="Duo" id="0:2" viewModelId="0:60" viewModelInstanceId="0:61" defaultStateMachineId="0:90">
 
-        <Node x="60" y="61.5" name="duoGroup" id="0:3">
+        <Node x="60" y="77.5" name="duoGroup" id="0:3">
+
+            <!-- ringGroup: the battery ring, the percentage and the bolt. Its opacity is bound so a
+                 second view can draw only the icons that normally sit inside the ring. Nested
+                 opacities multiply, and nothing in here is keyed by an animation, so the bind
+                 cannot fight the charge or reveal timelines. -->
+            <Node name="ringGroup" id="0:184">
 
             <!-- ====================== battery percentage text ======================
-                 Sits inside the ring's top gap (the gap is 71.3deg wide). Text type keys:
-                 alignValue 281 (center), originX 366 / originY 367 (normalized),
-                 TextStylePaint.fontSize 274, .fontAssetId 279.                            -->
+                 y is bound (`percentY`): -60 is the original seat, -76 is fully raised so a center
+                 punch-hole does not cut the digits. The ring stays put; only this label moves.
+                 Text type keys: alignValue 281 (center), originX 366 / originY 367 (normalized),
+                 TextStylePaint.fontSize 274, .fontAssetId 279. Node y is property key 14.     -->
 
-            <Text x="-3.5" y="-60" width="80" height="42" alignValue="center" originX="0.5" originY="0"
+            <Text x="-3.5" y="-76" width="80" height="42" alignValue="center" originX="0.5" originY="0"
                 sizingValue="fixed" overflowValue="visible" name="percent" id="0:30">
                 <TextStylePaint fontSize="32" fontAssetId="0:40" name="PercentStyle" id="0:31">
                     <DataBindContext propertyKey="274" sourcePathIds="0:60-0:84" />
@@ -42,6 +50,8 @@
                 <TextValueRun styleId="0:31" text="50" name="Run">
                     <DataBindContext propertyKey="268" sourcePathIds="0:60-0:83" />
                 </TextValueRun>
+                <!-- Node.y. The host writes the seat; the authored -76 is the fully-raised default. -->
+                <DataBindContext propertyKey="14" sourcePathIds="0:60-0:181" />
             </Text>
 
             <!-- ============================ battery ring ============================
@@ -108,6 +118,29 @@
                     </TrimPath>
                 </Stroke>
             </Shape>
+
+            <!-- The bolt lives with the ring: charging replaces the digits in the gap, so it stays
+                 on the cutout when the inner icons move out. Drawn after the ring, and Wi-Fi has
+                 already faded by the time the bolt is opaque (ChargeIn frame 8 vs 16). -->
+            <Shape x="0" y="-49.5" opacity="0" name="bolt" id="0:50">
+                <PointsPath isClosed="true" name="Path">
+                    <StraightVertex x="3.5" y="-10" radius="1.4" />
+                    <StraightVertex x="-7.5" y="0.5" radius="1.4" />
+                    <StraightVertex x="-1.5" y="0.5" radius="1.4" />
+                    <StraightVertex x="-3.5" y="10" radius="1.4" />
+                    <StraightVertex x="7.5" y="-0.5" radius="1.4" />
+                    <StraightVertex x="1.5" y="-0.5" radius="1.4" />
+                </PointsPath>
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:81" /></SolidColor></Fill>
+            </Shape>
+
+            <DataBindContext propertyKey="18" sourcePathIds="0:60-0:182" />
+            </Node>
+
+            <!-- indicatorsGroup: Wi-Fi and the middle slot (airplane, Do Not Disturb, 5G/4G).
+                 The signal dots stay with the ring. Same opacity bind as ringGroup, so one file
+                 draws either the original element or just this cluster. -->
+            <Node name="indicatorsGroup" id="0:185">
 
             <!-- ============================== Wi-Fi ==============================
                  centre (59.5, 78.5) -> (-0.5, 17) relative to the group node.
@@ -180,23 +213,6 @@
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
             </Shape>
             </Node>
-
-            <!-- ============================ charging bolt ============================
-                 Appears in the ring's top gap instead of the digits; the gap narrows to 55.6deg.
-                 PointsPath vertices are in the shape's local space, so this bolt is authored around
-                 (0,0) and the Shape is placed where the gap's centre is.                        -->
-
-            <Shape x="0" y="-49.5" opacity="0" name="bolt" id="0:50">
-                <PointsPath isClosed="true" name="Path">
-                    <StraightVertex x="3.5" y="-10" radius="1.4" />
-                    <StraightVertex x="-7.5" y="0.5" radius="1.4" />
-                    <StraightVertex x="-1.5" y="0.5" radius="1.4" />
-                    <StraightVertex x="-3.5" y="10" radius="1.4" />
-                    <StraightVertex x="7.5" y="-0.5" radius="1.4" />
-                    <StraightVertex x="1.5" y="-0.5" radius="1.4" />
-                </PointsPath>
-                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:81" /></SolidColor></Fill>
-            </Shape>
 
             <!-- ============================== airplane ==============================
                  Occupies the Wi-Fi slot when airplane mode is on: the Wi-Fi layers collapse into
@@ -329,9 +345,13 @@
                 </TextValueRun>
             </Text>
 
-            <!-- ========================== cellular spheres ==========================
-                 r 5.5, on a downward arc concentric with the ring.                     -->
+            <DataBindContext propertyKey="18" sourcePathIds="0:60-0:183" />
+            </Node>
 
+            <!-- Signal dots belong to the ring, not the Wi-Fi cluster, so they stay on the cutout
+                 when the icons move out. Drawn after the icons so they still sit on top of the
+                 Wi-Fi arc in the original layout. The opacity bind is the ring's. -->
+            <Node name="cellGroup" id="0:186">
             <Shape name="cell1" id="0:17">
                 <Ellipse x="-27" y="42.7" width="11" height="11" originX="0.5" originY="0.5" name="Path" />
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
@@ -352,6 +372,264 @@
                 <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
                 <DataBindContext propertyKey="18" sourcePathIds="0:60-0:74" />
             </Shape>
+
+            <!-- Do Not Disturb on the signal dots. The same crescent as dndMoon. Scale is bound
+                 (the path is 36.92 units across; 0.2979 fits the 11-unit spheres) and grows with
+                 the opacity, so a fill eases from nothing up to the white moon. The gray circles
+                 stay the spheres themselves. Authored at 0 so they stay hidden until a bar is lit. -->
+            <Shape x="-27" y="42.7" opacity="0" name="cellMoon1" id="0:187">
+                <PointsPath isClosed="true" name="Path">
+                    <StraightVertex x="-5.27" y="-18.46" />
+                    <StraightVertex x="-4.52" y="-18.28" />
+                    <StraightVertex x="-4.23" y="-17.46" />
+                    <StraightVertex x="-5.87" y="-14.76" />
+                    <StraightVertex x="-7.02" y="-11.88" />
+                    <StraightVertex x="-7.56" y="-8.86" />
+                    <StraightVertex x="-7.47" y="-6.12" />
+                    <StraightVertex x="-6.80" y="-3.15" />
+                    <StraightVertex x="-5.78" y="-0.75" />
+                    <StraightVertex x="-4.32" y="1.51" />
+                    <StraightVertex x="-2.75" y="3.26" />
+                    <StraightVertex x="-0.84" y="4.81" />
+                    <StraightVertex x="1.29" y="6.05" />
+                    <StraightVertex x="4.08" y="7.07" />
+                    <StraightVertex x="6.65" y="7.51" />
+                    <StraightVertex x="9.31" y="7.51" />
+                    <StraightVertex x="12.28" y="6.89" />
+                    <StraightVertex x="14.98" y="5.74" />
+                    <StraightVertex x="17.42" y="4.23" />
+                    <StraightVertex x="18.04" y="4.32" />
+                    <StraightVertex x="18.46" y="4.88" />
+                    <StraightVertex x="18.11" y="6.25" />
+                    <StraightVertex x="16.82" y="8.91" />
+                    <StraightVertex x="13.89" y="12.76" />
+                    <StraightVertex x="10.24" y="15.71" />
+                    <StraightVertex x="6.16" y="17.62" />
+                    <StraightVertex x="2.48" y="18.42" />
+                    <StraightVertex x="-1.15" y="18.46" />
+                    <StraightVertex x="-4.79" y="17.80" />
+                    <StraightVertex x="-8.16" y="16.47" />
+                    <StraightVertex x="-11.44" y="14.34" />
+                    <StraightVertex x="-14.16" y="11.66" />
+                    <StraightVertex x="-16.38" y="8.33" />
+                    <StraightVertex x="-17.71" y="5.10" />
+                    <StraightVertex x="-18.42" y="1.68" />
+                    <StraightVertex x="-18.46" y="-2.13" />
+                    <StraightVertex x="-17.66" y="-6.07" />
+                    <StraightVertex x="-16.24" y="-9.35" />
+                    <StraightVertex x="-14.34" y="-12.19" />
+                    <StraightVertex x="-11.66" y="-14.91" />
+                    <StraightVertex x="-8.47" y="-17.09" />
+                    <StraightVertex x="-5.27" y="-18.46" />
+                </PointsPath>
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:191" />
+                <DataBindContext propertyKey="16" sourcePathIds="0:60-0:197" />
+                <DataBindContext propertyKey="17" sourcePathIds="0:60-0:197" />
+            </Shape>
+            <Shape x="-9.5" y="49.7" opacity="0" name="cellMoon2" id="0:188">
+                <PointsPath isClosed="true" name="Path">
+                    <StraightVertex x="-5.27" y="-18.46" />
+                    <StraightVertex x="-4.52" y="-18.28" />
+                    <StraightVertex x="-4.23" y="-17.46" />
+                    <StraightVertex x="-5.87" y="-14.76" />
+                    <StraightVertex x="-7.02" y="-11.88" />
+                    <StraightVertex x="-7.56" y="-8.86" />
+                    <StraightVertex x="-7.47" y="-6.12" />
+                    <StraightVertex x="-6.80" y="-3.15" />
+                    <StraightVertex x="-5.78" y="-0.75" />
+                    <StraightVertex x="-4.32" y="1.51" />
+                    <StraightVertex x="-2.75" y="3.26" />
+                    <StraightVertex x="-0.84" y="4.81" />
+                    <StraightVertex x="1.29" y="6.05" />
+                    <StraightVertex x="4.08" y="7.07" />
+                    <StraightVertex x="6.65" y="7.51" />
+                    <StraightVertex x="9.31" y="7.51" />
+                    <StraightVertex x="12.28" y="6.89" />
+                    <StraightVertex x="14.98" y="5.74" />
+                    <StraightVertex x="17.42" y="4.23" />
+                    <StraightVertex x="18.04" y="4.32" />
+                    <StraightVertex x="18.46" y="4.88" />
+                    <StraightVertex x="18.11" y="6.25" />
+                    <StraightVertex x="16.82" y="8.91" />
+                    <StraightVertex x="13.89" y="12.76" />
+                    <StraightVertex x="10.24" y="15.71" />
+                    <StraightVertex x="6.16" y="17.62" />
+                    <StraightVertex x="2.48" y="18.42" />
+                    <StraightVertex x="-1.15" y="18.46" />
+                    <StraightVertex x="-4.79" y="17.80" />
+                    <StraightVertex x="-8.16" y="16.47" />
+                    <StraightVertex x="-11.44" y="14.34" />
+                    <StraightVertex x="-14.16" y="11.66" />
+                    <StraightVertex x="-16.38" y="8.33" />
+                    <StraightVertex x="-17.71" y="5.10" />
+                    <StraightVertex x="-18.42" y="1.68" />
+                    <StraightVertex x="-18.46" y="-2.13" />
+                    <StraightVertex x="-17.66" y="-6.07" />
+                    <StraightVertex x="-16.24" y="-9.35" />
+                    <StraightVertex x="-14.34" y="-12.19" />
+                    <StraightVertex x="-11.66" y="-14.91" />
+                    <StraightVertex x="-8.47" y="-17.09" />
+                    <StraightVertex x="-5.27" y="-18.46" />
+                </PointsPath>
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:192" />
+                <DataBindContext propertyKey="16" sourcePathIds="0:60-0:198" />
+                <DataBindContext propertyKey="17" sourcePathIds="0:60-0:198" />
+            </Shape>
+            <Shape x="8.5" y="50.2" opacity="0" name="cellMoon3" id="0:189">
+                <PointsPath isClosed="true" name="Path">
+                    <StraightVertex x="-5.27" y="-18.46" />
+                    <StraightVertex x="-4.52" y="-18.28" />
+                    <StraightVertex x="-4.23" y="-17.46" />
+                    <StraightVertex x="-5.87" y="-14.76" />
+                    <StraightVertex x="-7.02" y="-11.88" />
+                    <StraightVertex x="-7.56" y="-8.86" />
+                    <StraightVertex x="-7.47" y="-6.12" />
+                    <StraightVertex x="-6.80" y="-3.15" />
+                    <StraightVertex x="-5.78" y="-0.75" />
+                    <StraightVertex x="-4.32" y="1.51" />
+                    <StraightVertex x="-2.75" y="3.26" />
+                    <StraightVertex x="-0.84" y="4.81" />
+                    <StraightVertex x="1.29" y="6.05" />
+                    <StraightVertex x="4.08" y="7.07" />
+                    <StraightVertex x="6.65" y="7.51" />
+                    <StraightVertex x="9.31" y="7.51" />
+                    <StraightVertex x="12.28" y="6.89" />
+                    <StraightVertex x="14.98" y="5.74" />
+                    <StraightVertex x="17.42" y="4.23" />
+                    <StraightVertex x="18.04" y="4.32" />
+                    <StraightVertex x="18.46" y="4.88" />
+                    <StraightVertex x="18.11" y="6.25" />
+                    <StraightVertex x="16.82" y="8.91" />
+                    <StraightVertex x="13.89" y="12.76" />
+                    <StraightVertex x="10.24" y="15.71" />
+                    <StraightVertex x="6.16" y="17.62" />
+                    <StraightVertex x="2.48" y="18.42" />
+                    <StraightVertex x="-1.15" y="18.46" />
+                    <StraightVertex x="-4.79" y="17.80" />
+                    <StraightVertex x="-8.16" y="16.47" />
+                    <StraightVertex x="-11.44" y="14.34" />
+                    <StraightVertex x="-14.16" y="11.66" />
+                    <StraightVertex x="-16.38" y="8.33" />
+                    <StraightVertex x="-17.71" y="5.10" />
+                    <StraightVertex x="-18.42" y="1.68" />
+                    <StraightVertex x="-18.46" y="-2.13" />
+                    <StraightVertex x="-17.66" y="-6.07" />
+                    <StraightVertex x="-16.24" y="-9.35" />
+                    <StraightVertex x="-14.34" y="-12.19" />
+                    <StraightVertex x="-11.66" y="-14.91" />
+                    <StraightVertex x="-8.47" y="-17.09" />
+                    <StraightVertex x="-5.27" y="-18.46" />
+                </PointsPath>
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:193" />
+                <DataBindContext propertyKey="16" sourcePathIds="0:60-0:199" />
+                <DataBindContext propertyKey="17" sourcePathIds="0:60-0:199" />
+            </Shape>
+            <Shape x="26" y="44.3" opacity="0" name="cellMoon4" id="0:190">
+                <PointsPath isClosed="true" name="Path">
+                    <StraightVertex x="-5.27" y="-18.46" />
+                    <StraightVertex x="-4.52" y="-18.28" />
+                    <StraightVertex x="-4.23" y="-17.46" />
+                    <StraightVertex x="-5.87" y="-14.76" />
+                    <StraightVertex x="-7.02" y="-11.88" />
+                    <StraightVertex x="-7.56" y="-8.86" />
+                    <StraightVertex x="-7.47" y="-6.12" />
+                    <StraightVertex x="-6.80" y="-3.15" />
+                    <StraightVertex x="-5.78" y="-0.75" />
+                    <StraightVertex x="-4.32" y="1.51" />
+                    <StraightVertex x="-2.75" y="3.26" />
+                    <StraightVertex x="-0.84" y="4.81" />
+                    <StraightVertex x="1.29" y="6.05" />
+                    <StraightVertex x="4.08" y="7.07" />
+                    <StraightVertex x="6.65" y="7.51" />
+                    <StraightVertex x="9.31" y="7.51" />
+                    <StraightVertex x="12.28" y="6.89" />
+                    <StraightVertex x="14.98" y="5.74" />
+                    <StraightVertex x="17.42" y="4.23" />
+                    <StraightVertex x="18.04" y="4.32" />
+                    <StraightVertex x="18.46" y="4.88" />
+                    <StraightVertex x="18.11" y="6.25" />
+                    <StraightVertex x="16.82" y="8.91" />
+                    <StraightVertex x="13.89" y="12.76" />
+                    <StraightVertex x="10.24" y="15.71" />
+                    <StraightVertex x="6.16" y="17.62" />
+                    <StraightVertex x="2.48" y="18.42" />
+                    <StraightVertex x="-1.15" y="18.46" />
+                    <StraightVertex x="-4.79" y="17.80" />
+                    <StraightVertex x="-8.16" y="16.47" />
+                    <StraightVertex x="-11.44" y="14.34" />
+                    <StraightVertex x="-14.16" y="11.66" />
+                    <StraightVertex x="-16.38" y="8.33" />
+                    <StraightVertex x="-17.71" y="5.10" />
+                    <StraightVertex x="-18.42" y="1.68" />
+                    <StraightVertex x="-18.46" y="-2.13" />
+                    <StraightVertex x="-17.66" y="-6.07" />
+                    <StraightVertex x="-16.24" y="-9.35" />
+                    <StraightVertex x="-14.34" y="-12.19" />
+                    <StraightVertex x="-11.66" y="-14.91" />
+                    <StraightVertex x="-8.47" y="-17.09" />
+                    <StraightVertex x="-5.27" y="-18.46" />
+                </PointsPath>
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:194" />
+                <DataBindContext propertyKey="16" sourcePathIds="0:60-0:200" />
+                <DataBindContext propertyKey="17" sourcePathIds="0:60-0:200" />
+            </Shape>
+            <!-- One crescent in the middle of the four dots, shown only when that row is hidden. -->
+            <Shape x="-0.5" y="46.725" opacity="0" name="centerMoon" id="0:195">
+                <PointsPath isClosed="true" name="Path">
+                    <StraightVertex x="-5.27" y="-18.46" />
+                    <StraightVertex x="-4.52" y="-18.28" />
+                    <StraightVertex x="-4.23" y="-17.46" />
+                    <StraightVertex x="-5.87" y="-14.76" />
+                    <StraightVertex x="-7.02" y="-11.88" />
+                    <StraightVertex x="-7.56" y="-8.86" />
+                    <StraightVertex x="-7.47" y="-6.12" />
+                    <StraightVertex x="-6.80" y="-3.15" />
+                    <StraightVertex x="-5.78" y="-0.75" />
+                    <StraightVertex x="-4.32" y="1.51" />
+                    <StraightVertex x="-2.75" y="3.26" />
+                    <StraightVertex x="-0.84" y="4.81" />
+                    <StraightVertex x="1.29" y="6.05" />
+                    <StraightVertex x="4.08" y="7.07" />
+                    <StraightVertex x="6.65" y="7.51" />
+                    <StraightVertex x="9.31" y="7.51" />
+                    <StraightVertex x="12.28" y="6.89" />
+                    <StraightVertex x="14.98" y="5.74" />
+                    <StraightVertex x="17.42" y="4.23" />
+                    <StraightVertex x="18.04" y="4.32" />
+                    <StraightVertex x="18.46" y="4.88" />
+                    <StraightVertex x="18.11" y="6.25" />
+                    <StraightVertex x="16.82" y="8.91" />
+                    <StraightVertex x="13.89" y="12.76" />
+                    <StraightVertex x="10.24" y="15.71" />
+                    <StraightVertex x="6.16" y="17.62" />
+                    <StraightVertex x="2.48" y="18.42" />
+                    <StraightVertex x="-1.15" y="18.46" />
+                    <StraightVertex x="-4.79" y="17.80" />
+                    <StraightVertex x="-8.16" y="16.47" />
+                    <StraightVertex x="-11.44" y="14.34" />
+                    <StraightVertex x="-14.16" y="11.66" />
+                    <StraightVertex x="-16.38" y="8.33" />
+                    <StraightVertex x="-17.71" y="5.10" />
+                    <StraightVertex x="-18.42" y="1.68" />
+                    <StraightVertex x="-18.46" y="-2.13" />
+                    <StraightVertex x="-17.66" y="-6.07" />
+                    <StraightVertex x="-16.24" y="-9.35" />
+                    <StraightVertex x="-14.34" y="-12.19" />
+                    <StraightVertex x="-11.66" y="-14.91" />
+                    <StraightVertex x="-8.47" y="-17.09" />
+                    <StraightVertex x="-5.27" y="-18.46" />
+                </PointsPath>
+                <Fill name="Fill"><SolidColor colorValue="FFFFFFFF" name="Color"><DataBindContext propertyKey="37" sourcePathIds="0:60-0:82" /></SolidColor></Fill>
+                <DataBindContext propertyKey="18" sourcePathIds="0:60-0:196" />
+                <DataBindContext propertyKey="16" sourcePathIds="0:60-0:201" />
+                <DataBindContext propertyKey="17" sourcePathIds="0:60-0:201" />
+            </Shape>
+            <DataBindContext propertyKey="18" sourcePathIds="0:60-0:182" />
+            </Node>
         </Node>
 
         <!-- =========================== state machine ===========================
@@ -1842,11 +2120,31 @@
         <ViewModelPropertyNumber name="cell2Opacity" id="0:72" />
         <ViewModelPropertyNumber name="cell3Opacity" id="0:73" />
         <ViewModelPropertyNumber name="cell4Opacity" id="0:74" />
+        <!-- White crescents that fill a lit signal dot. Opacity and scale move together. -->
+        <ViewModelPropertyNumber name="moon1Opacity" id="0:191" />
+        <ViewModelPropertyNumber name="moon2Opacity" id="0:192" />
+        <ViewModelPropertyNumber name="moon3Opacity" id="0:193" />
+        <ViewModelPropertyNumber name="moon4Opacity" id="0:194" />
+        <ViewModelPropertyNumber name="moon1Scale" id="0:197" />
+        <ViewModelPropertyNumber name="moon2Scale" id="0:198" />
+        <ViewModelPropertyNumber name="moon3Scale" id="0:199" />
+        <ViewModelPropertyNumber name="moon4Scale" id="0:200" />
+        <!-- The one moon left in the middle of the row when the four dots are hidden. -->
+        <ViewModelPropertyNumber name="centerMoonOpacity" id="0:196" />
+        <ViewModelPropertyNumber name="centerMoonScale" id="0:201" />
         <ViewModelPropertyNumber name="airplaneOpacity" id="0:75" />
         <ViewModelPropertyColor name="tint" id="0:81" />
         <ViewModelPropertyColor name="fgColor" id="0:82" />
         <ViewModelPropertyString name="percentText" id="0:83" />
         <ViewModelPropertyNumber name="percentFontSize" id="0:84" />
+        <!-- Top of the percentage text box, relative to the ring centre. -60 is the original seat;
+             -76 is fully raised. The artboard already has room for the full range. -->
+        <ViewModelPropertyNumber name="percentY" id="0:181" />
+        <!-- 1 shows that group, 0 hides it. Both default to 1, which is the original element.
+             A split layout uses two views of this file: one with only the ring, one with only
+             the icons that normally sit inside it. -->
+        <ViewModelPropertyNumber name="ringOpacity" id="0:182" />
+        <ViewModelPropertyNumber name="indicatorsOpacity" id="0:183" />
         <!-- The cellular generation ("5G"/"4G"/"3G"/"2G") shown in the middle slot when Wi-Fi is off.
              Empty means no service, which leaves the slot empty rather than showing a stale label. -->
         <ViewModelPropertyString name="networkText" id="0:173" />
@@ -1888,11 +2186,24 @@
             <ViewModelInstanceNumber viewModelPropertyId="0:72" propertyValue="1" />
             <ViewModelInstanceNumber viewModelPropertyId="0:73" propertyValue="1" />
             <ViewModelInstanceNumber viewModelPropertyId="0:74" propertyValue="1" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:191" propertyValue="0" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:192" propertyValue="0" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:193" propertyValue="0" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:194" propertyValue="0" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:197" propertyValue="0" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:198" propertyValue="0" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:199" propertyValue="0" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:200" propertyValue="0" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:196" propertyValue="0" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:201" propertyValue="0" />
             <ViewModelInstanceNumber viewModelPropertyId="0:75" propertyValue="0" />
             <ViewModelInstanceColor viewModelPropertyId="0:81" propertyValue="FFFFFFFF" />
             <ViewModelInstanceColor viewModelPropertyId="0:82" propertyValue="FFFFFFFF" />
             <ViewModelInstanceString viewModelPropertyId="0:83" propertyValue="100" />
             <ViewModelInstanceNumber viewModelPropertyId="0:84" propertyValue="26" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:181" propertyValue="-76" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:182" propertyValue="1" />
+            <ViewModelInstanceNumber viewModelPropertyId="0:183" propertyValue="1" />
             <ViewModelInstanceString viewModelPropertyId="0:173" propertyValue="" />
             <ViewModelInstanceNumber viewModelPropertyId="0:107" propertyValue="1" />
             <ViewModelInstanceNumber viewModelPropertyId="0:105" propertyValue="0" />

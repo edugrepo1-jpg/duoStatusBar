@@ -21,6 +21,12 @@ internal interface DuoElement {
     /** The view to insert into the status bar. */
     val ui: View
 
+    /**
+     * Which part of the element this view draws. Changing it redraws the current snapshot, so a
+     * split layout can hide the icons inside the ring without building a second drawing.
+     */
+    var part: DuoPart
+
     /** A short name for diagnostics: `"Rive"` or `"Canvas"`. */
     val rendererName: String
 

@@ -6,6 +6,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.os.SystemClock
 import android.view.View
 import io.github.kvmy666.duostatusbar.L
 
@@ -20,18 +21,25 @@ import io.github.kvmy666.duostatusbar.L
  *     instead of a hole (FR-21).
  *
  * It draws what is known exactly — ring with the top gap, the track, the battery colour and the
- * percentage (or the bolt while charging) — and deliberately nothing else. Wi-Fi arcs and the four
- * cellular spheres are Rive-only; their positions were authored in the `.riv`, and inventing them again
- * here would mean shipping a second, unverified geometry. The mapping is shared with the Rive path via
- * [DuoMapping] so the ring and the colour can never disagree between the two.
+ * percentage (or the bolt while charging). The four signal dots and the crescents that fill them
+ * use the same seats as the Rive ellipses, so this fallback agrees with the live element there.
+ * Wi-Fi arcs stay Rive-only. The mapping is shared with the Rive path via [DuoMapping] so the ring
+ * and the colour can never disagree between the two.
  *
  * Canvas angles start at 3 o'clock, Rive trim fractions at 12 o'clock, hence [+TRIM_ORIGIN].
  */
-internal class DuoCanvasView(context: Context) : View(context), DuoElement {
+internal class DuoCanvasView(
+    context: Context,
+    part: DuoPart = DuoPart.ALL
+) : View(context), DuoElement {
 
-    private var visual: DuoVisual = DuoMapping.visual(
-        level = 100, charging = false, saver = false, showPercent = true,
-        wifiLevel = 3, cellLevel = 4, airplane = false
+    private var incoming: DuoVisual? = null
+
+    private var visual: DuoVisual = part.apply(
+        DuoMapping.visual(
+            level = 100, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false
+        )
     )
 
     private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -46,6 +54,23 @@ internal class DuoCanvasView(context: Context) : View(context), DuoElement {
     private val moonPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val arcBounds = RectF()
 
+    /** Grows a gray signal dot into the white Do Not Disturb crescent. See [DotMoonMotion]. */
+    private val motion = DotMoonMotion()
+    private var ticking = false
+    private val tick = Runnable {
+        ticking = false
+        step()
+    }
+
+    override var part: DuoPart = part
+        set(value) {
+            if (field == value) return
+            field = value
+            val current = incoming ?: return
+            incoming = null
+            render(current)
+        }
+
     override val ui: View get() = this
     override val rendererName: String get() = "Canvas"
     override val isReady: Boolean get() = true
@@ -59,18 +84,32 @@ internal class DuoCanvasView(context: Context) : View(context), DuoElement {
 
     override fun render(v: DuoVisual) {
         try {
-            if (v == visual) return
-            visual = v
-            invalidate()
+            if (v == incoming) return
+            incoming = v
+            step()
         } catch (t: Throwable) {
             L.w("canvas render: ${t.message}")
         }
     }
 
-    /** Nothing to animate here; the reveal is Rive's to run. */
+    /** Draws the current fill frame and keeps invalidating until a dot has finished becoming a moon. */
+    private fun step() {
+        val next = incoming ?: return
+        visual = part.apply(motion.push(next, SystemClock.uptimeMillis()))
+        invalidate()
+        if (motion.running && !ticking) {
+            ticking = true
+            postOnAnimation(tick)
+        }
+    }
+
+    /** The arrival itself is Rive's to run. The dot fill above is the only motion this view owns. */
     override fun reveal(ms: Int) = Unit
 
-    override fun teardown() = Unit
+    override fun teardown() {
+        removeCallbacks(tick)
+        ticking = false
+    }
 
     override fun onDraw(canvas: Canvas) {
         try {
@@ -88,40 +127,84 @@ internal class DuoCanvasView(context: Context) : View(context), DuoElement {
         val stroke = STROKE * k
         val radius = (size - stroke) / 2f
         val cx = width / 2f
-        val cy = height / 2f
+        // The view is taller than the ring so the percentage can sit above a center punch-hole.
+        // The ring stays in the lower square; the extra height is the space above it.
+        val cy = height - size / 2f
         ring.strokeWidth = stroke
+        val drawRing = visual.ringOpacity > 0.5f
+        val drawIndicators = visual.indicatorsOpacity > 0.5f
 
         // Track: the whole ring, dimmed.
-        ring.color = withAlpha(visual.fgColor, TRACK_ALPHA)
-        canvas.drawCircle(cx, cy, radius, ring)
+        if (drawRing) {
+            ring.color = withAlpha(visual.fgColor, TRACK_ALPHA)
+            canvas.drawCircle(cx, cy, radius, ring)
+        }
 
         // Progress: left arc 0-50 %, right arc 50-100 %, exactly as the .riv splits it. The trim ends
         // are arc *lengths* now, so they are the sweeps directly; the right one is 0 when the gap is
         // closed and the left half covers the whole ring on its own.
-        arcBounds.set(cx - radius, cy - radius, cx + radius, cy + radius)
-        ring.color = visual.tint
-        val leftSweep = visual.trimLeftEnd * 360f
-        if (leftSweep > MIN_SWEEP) {
-            canvas.drawArc(arcBounds, TRIM_ORIGIN + 360f * DuoMapping.LEFT_START, leftSweep, false, ring)
-        }
-        val rightSweep = visual.trimRightEnd * 360f
-        if (rightSweep > MIN_SWEEP) {
-            canvas.drawArc(arcBounds, TRIM_ORIGIN + 360f * DuoMapping.RIGHT_START, rightSweep, false, ring)
+        if (drawRing) {
+            arcBounds.set(cx - radius, cy - radius, cx + radius, cy + radius)
+            ring.color = visual.tint
+            val leftSweep = visual.trimLeftEnd * 360f
+            if (leftSweep > MIN_SWEEP) {
+                canvas.drawArc(arcBounds, TRIM_ORIGIN + 360f * DuoMapping.LEFT_START, leftSweep, false, ring)
+            }
+            val rightSweep = visual.trimRightEnd * 360f
+            if (rightSweep > MIN_SWEEP) {
+                canvas.drawArc(arcBounds, TRIM_ORIGIN + 360f * DuoMapping.RIGHT_START, rightSweep, false, ring)
+            }
         }
 
         // FR-06: the DND crescent takes the middle slot (0, 17 design units below the ring centre).
-        if (visual.middleMode == DuoMapping.MIDDLE_DND) {
-            moonPaint.color = withAlpha(visual.fgColor, 1f)
-            canvas.save()
-            canvas.translate(cx, cy + DND_SLOT_Y * k)
-            canvas.scale(k, k)
-            canvas.drawPath(moonPath, moonPaint)
-            canvas.restore()
+        if (drawIndicators && visual.middleMode == DuoMapping.MIDDLE_DND) {
+            drawMoon(canvas, cx, cy + DND_SLOT_Y * k, k, 1f)
+        }
+
+        // Gray circles in the signal-dot seats, then the white crescents that fill them. A strong
+        // bar's circle opacity falls as its moon grows, which is the fill. They belong to the ring,
+        // so a split layout keeps them with it.
+        if (drawRing) {
+            val cells = floatArrayOf(
+                visual.cell1Opacity, visual.cell2Opacity, visual.cell3Opacity, visual.cell4Opacity
+            )
+            for (i in cells.indices) {
+                if (cells[i] <= 0f) continue
+                moonPaint.color = withAlpha(visual.fgColor, cells[i])
+                canvas.drawCircle(
+                    cx + CELL_DOTS[i][0] * k,
+                    cy + CELL_DOTS[i][1] * k,
+                    DOT_RADIUS * k,
+                    moonPaint
+                )
+            }
+            val moons = floatArrayOf(
+                visual.moon1Opacity, visual.moon2Opacity, visual.moon3Opacity, visual.moon4Opacity
+            )
+            for (i in moons.indices) {
+                if (moons[i] <= 0f) continue
+                drawMoon(
+                    canvas,
+                    cx + CELL_DOTS[i][0] * k,
+                    cy + CELL_DOTS[i][1] * k,
+                    k * DotMoonMotion.DOT_SCALE * moons[i],
+                    moons[i]
+                )
+            }
+            if (visual.centerMoonOpacity > 0f) {
+                drawMoon(
+                    canvas,
+                    cx + DotMoonMotion.CENTER_X * k,
+                    cy + DotMoonMotion.CENTER_Y * k,
+                    k * DotMoonMotion.DOT_SCALE * visual.centerMoonOpacity,
+                    visual.centerMoonOpacity
+                )
+            }
         }
 
         // FR-06: with Wi-Fi off the slot shows the cellular generation. Same face and weight as the
         // Rive label; the ring's percentage is drawn below and does not overlap it.
-        if (visual.middleMode == DuoMapping.MIDDLE_NETWORK && visual.networkText.isNotEmpty()) {
+        if (drawIndicators && visual.middleMode == DuoMapping.MIDDLE_NETWORK && visual.networkText.isNotEmpty()) {
             label.color = visual.fgColor
             label.textSize = NETWORK_FONT_SIZE * k
             canvas.drawText(
@@ -132,6 +215,7 @@ internal class DuoCanvasView(context: Context) : View(context), DuoElement {
             )
         }
 
+        if (!drawRing) return
         if (visual.boltOpacity > 0f) {
             drawBolt(canvas, cx, cy, size)
             return
@@ -140,12 +224,13 @@ internal class DuoCanvasView(context: Context) : View(context), DuoElement {
         if (text.isEmpty() || visual.percentOpacity <= 0f) return
         label.color = visual.fgColor
         label.textSize = visual.percentFontSize * k
-        // In the ring's TOP GAP, exactly where the Rive digits sit (design y -39 from the ring centre).
-        // Drawing it at the centre put it straight on top of the 4G/5G label - the reported conflict.
+        // The Rive node is placed by its top; the canvas centres the glyphs, so add half the box.
+        // Drawing it at the ring centre put it straight on top of the 4G/5G label.
+        val percentCenter = visual.percentY + RingGeometry.PERCENT_BOX_HALF
         canvas.drawText(
             text,
             cx,
-            cy + PERCENT_SLOT_Y * k - (label.descent() + label.ascent()) / 2f,
+            cy + percentCenter * k - (label.descent() + label.ascent()) / 2f,
             label
         )
     }
@@ -159,6 +244,16 @@ internal class DuoCanvasView(context: Context) : View(context), DuoElement {
         canvas.translate(cx - scale / 2f, cy - scale / 2f)
         canvas.scale(scale, scale)
         canvas.drawPath(path, boltPaint)
+        canvas.restore()
+    }
+
+    /** The Do Not Disturb crescent, scaled by [scale] around [x], [y]. */
+    private fun drawMoon(canvas: Canvas, x: Float, y: Float, scale: Float, opacity: Float) {
+        moonPaint.color = withAlpha(visual.fgColor, opacity)
+        canvas.save()
+        canvas.translate(x, y)
+        canvas.scale(scale, scale)
+        canvas.drawPath(moonPath, moonPaint)
         canvas.restore()
     }
 
@@ -184,15 +279,21 @@ internal class DuoCanvasView(context: Context) : View(context), DuoElement {
         /** Middle slot, design units below the ring centre — the Wi-Fi centre the moon replaces. */
         const val DND_SLOT_Y = 17f
 
+        /**
+         * The four signal dots, design units from the ring centre. Same seats as the Rive ellipses.
+         * Each circle is 11 units across ([DOT_RADIUS]).
+         */
+        val CELL_DOTS = arrayOf(
+            floatArrayOf(-27f, 42.7f),
+            floatArrayOf(-9.5f, 49.7f),
+            floatArrayOf(8.5f, 50.2f),
+            floatArrayOf(26f, 44.3f)
+        )
+        const val DOT_RADIUS = 5.5f
+
         /** The cellular label's centre, matching the Rive text node (group-relative y 1). */
         const val NETWORK_SLOT_Y = 1f
         const val NETWORK_FONT_SIZE = 30f
-
-        /**
-         * The percentage's centre in the ring's top gap. The Rive text node spans y -60..-18 about the
-         * ring centre, so its centre is -39; drawing there keeps the digits above the middle-slot icon.
-         */
-        const val PERCENT_SLOT_Y = -39f
 
         /**
          * The DND crescent, generated from the device's own `drawable/stat_sys_dnd` by

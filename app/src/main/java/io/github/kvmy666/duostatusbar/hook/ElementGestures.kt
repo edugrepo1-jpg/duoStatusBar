@@ -64,21 +64,15 @@ internal class ElementGestures(private val context: Context) {
      * detector at all: feeding it would start a gesture whose UP is then skipped, so the detector would
      * sit on the press and fire a long press (power saving) on a tap somewhere else entirely.
      */
-    fun handle(event: MotionEvent, elementView: View?): Boolean {
+    fun handle(event: MotionEvent, elementView: View?): Boolean =
+        handle(event, listOfNotNull(elementView))
+
+    /** Same as [handle], for every view that is part of the element (the ring and, when split, the icons). */
+    fun handle(event: MotionEvent, views: List<View>): Boolean {
         val gestureDetector = detector ?: return false
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                val view = elementView ?: return false
-                val location = IntArray(2)
-                try {
-                    view.getLocationOnScreen(location)
-                } catch (_: Throwable) {
-                    return false
-                }
-                val left = location[0]
-                val top = location[1]
-                active = event.rawX >= left && event.rawX <= left + view.width &&
-                    event.rawY >= top && event.rawY <= top + view.height
+                active = views.any { hit(event, it) }
                 if (!active) return false
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -93,5 +87,18 @@ internal class ElementGestures(private val context: Context) {
             L.w("element touch: ${t.javaClass.simpleName}: ${t.message}")
             false
         }
+    }
+
+    private fun hit(event: MotionEvent, view: View): Boolean {
+        val location = IntArray(2)
+        try {
+            view.getLocationOnScreen(location)
+        } catch (_: Throwable) {
+            return false
+        }
+        val left = location[0]
+        val top = location[1]
+        return event.rawX >= left && event.rawX <= left + view.width &&
+            event.rawY >= top && event.rawY <= top + view.height
     }
 }

@@ -14,6 +14,7 @@ import android.hardware.display.DisplayManager
 import android.os.PowerManager
 import android.view.Display
 import io.github.kvmy666.duostatusbar.L
+import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 
 /**
  * Watches the state the Duo element shows and pushes it into the drawing.
@@ -366,7 +367,11 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                     wifiConnected = wifiActive && wifiValidated && wifiLevel > 0,
                     networkText = networkText,
                     animateCharge = host.chargingEnabled,
-                    networkOnly = host.networkOnly
+                    showAirplane = host.showAirplane,
+                    showDnd = host.showDnd,
+                    dndDots = host.dndMode == DuoPrefs.DND_DOTS,
+                    percentHeight = host.percentHeight,
+                    wifiDots = host.wifiDots
                 )
             host.render(visual)
         } catch (t: Throwable) {

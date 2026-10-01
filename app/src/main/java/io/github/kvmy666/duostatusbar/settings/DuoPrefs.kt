@@ -1,6 +1,7 @@
 package io.github.kvmy666.duostatusbar.settings
 
 import android.content.Context
+import android.content.res.Configuration
 import android.provider.Settings
 
 /**
@@ -35,6 +36,18 @@ data class DuoSettings(
     val sizePercent: Int = 100,
     /** FR-17: horizontal nudge inside the slot, in dp, from the drag editor. */
     val offsetX: Int = 0,
+    /**
+     * How far the battery percentage is raised. 0 is the original seat in the ring's top gap;
+     * 100 is fully raised, clear of a center punch-hole. The ring does not move.
+     */
+    val percentHeight: Int = 100,
+    /**
+     * When true, the icons that sit inside the ring (Wi-Fi, airplane, Do Not Disturb) are
+     * drawn beside it instead, so the ring can stay on a camera cutout. Off is the original element.
+     */
+    val splitIndicators: Boolean = false,
+    /** Horizontal nudge for that icon cluster, in dp. Independent of [offsetX], which moves the ring. */
+    val indicatorsOffsetX: Int = 0,
     /**
      * Whether a size/position change reaches the running status bar immediately. Off means the value
      * is saved but only applied on the next start (the Restart System UI button), which is the safe
@@ -79,18 +92,53 @@ data class DuoSettings(
      */
     val hideOtherIcons: Boolean = false,
     /**
-     * FR-06: keep the middle slot to the network icons only — the Wi-Fi glyph and the 5G/4G label — and
-     * never show Do Not Disturb or Airplane there. Off is the original behaviour (airplane > DND > Wi-Fi >
-     * generation). On, the slot follows the connection only, so the ring stays quiet about DND and
-     * airplane mode.
+     * Whether Airplane mode may replace Wi-Fi and the 5G/4G label in the middle of the ring.
+     * On by default, which is the original priority.
      */
-    val networkOnly: Boolean = false,
+    val showAirplane: Boolean = true,
+    /**
+     * How Do Not Disturb is drawn while it is on. [DND_MIDDLE] puts the moon in the ring,
+     * [DND_DOTS] turns the four signal dots into that same moon, and [DND_OFF] shows neither.
+     * Independent of [showAirplane].
+     */
+    val dndMode: String = "middle",
     /**
      * Which cellular line the four spheres show on a dual-SIM phone: `"auto"` (the default data line),
      * `"sim1"` or `"sim2"`. Single-SIM phones ignore it.
      */
-    val simChoice: String = "auto"
+    val simChoice: String = "auto",
+    /**
+     * When true, the four signal dots stay cellular while airplane mode is off. In airplane mode
+     * they show Wi-Fi strength, and they disappear if Wi-Fi is off too.
+     */
+    val wifiDots: Boolean = false,
+    /**
+     * How much of the icon's width stays in the status-bar strip, as a percent.
+     * 100 keeps the slot that sits between the screen edge and icons Duo does not replace
+     * (sound, vibrate, alarm). 0 gives that space back so those icons sit on the edge.
+     * The drawing does not move; only the empty slot shrinks.
+     */
+    val edgePadding: Int = 100
 )
+
+/**
+ * Which copy of [DuoSettings] is in force. Portrait and landscape are stored apart; the phone's current
+ * orientation picks the copy the settings screen edits and the copy the status bar draws.
+ *
+ * Anything that is not a [DuoSettings] field (update checks, the Shizuku icon blacklist) stays one value
+ * for the whole phone — those are not part of the element.
+ */
+enum class DuoOrientation {
+    PORTRAIT,
+    LANDSCAPE;
+
+    companion object {
+        fun of(orientation: Int): DuoOrientation =
+            if (orientation == Configuration.ORIENTATION_LANDSCAPE) LANDSCAPE else PORTRAIT
+
+        fun of(context: Context): DuoOrientation = of(context.resources.configuration.orientation)
+    }
+}
 
 object DuoPrefs {
 
@@ -110,6 +158,9 @@ object DuoPrefs {
     const val COL_SHOW_PERCENT = "show_percent"
     const val COL_SIZE_PERCENT = "size_percent"
     const val COL_OFFSET_X = "offset_x"
+    const val COL_PERCENT_HEIGHT = "percent_height"
+    const val COL_SPLIT_INDICATORS = "split_indicators"
+    const val COL_INDICATORS_OFFSET_X = "indicators_offset_x"
     const val COL_LIVE_APPLY = "live_apply"
     const val COL_CLOCK_FONT = "clock_font"
     const val COL_REVISION = "revision"
@@ -124,16 +175,55 @@ object DuoPrefs {
     const val COL_ICON_COLOR = "icon_color"
     const val COL_HIDE_OTHER_ICONS = "hide_other_icons"
     const val COL_NETWORK_ONLY = "network_only"
-    const val COL_SIM_CHOICE = "sim_choice"
+    const val COL_SHOW_AIRPLANE = "show_airplane"
+    const val COL_SHOW_DND = "show_dnd"
+    /** "off", "middle", or "dots". Missing means the older [COL_SHOW_DND] switch. */
+    const val COL_DND_MODE = "dnd_mode"
 
-    /** The column set the module expects; kept in one place so both sides cannot drift. */
-    val COLUMNS = arrayOf(
+    /** Do Not Disturb is not drawn. */
+    const val DND_OFF = "off"
+    /** The moon replaces the middle of the ring. The original behaviour. */
+    const val DND_MIDDLE = "middle"
+    /** The four signal dots become moons and the middle of the ring is left alone. */
+    const val DND_DOTS = "dots"
+
+    /** A stored mode this build understands. Anything else is the original middle moon. */
+    fun normalizeDndMode(raw: String?): String = when (raw) {
+        DND_OFF, DND_MIDDLE, DND_DOTS -> raw
+        else -> DND_MIDDLE
+    }
+
+    /** True when Do Not Disturb may take the middle of the ring. */
+    fun dndInMiddle(mode: String): Boolean = mode == DND_MIDDLE
+    const val COL_SIM_CHOICE = "sim_choice"
+    const val COL_WIFI_DOTS = "wifi_dots"
+    const val COL_EDGE_PADDING = "edge_padding"
+
+    /** Prefixed onto every landscape column. Portrait keeps the original names, so old installs stay put. */
+    const val LAND_PREFIX = "land_"
+
+    /**
+     * The portrait columns, in the order a module has always read them. Landscape repeats this list
+     * (except [COL_REVISION], which is shared) under [LAND_PREFIX].
+     */
+    val PORTRAIT_COLUMNS = arrayOf(
         COL_ENABLED, COL_USE_RIVE, COL_SHOW_PERCENT, COL_SIZE_PERCENT, COL_OFFSET_X,
         COL_LIVE_APPLY, COL_CLOCK_FONT, COL_REVISION,
         COL_TAP, COL_DOUBLE_TAP, COL_LONG_PRESS, COL_REVEAL_MS,
         COL_ANIMATIONS, COL_ARRIVAL, COL_DEPARTURE, COL_CHARGING,
-        COL_ICON_COLOR, COL_HIDE_OTHER_ICONS, COL_NETWORK_ONLY, COL_SIM_CHOICE
+        COL_ICON_COLOR, COL_HIDE_OTHER_ICONS, COL_NETWORK_ONLY, COL_SIM_CHOICE,
+        COL_PERCENT_HEIGHT, COL_SPLIT_INDICATORS, COL_INDICATORS_OFFSET_X,
+        COL_WIFI_DOTS, COL_SHOW_AIRPLANE, COL_SHOW_DND, COL_EDGE_PADDING, COL_DND_MODE
     )
+
+    /** Landscape columns appended after [PORTRAIT_COLUMNS]. An older module ignores names it does not know. */
+    val LANDSCAPE_COLUMNS: Array<String> = PORTRAIT_COLUMNS
+        .filter { it != COL_REVISION }
+        .map { LAND_PREFIX + it }
+        .toTypedArray()
+
+    /** The column set the module expects; kept in one place so both sides cannot drift. */
+    val COLUMNS: Array<String> = PORTRAIT_COLUMNS + LANDSCAPE_COLUMNS
 
     private const val PREFS = "duo_settings"
     private const val KEY_REVISION = "revision"
@@ -145,60 +235,117 @@ object DuoPrefs {
     private const val KEY_CHECK_UPDATES = "check_updates"
     private const val KEY_UPDATE_NOTIFIED = "update_notified"
     private const val KEY_LOG_SENT_AT = "log_sent_at"
+    /** Set the first time landscape is saved. Until then landscape reads as a copy of portrait. */
+    private const val KEY_LANDSCAPE_SET = "landscape_set"
     private const val HISTORY_LIMIT = 20
 
-    fun read(context: Context): DuoSettings {
-        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        return DuoSettings(
-            enabled = p.getBoolean(COL_ENABLED, false),
-            useRive = p.getBoolean(COL_USE_RIVE, true),
-            showPercent = p.getBoolean(COL_SHOW_PERCENT, true),
-            sizePercent = p.getInt(COL_SIZE_PERCENT, 100),
-            offsetX = p.getInt(COL_OFFSET_X, 0),
-            liveApply = p.getBoolean(COL_LIVE_APPLY, true),
-            systemClockFont = p.getBoolean(COL_CLOCK_FONT, true),
-            revealMs = nearestReveal(p.getInt(COL_REVEAL_MS, DEFAULT_REVEAL_MS)),
-            animationsEnabled = p.getBoolean(COL_ANIMATIONS, true),
-            arrivalEnabled = p.getBoolean(COL_ARRIVAL, true),
-            departureEnabled = p.getBoolean(COL_DEPARTURE, true),
-            chargingEnabled = p.getBoolean(COL_CHARGING, true),
-            tapAction = p.getString(COL_TAP, "no_action") ?: "no_action",
-            doubleTapAction = p.getString(COL_DOUBLE_TAP, "no_action") ?: "no_action",
-            longPressAction = p.getString(COL_LONG_PRESS, "no_action") ?: "no_action",
-            iconColor = p.getString(COL_ICON_COLOR, "auto") ?: "auto",
-            hideOtherIcons = p.getBoolean(COL_HIDE_OTHER_ICONS, false),
-            networkOnly = p.getBoolean(COL_NETWORK_ONLY, false),
-            simChoice = p.getString(COL_SIM_CHOICE, "auto") ?: "auto"
-        )
+    private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    private fun prefix(orientation: DuoOrientation): String =
+        if (orientation == DuoOrientation.LANDSCAPE) LAND_PREFIX else ""
+
+    /**
+     * The settings for [orientation]. Defaults to the phone's current orientation, which is what the
+     * settings screen edits. Landscape that has never been saved returns the portrait copy, so rotating
+     * for the first time does not jump back to factory defaults.
+     */
+    fun read(context: Context, orientation: DuoOrientation = DuoOrientation.of(context)): DuoSettings {
+        val p = prefs(context)
+        if (orientation == DuoOrientation.LANDSCAPE && !p.getBoolean(KEY_LANDSCAPE_SET, false)) {
+            return readStored(p, prefix(DuoOrientation.PORTRAIT))
+        }
+        return readStored(p, prefix(orientation))
     }
 
-    /** Writes the settings and bumps the revision the module compares against. Returns the new revision. */
-    fun write(context: Context, settings: DuoSettings): Long {
-        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private fun readStored(p: android.content.SharedPreferences, prefix: String): DuoSettings = DuoSettings(
+        enabled = p.getBoolean(prefix + COL_ENABLED, false),
+        useRive = p.getBoolean(prefix + COL_USE_RIVE, true),
+        showPercent = p.getBoolean(prefix + COL_SHOW_PERCENT, true),
+        sizePercent = p.getInt(prefix + COL_SIZE_PERCENT, 100),
+        offsetX = p.getInt(prefix + COL_OFFSET_X, 0),
+        percentHeight = p.getInt(prefix + COL_PERCENT_HEIGHT, DEFAULT_PERCENT_HEIGHT),
+        splitIndicators = p.getBoolean(prefix + COL_SPLIT_INDICATORS, false),
+        indicatorsOffsetX = p.getInt(prefix + COL_INDICATORS_OFFSET_X, 0),
+        liveApply = p.getBoolean(prefix + COL_LIVE_APPLY, true),
+        systemClockFont = p.getBoolean(prefix + COL_CLOCK_FONT, true),
+        revealMs = nearestReveal(p.getInt(prefix + COL_REVEAL_MS, DEFAULT_REVEAL_MS)),
+        animationsEnabled = p.getBoolean(prefix + COL_ANIMATIONS, true),
+        arrivalEnabled = p.getBoolean(prefix + COL_ARRIVAL, true),
+        departureEnabled = p.getBoolean(prefix + COL_DEPARTURE, true),
+        chargingEnabled = p.getBoolean(prefix + COL_CHARGING, true),
+        tapAction = p.getString(prefix + COL_TAP, "no_action") ?: "no_action",
+        doubleTapAction = p.getString(prefix + COL_DOUBLE_TAP, "no_action") ?: "no_action",
+        longPressAction = p.getString(prefix + COL_LONG_PRESS, "no_action") ?: "no_action",
+        iconColor = p.getString(prefix + COL_ICON_COLOR, "auto") ?: "auto",
+        hideOtherIcons = p.getBoolean(prefix + COL_HIDE_OTHER_ICONS, false),
+        // The old "network icons only" switch hid both statuses. A phone that still has only that
+        // key keeps both out of the slot; once either new key is saved, it speaks for itself.
+        showAirplane = p.getBoolean(prefix + COL_SHOW_AIRPLANE, !p.getBoolean(prefix + COL_NETWORK_ONLY, false)),
+        dndMode = p.getString(prefix + COL_DND_MODE, null)?.let { normalizeDndMode(it) }
+            ?: if (p.getBoolean(prefix + COL_SHOW_DND, !p.getBoolean(prefix + COL_NETWORK_ONLY, false))) {
+                DND_MIDDLE
+            } else {
+                DND_OFF
+            },
+        simChoice = p.getString(prefix + COL_SIM_CHOICE, "auto") ?: "auto",
+        wifiDots = p.getBoolean(prefix + COL_WIFI_DOTS, false),
+        edgePadding = p.getInt(prefix + COL_EDGE_PADDING, DEFAULT_EDGE_PADDING)
+    )
+
+    /** Writes the settings for [orientation] and bumps the revision the module compares against. */
+    fun write(
+        context: Context,
+        settings: DuoSettings,
+        orientation: DuoOrientation = DuoOrientation.of(context)
+    ): Long {
+        val p = prefs(context)
         val next = revision(context) + 1
-        p.edit()
-            .putBoolean(COL_ENABLED, settings.enabled)
-            .putBoolean(COL_USE_RIVE, settings.useRive)
-            .putBoolean(COL_SHOW_PERCENT, settings.showPercent)
-            .putInt(COL_SIZE_PERCENT, settings.sizePercent.coerceIn(MIN_SIZE, MAX_SIZE))
-            .putInt(COL_OFFSET_X, settings.offsetX.coerceIn(-MAX_OFFSET, MAX_OFFSET))
-            .putBoolean(COL_LIVE_APPLY, settings.liveApply)
-            .putBoolean(COL_CLOCK_FONT, settings.systemClockFont)
-            .putInt(COL_REVEAL_MS, nearestReveal(settings.revealMs))
-            .putBoolean(COL_ANIMATIONS, settings.animationsEnabled)
-            .putBoolean(COL_ARRIVAL, settings.arrivalEnabled)
-            .putBoolean(COL_DEPARTURE, settings.departureEnabled)
-            .putBoolean(COL_CHARGING, settings.chargingEnabled)
-            .putString(COL_TAP, settings.tapAction)
-            .putString(COL_DOUBLE_TAP, settings.doubleTapAction)
-            .putString(COL_LONG_PRESS, settings.longPressAction)
-            .putString(COL_ICON_COLOR, settings.iconColor)
-            .putBoolean(COL_HIDE_OTHER_ICONS, settings.hideOtherIcons)
-            .putBoolean(COL_NETWORK_ONLY, settings.networkOnly)
-            .putString(COL_SIM_CHOICE, settings.simChoice)
-            .putLong(KEY_REVISION, next)
-            .apply()
+        val clamped = settings.copy(
+            sizePercent = settings.sizePercent.coerceIn(MIN_SIZE, MAX_SIZE),
+            offsetX = settings.offsetX.coerceIn(-MAX_OFFSET, MAX_OFFSET),
+            percentHeight = settings.percentHeight.coerceIn(MIN_PERCENT_HEIGHT, MAX_PERCENT_HEIGHT),
+            indicatorsOffsetX = settings.indicatorsOffsetX.coerceIn(-MAX_OFFSET, MAX_OFFSET),
+            edgePadding = settings.edgePadding.coerceIn(MIN_EDGE_PADDING, MAX_EDGE_PADDING),
+            revealMs = nearestReveal(settings.revealMs),
+            dndMode = normalizeDndMode(settings.dndMode)
+        )
+        val editor = p.edit()
+        editor.writeFields(prefix(orientation), clamped)
+        if (orientation == DuoOrientation.LANDSCAPE) editor.putBoolean(KEY_LANDSCAPE_SET, true)
+        editor.putLong(KEY_REVISION, next).apply()
         return next
+    }
+
+    private fun android.content.SharedPreferences.Editor.writeFields(prefix: String, settings: DuoSettings) {
+        putBoolean(prefix + COL_ENABLED, settings.enabled)
+        putBoolean(prefix + COL_USE_RIVE, settings.useRive)
+        putBoolean(prefix + COL_SHOW_PERCENT, settings.showPercent)
+        putInt(prefix + COL_SIZE_PERCENT, settings.sizePercent)
+        putInt(prefix + COL_OFFSET_X, settings.offsetX)
+        putInt(prefix + COL_PERCENT_HEIGHT, settings.percentHeight)
+        putBoolean(prefix + COL_SPLIT_INDICATORS, settings.splitIndicators)
+        putInt(prefix + COL_INDICATORS_OFFSET_X, settings.indicatorsOffsetX)
+        putBoolean(prefix + COL_LIVE_APPLY, settings.liveApply)
+        putBoolean(prefix + COL_CLOCK_FONT, settings.systemClockFont)
+        putInt(prefix + COL_REVEAL_MS, settings.revealMs)
+        putBoolean(prefix + COL_ANIMATIONS, settings.animationsEnabled)
+        putBoolean(prefix + COL_ARRIVAL, settings.arrivalEnabled)
+        putBoolean(prefix + COL_DEPARTURE, settings.departureEnabled)
+        putBoolean(prefix + COL_CHARGING, settings.chargingEnabled)
+        putString(prefix + COL_TAP, settings.tapAction)
+        putString(prefix + COL_DOUBLE_TAP, settings.doubleTapAction)
+        putString(prefix + COL_LONG_PRESS, settings.longPressAction)
+        putString(prefix + COL_ICON_COLOR, settings.iconColor)
+        putBoolean(prefix + COL_HIDE_OTHER_ICONS, settings.hideOtherIcons)
+        // Kept so a module that predates the two switches still hides both when neither is allowed
+        // in the middle. Dots mode does not take that place, so it counts as Do Not Disturb off here.
+        putBoolean(prefix + COL_NETWORK_ONLY, !settings.showAirplane && !dndInMiddle(settings.dndMode))
+        putBoolean(prefix + COL_SHOW_AIRPLANE, settings.showAirplane)
+        putBoolean(prefix + COL_SHOW_DND, dndInMiddle(settings.dndMode))
+        putString(prefix + COL_DND_MODE, settings.dndMode)
+        putString(prefix + COL_SIM_CHOICE, settings.simChoice)
+        putBoolean(prefix + COL_WIFI_DOTS, settings.wifiDots)
+        putInt(prefix + COL_EDGE_PADDING, settings.edgePadding)
     }
 
     fun revision(context: Context): Long =
@@ -343,5 +490,15 @@ object DuoPrefs {
 
     const val MIN_SIZE = 60
     const val MAX_SIZE = 200
-    const val MAX_OFFSET = 40
+    const val MAX_OFFSET = 200
+
+    /** 0 keeps the percentage in its original seat; 100 raises it by the full punch-hole clearance. */
+    const val MIN_PERCENT_HEIGHT = 0
+    const val MAX_PERCENT_HEIGHT = 100
+    const val DEFAULT_PERCENT_HEIGHT = 100
+
+    /** 100 keeps the icon's full slot. 0 lets the other status icons sit against the screen edge. */
+    const val MIN_EDGE_PADDING = 0
+    const val MAX_EDGE_PADDING = 100
+    const val DEFAULT_EDGE_PADDING = 100
 }

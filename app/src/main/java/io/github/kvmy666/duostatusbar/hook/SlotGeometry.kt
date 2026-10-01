@@ -35,6 +35,15 @@ internal class SlotGeometry(private val context: Context, private val rom: RomAd
         slotBasePx = basePx
     }
 
+    /**
+     * Switches to a size that was already saved for another orientation. The slot base stays the one
+     * captured at attach — re-measuring it after the stock icons are hidden reads 0 and would resize
+     * from the wrong width.
+     */
+    fun applySize(sizePercent: Int) {
+        appliedSize = sizePercent
+    }
+
     /** Forgets the captured values (teardown). */
     fun reset() {
         appliedSize = 0
@@ -92,4 +101,17 @@ internal class SlotGeometry(private val context: Context, private val rom: RomAd
         val stripCenter = location[1] + container.height / 2f
         return height / 2f - stripCenter
     }
+}
+
+/**
+ * Margin that leaves [paddingPercent] of [sidePx] in the icon strip.
+ *
+ * 100 keeps the view's full width, which is the slot between the screen edge and the icons Duo does
+ * not replace. 0 returns that width to the strip. The result is zero or negative: a negative start
+ * margin overlaps the previous icon without moving this view's end edge.
+ */
+internal fun edgeInsetPx(sidePx: Int, paddingPercent: Int): Int {
+    if (sidePx <= 0) return 0
+    val percent = paddingPercent.coerceIn(0, 100)
+    return sidePx * percent / 100 - sidePx
 }

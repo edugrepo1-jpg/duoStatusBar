@@ -139,10 +139,11 @@ internal object Diag {
             settings?.let {
                 appendLine("  settings: enabled=${it.enabled} useRive=${it.useRive} showPercent=${it.showPercent}")
                 appendLine("    size=${it.sizePercent}% offset=${it.offsetX}dp live=${it.liveApply} rev=${it.revision}")
+                appendLine("    split=${it.splitIndicators} iconsOffset=${it.indicatorsOffsetX}dp edge=${it.edgePadding}%")
                 appendLine("    animations=${it.animationsEnabled} arrival=${it.arrivalEnabled} " +
                         "departure=${it.departureEnabled} charging=${it.chargingEnabled}")
                 appendLine("    clockFont=${it.systemClockFont} revealMs=${it.revealMs} " +
-                        "networkOnly=${it.networkOnly}")
+                        "showAirplane=${it.showAirplane} dndMode=${it.dndMode} wifiDots=${it.wifiDots}")
             }
         }
     } catch (t: Throwable) {

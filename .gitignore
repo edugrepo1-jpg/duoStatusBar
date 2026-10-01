@@ -56,6 +56,8 @@ Thumbs.db
 desktop.ini
 __pycache__/
 *.pyc
+.DS_Store
+mise.toml
 
 # build error logs
 *.err

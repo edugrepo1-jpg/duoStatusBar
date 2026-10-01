@@ -50,7 +50,7 @@ object DuoBinder {
     val REVEAL_CHOICES = intArrayOf(500, 750, 1000, 1250, 1500)
 
     /** Number of properties a complete snapshot writes — used to report partial failures. */
-    const val PROPERTY_COUNT = 19
+    const val PROPERTY_COUNT = 32
 
     private const val REVEAL_MS = "revealMs"
     private const val PERCENT_TEXT = "percentText"
@@ -77,6 +77,12 @@ object DuoBinder {
             "rightArc" to v.rightArc,
             "trackOpacity" to v.trackOpacity,
             "percentFontSize" to v.percentFontSize,
+            // Top of the percentage text box.  -60 is the original seat; more negative raises it.
+            "percentY" to v.percentY,
+            // Which group this view draws. Both are 1 for the original element; a split layout
+            // runs two views of the same file and each one hides the other's group.
+            "ringOpacity" to v.ringOpacity,
+            "indicatorsOpacity" to v.indicatorsOpacity,
             // Wi-Fi is a Rive blend layer (one axis); the cellular spheres are bound per sphere so the
             // dual-SIM split can drive a pair per line.
             "wifiLevel" to v.wifiLevel.toFloat(),
@@ -84,6 +90,19 @@ object DuoBinder {
             "cell2Opacity" to v.cell2Opacity,
             "cell3Opacity" to v.cell3Opacity,
             "cell4Opacity" to v.cell4Opacity,
+            // A strong bar's gray dot fills into this crescent. The scale grows with the opacity,
+            // so a fill written as intermediate opacities is also a growing moon. 0 keeps the circle.
+            "moon1Opacity" to v.moon1Opacity,
+            "moon2Opacity" to v.moon2Opacity,
+            "moon3Opacity" to v.moon3Opacity,
+            "moon4Opacity" to v.moon4Opacity,
+            "moon1Scale" to v.moon1Opacity * DotMoonMotion.DOT_SCALE,
+            "moon2Scale" to v.moon2Opacity * DotMoonMotion.DOT_SCALE,
+            "moon3Scale" to v.moon3Opacity * DotMoonMotion.DOT_SCALE,
+            "moon4Scale" to v.moon4Opacity * DotMoonMotion.DOT_SCALE,
+            // The one moon left in the middle of the row when the four dots are fully hidden.
+            "centerMoonOpacity" to v.centerMoonOpacity,
+            "centerMoonScale" to v.centerMoonOpacity * DotMoonMotion.DOT_SCALE,
             // The whole middle-slot hand-over is one Rive layer; this only says which occupant.
             "middleMode" to v.middleMode.toFloat()
         )

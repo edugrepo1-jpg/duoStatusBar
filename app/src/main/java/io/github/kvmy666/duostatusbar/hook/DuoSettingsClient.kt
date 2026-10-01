@@ -1,6 +1,8 @@
 package io.github.kvmy666.duostatusbar.hook
 
 import android.content.Context
+import android.content.res.Configuration
+import android.database.Cursor
 import android.net.Uri
 import android.os.Bundle
 import io.github.kvmy666.duostatusbar.L
@@ -37,11 +39,35 @@ internal data class ModuleSettings(
     val iconColor: String,
     /** False leaves the icons Duo does not replace (silent, vibrate, alarm…) visible. */
     val hideOtherIcons: Boolean,
-    /** True keeps the middle slot to Wi-Fi + 5G/4G and never shows DND or airplane there. */
-    val networkOnly: Boolean,
+    /** Whether Airplane mode may take the middle slot. Wi-Fi and 5G/4G stay eligible either way. */
+    val showAirplane: Boolean,
+    /**
+     * How Do Not Disturb is drawn while it is on: "off", "middle", or "dots".
+     * "middle" is the moon in the ring. "dots" turns the signal dots into that moon.
+     */
+    val dndMode: String,
     /** Which cellular line the spheres show on a dual-SIM phone: "auto", "sim1" or "sim2". */
-    val simChoice: String
+    val simChoice: String,
+    /** 0 is the original percentage seat; 100 is fully raised, clear of a center punch-hole. */
+    val percentHeight: Int,
+    /** True draws the inner icons beside the ring, each with its own place. */
+    val splitIndicators: Boolean,
+    /** Horizontal nudge for that icon cluster, in dp. The ring keeps [offsetX]. */
+    val indicatorsOffsetX: Int,
+    /**
+     * When true, airplane mode turns the four spheres into Wi-Fi strength. They stay cellular
+     * while airplane mode is off, and they disappear in airplane mode with Wi-Fi off.
+     */
+    val wifiDots: Boolean,
+    /**
+     * Percent of the icon's width kept in the strip. 100 is the full slot; 0 lets the other
+     * status icons sit against the screen edge.
+     */
+    val edgePadding: Int
 ) {
+    /** Whether Do Not Disturb may take the middle of the ring. */
+    val showDnd: Boolean get() = DuoPrefs.dndInMiddle(dndMode)
+
     companion object {
         val DEFAULT = ModuleSettings(
             enabled = false,
@@ -62,8 +88,14 @@ internal data class ModuleSettings(
             chargingEnabled = true,
             iconColor = "auto",
             hideOtherIcons = false,
-            networkOnly = false,
-            simChoice = "auto"
+            showAirplane = true,
+            dndMode = DuoPrefs.DND_MIDDLE,
+            simChoice = "auto",
+            percentHeight = DuoPrefs.DEFAULT_PERCENT_HEIGHT,
+            splitIndicators = false,
+            indicatorsOffsetX = 0,
+            wifiDots = false,
+            edgePadding = DuoPrefs.DEFAULT_EDGE_PADDING
         )
     }
 }
@@ -71,6 +103,54 @@ internal data class ModuleSettings(
 internal object DuoSettingsClient {
 
     private const val TAG = "DuoSB"
+
+    /**
+     * Orientation reported by the status-bar window's own configuration change. Resources on the
+     * application context can lag that callback, so a read during the swap trusts this when it is set.
+     */
+    @Volatile
+    private var forcedOrientation: Int = Configuration.ORIENTATION_UNDEFINED
+
+    fun useOrientation(orientation: Int) {
+        if (orientation == Configuration.ORIENTATION_PORTRAIT ||
+            orientation == Configuration.ORIENTATION_LANDSCAPE
+        ) {
+            forcedOrientation = orientation
+        }
+    }
+
+    private fun effectiveOrientation(context: Context): Int {
+        val forced = forcedOrientation
+        return if (forced == Configuration.ORIENTATION_PORTRAIT ||
+            forced == Configuration.ORIENTATION_LANDSCAPE
+        ) {
+            forced
+        } else {
+            context.resources.configuration.orientation
+        }
+    }
+
+    /**
+     * A column added after a module is already running. Missing means the older default, so a
+     * settings app that has not been updated yet cannot blank the status bar.
+     */
+    private fun Cursor.optionalInt(column: String, fallback: Int = 0): Int {
+        val index = getColumnIndex(column)
+        return if (index < 0) fallback else getInt(index)
+    }
+
+    /** A column the running settings app may not publish yet. Missing keeps [fallback]. */
+    private fun Cursor.optionalBool(column: String, fallback: Boolean): Boolean {
+        val index = getColumnIndex(column)
+        return if (index < 0) fallback else getInt(index) == 1
+    }
+
+    /** A string column the running settings app may not publish yet. Missing keeps [fallback]. */
+    private fun Cursor.optionalString(column: String, fallback: String): String {
+        val index = getColumnIndex(column)
+        if (index < 0) return fallback
+        return getString(index) ?: fallback
+    }
 
     /** Sent by the app after a write, so the module re-reads without polling (NFR-2). */
     const val ACTION_SETTINGS_CHANGED = "io.github.kvmy666.duostatusbar.SETTINGS_CHANGED"
@@ -90,6 +170,7 @@ internal object DuoSettingsClient {
 
     fun read(context: Context): ModuleSettings = try {
         val started = android.os.SystemClock.elapsedRealtime()
+        val orientation = effectiveOrientation(context)
         val cursor = context.contentResolver.query(uri, null, null, null, null)
         if (cursor == null) {
             // A provider that answers always returns a row (see DuoSettingsProvider), so a null cursor is
@@ -106,28 +187,7 @@ internal object DuoSettingsClient {
                     ModuleSettings.DEFAULT
                 } else {
                     rowRead = true
-                    ModuleSettings(
-                        enabled = c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_ENABLED)) == 1,
-                        useRive = c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_USE_RIVE)) == 1,
-                        showPercent = c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_SHOW_PERCENT)) == 1,
-                        sizePercent = c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_SIZE_PERCENT)),
-                        offsetX = c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_OFFSET_X)),
-                        liveApply = c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_LIVE_APPLY)) == 1,
-                        systemClockFont = c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_CLOCK_FONT)) == 1,
-                        revealMs = DuoPrefs.nearestReveal(c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_REVEAL_MS))),
-                        revision = c.getLong(c.getColumnIndexOrThrow(DuoPrefs.COL_REVISION)),
-                        tapAction = c.getString(c.getColumnIndexOrThrow(DuoPrefs.COL_TAP)) ?: "no_action",
-                        doubleTapAction = c.getString(c.getColumnIndexOrThrow(DuoPrefs.COL_DOUBLE_TAP)) ?: "no_action",
-                        longPressAction = c.getString(c.getColumnIndexOrThrow(DuoPrefs.COL_LONG_PRESS)) ?: "no_action",
-                        animationsEnabled = c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_ANIMATIONS)) == 1,
-                        arrivalEnabled = c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_ARRIVAL)) == 1,
-                        departureEnabled = c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_DEPARTURE)) == 1,
-                        chargingEnabled = c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_CHARGING)) == 1,
-                        iconColor = c.getString(c.getColumnIndexOrThrow(DuoPrefs.COL_ICON_COLOR)) ?: "auto",
-                        hideOtherIcons = c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_HIDE_OTHER_ICONS)) == 1,
-                        networkOnly = c.getInt(c.getColumnIndexOrThrow(DuoPrefs.COL_NETWORK_ONLY)) == 1,
-                        simChoice = c.getString(c.getColumnIndexOrThrow(DuoPrefs.COL_SIM_CHOICE)) ?: "auto"
-                    )
+                    fromCursor(c, orientation)
                 }
             }
             providerUnreachable = !rowRead
@@ -136,7 +196,8 @@ internal object DuoSettingsClient {
             } else {
                 // Logged because this is a synchronous binder call from System UI's boot path: if it is
                 // ever slow, it is slow there, and that deserves a number rather than a guess.
-                L.i("settings read in ${android.os.SystemClock.elapsedRealtime() - started} ms (rev ${result.revision})")
+                val which = if (orientation == Configuration.ORIENTATION_LANDSCAPE) "landscape" else "portrait"
+                L.i("settings read in ${android.os.SystemClock.elapsedRealtime() - started} ms (rev ${result.revision}, $which)")
             }
             result
         }
@@ -144,6 +205,149 @@ internal object DuoSettingsClient {
         providerUnreachable = true
         L.w("settings unreadable (${t.javaClass.simpleName}: ${t.message}) - using defaults")
         ModuleSettings.DEFAULT
+    }
+
+    /**
+     * True when the orientation that is *not* current has the element switched on.
+     *
+     * Boot in the off orientation would otherwise install nothing, and a later rotation would have no
+     * hook to apply the other set. A missing landscape column counts as the portrait value, which is
+     * what an older settings app publishes.
+     */
+    fun otherOrientationEnabled(context: Context): Boolean = try {
+        val landscapeNow = effectiveOrientation(context) == Configuration.ORIENTATION_LANDSCAPE
+        val column = if (landscapeNow) DuoPrefs.COL_ENABLED else DuoPrefs.LAND_PREFIX + DuoPrefs.COL_ENABLED
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            if (!cursor.moveToFirst()) return false
+            val index = cursor.getColumnIndex(column)
+            val resolved = if (index >= 0) index else cursor.getColumnIndexOrThrow(DuoPrefs.COL_ENABLED)
+            cursor.getInt(resolved) == 1
+        } ?: false
+    } catch (t: Throwable) {
+        L.w("other orientation unreadable (${t.javaClass.simpleName}: ${t.message})")
+        false
+    }
+
+    /**
+     * Picks [orientation]'s set out of a provider row. Landscape columns that are absent (an older
+     * settings app) fall back to the portrait set, so a missing column cannot blank the bar.
+     */
+    internal fun fromCursor(cursor: Cursor, orientation: Int): ModuleSettings {
+        val portrait = portraitSettings(cursor)
+        val chosen = if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            cursor.landscapeSettings(portrait)
+        } else {
+            portrait
+        }
+        return chosen
+    }
+
+    private fun portraitSettings(cursor: Cursor): ModuleSettings {
+        val legacyMiddle = cursor.optionalBool(
+            DuoPrefs.COL_SHOW_DND,
+            cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_NETWORK_ONLY)) != 1
+        )
+        return ModuleSettings(
+        enabled = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_ENABLED)) == 1,
+        useRive = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_USE_RIVE)) == 1,
+        showPercent = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_SHOW_PERCENT)) == 1,
+        sizePercent = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_SIZE_PERCENT)),
+        offsetX = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_OFFSET_X)),
+        liveApply = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_LIVE_APPLY)) == 1,
+        systemClockFont = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_CLOCK_FONT)) == 1,
+        revealMs = DuoPrefs.nearestReveal(cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_REVEAL_MS))),
+        revision = cursor.getLong(cursor.getColumnIndexOrThrow(DuoPrefs.COL_REVISION)),
+        tapAction = cursor.getString(cursor.getColumnIndexOrThrow(DuoPrefs.COL_TAP)) ?: "no_action",
+        doubleTapAction = cursor.getString(cursor.getColumnIndexOrThrow(DuoPrefs.COL_DOUBLE_TAP)) ?: "no_action",
+        longPressAction = cursor.getString(cursor.getColumnIndexOrThrow(DuoPrefs.COL_LONG_PRESS)) ?: "no_action",
+        animationsEnabled = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_ANIMATIONS)) == 1,
+        arrivalEnabled = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_ARRIVAL)) == 1,
+        departureEnabled = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_DEPARTURE)) == 1,
+        chargingEnabled = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_CHARGING)) == 1,
+        iconColor = cursor.getString(cursor.getColumnIndexOrThrow(DuoPrefs.COL_ICON_COLOR)) ?: "auto",
+        hideOtherIcons = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_HIDE_OTHER_ICONS)) == 1,
+        showAirplane = cursor.optionalBool(
+            DuoPrefs.COL_SHOW_AIRPLANE,
+            cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_NETWORK_ONLY)) != 1
+        ),
+        dndMode = DuoPrefs.normalizeDndMode(
+            cursor.optionalString(
+                DuoPrefs.COL_DND_MODE,
+                if (legacyMiddle) DuoPrefs.DND_MIDDLE else DuoPrefs.DND_OFF
+            )
+        ),
+        simChoice = cursor.getString(cursor.getColumnIndexOrThrow(DuoPrefs.COL_SIM_CHOICE)) ?: "auto",
+        percentHeight = cursor.getInt(cursor.getColumnIndexOrThrow(DuoPrefs.COL_PERCENT_HEIGHT))
+            .coerceIn(DuoPrefs.MIN_PERCENT_HEIGHT, DuoPrefs.MAX_PERCENT_HEIGHT),
+        splitIndicators = cursor.optionalInt(DuoPrefs.COL_SPLIT_INDICATORS) == 1,
+        indicatorsOffsetX = cursor.optionalInt(DuoPrefs.COL_INDICATORS_OFFSET_X)
+            .coerceIn(-DuoPrefs.MAX_OFFSET, DuoPrefs.MAX_OFFSET),
+        // Optional so a settings app that predates this column cannot blank the bar:
+        // a missing column is the original cellular dots.
+        wifiDots = cursor.optionalInt(DuoPrefs.COL_WIFI_DOTS) == 1,
+        // Missing means the full slot, so an older settings app does not suddenly pull the other icons
+        // against the screen edge.
+        edgePadding = cursor.optionalInt(DuoPrefs.COL_EDGE_PADDING, DuoPrefs.DEFAULT_EDGE_PADDING)
+            .coerceIn(DuoPrefs.MIN_EDGE_PADDING, DuoPrefs.MAX_EDGE_PADDING)
+        )
+    }
+
+    /** Landscape fields, each falling back to the portrait value when that column is not in the row. */
+    private fun Cursor.landscapeSettings(portrait: ModuleSettings): ModuleSettings {
+        if (getColumnIndex(DuoPrefs.LAND_PREFIX + DuoPrefs.COL_ENABLED) < 0) return portrait
+        fun col(base: String) = DuoPrefs.LAND_PREFIX + base
+        fun int(base: String, default: Int): Int {
+            val index = getColumnIndex(col(base))
+            return if (index < 0) default else getInt(index)
+        }
+        fun bool(base: String, default: Boolean): Boolean {
+            val index = getColumnIndex(col(base))
+            return if (index < 0) default else getInt(index) == 1
+        }
+        fun str(base: String, default: String): String {
+            val index = getColumnIndex(col(base))
+            return if (index < 0) default else getString(index) ?: default
+        }
+        // The mode column is newer than the on/off switch. A landscape row that only has the
+        // switch keeps that choice; one that has neither keeps the portrait mode.
+        fun landscapeDndMode(portrait: ModuleSettings): String {
+            val mode = getColumnIndex(col(DuoPrefs.COL_DND_MODE))
+            if (mode >= 0) return DuoPrefs.normalizeDndMode(getString(mode) ?: portrait.dndMode)
+            if (getColumnIndex(col(DuoPrefs.COL_SHOW_DND)) >= 0) {
+                return if (bool(DuoPrefs.COL_SHOW_DND, portrait.showDnd)) DuoPrefs.DND_MIDDLE else DuoPrefs.DND_OFF
+            }
+            return portrait.dndMode
+        }
+        return portrait.copy(
+            enabled = bool(DuoPrefs.COL_ENABLED, portrait.enabled),
+            useRive = bool(DuoPrefs.COL_USE_RIVE, portrait.useRive),
+            showPercent = bool(DuoPrefs.COL_SHOW_PERCENT, portrait.showPercent),
+            sizePercent = int(DuoPrefs.COL_SIZE_PERCENT, portrait.sizePercent),
+            offsetX = int(DuoPrefs.COL_OFFSET_X, portrait.offsetX),
+            liveApply = bool(DuoPrefs.COL_LIVE_APPLY, portrait.liveApply),
+            systemClockFont = bool(DuoPrefs.COL_CLOCK_FONT, portrait.systemClockFont),
+            revealMs = DuoPrefs.nearestReveal(int(DuoPrefs.COL_REVEAL_MS, portrait.revealMs)),
+            tapAction = str(DuoPrefs.COL_TAP, portrait.tapAction),
+            doubleTapAction = str(DuoPrefs.COL_DOUBLE_TAP, portrait.doubleTapAction),
+            longPressAction = str(DuoPrefs.COL_LONG_PRESS, portrait.longPressAction),
+            animationsEnabled = bool(DuoPrefs.COL_ANIMATIONS, portrait.animationsEnabled),
+            arrivalEnabled = bool(DuoPrefs.COL_ARRIVAL, portrait.arrivalEnabled),
+            departureEnabled = bool(DuoPrefs.COL_DEPARTURE, portrait.departureEnabled),
+            chargingEnabled = bool(DuoPrefs.COL_CHARGING, portrait.chargingEnabled),
+            iconColor = str(DuoPrefs.COL_ICON_COLOR, portrait.iconColor),
+            hideOtherIcons = bool(DuoPrefs.COL_HIDE_OTHER_ICONS, portrait.hideOtherIcons),
+            showAirplane = bool(DuoPrefs.COL_SHOW_AIRPLANE, portrait.showAirplane),
+            dndMode = landscapeDndMode(portrait),
+            simChoice = str(DuoPrefs.COL_SIM_CHOICE, portrait.simChoice),
+            percentHeight = int(DuoPrefs.COL_PERCENT_HEIGHT, portrait.percentHeight)
+                .coerceIn(DuoPrefs.MIN_PERCENT_HEIGHT, DuoPrefs.MAX_PERCENT_HEIGHT),
+            splitIndicators = bool(DuoPrefs.COL_SPLIT_INDICATORS, portrait.splitIndicators),
+            indicatorsOffsetX = int(DuoPrefs.COL_INDICATORS_OFFSET_X, portrait.indicatorsOffsetX)
+                .coerceIn(-DuoPrefs.MAX_OFFSET, DuoPrefs.MAX_OFFSET),
+            wifiDots = bool(DuoPrefs.COL_WIFI_DOTS, portrait.wifiDots),
+            edgePadding = int(DuoPrefs.COL_EDGE_PADDING, portrait.edgePadding)
+                .coerceIn(DuoPrefs.MIN_EDGE_PADDING, DuoPrefs.MAX_EDGE_PADDING)
+        )
     }
 
     /** Tells the app what the module actually did, for the diagnostics screen. Never throws. */

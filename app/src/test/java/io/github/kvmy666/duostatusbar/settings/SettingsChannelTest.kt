@@ -5,6 +5,8 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
 import android.net.Uri
+import android.content.res.Configuration
+import android.database.MatrixCursor
 import androidx.test.core.app.ApplicationProvider
 import io.github.kvmy666.duostatusbar.hook.DuoSettingsClient
 import org.junit.Assert.assertEquals
@@ -39,6 +41,8 @@ class SettingsChannelTest {
             showPercent = false,
             sizePercent = 120,
             offsetX = -12,
+            splitIndicators = true,
+            indicatorsOffsetX = 36,
             tapAction = "toggle_flashlight",
             doubleTapAction = "show_notifications",
             longPressAction = "take_screenshot",
@@ -51,10 +55,15 @@ class SettingsChannelTest {
 
     @Test
     fun `out of range values are clamped on write, not stored`() {
-        DuoPrefs.write(context, DuoSettings(sizePercent = 9_999, offsetX = 9_999))
+        DuoPrefs.write(
+            context,
+            DuoSettings(sizePercent = 9_999, offsetX = 9_999, percentHeight = 9_999, indicatorsOffsetX = 9_999)
+        )
         val read = DuoPrefs.read(context)
         assertEquals(DuoPrefs.MAX_SIZE, read.sizePercent)
         assertEquals(DuoPrefs.MAX_OFFSET, read.offsetX)
+        assertEquals(DuoPrefs.MAX_PERCENT_HEIGHT, read.percentHeight)
+        assertEquals(DuoPrefs.MAX_OFFSET, read.indicatorsOffsetX)
     }
 
     @Test
@@ -75,7 +84,10 @@ class SettingsChannelTest {
                 offsetX = 7,
                 tapAction = "toggle_flashlight",
                 doubleTapAction = "no_action",
-                longPressAction = "take_screenshot"
+                longPressAction = "take_screenshot",
+                percentHeight = 40,
+                splitIndicators = true,
+                indicatorsOffsetX = -18
             ),
             revision = 42L
         )
@@ -100,18 +112,111 @@ class SettingsChannelTest {
         assertEquals("auto", row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_ICON_COLOR)])
         // Default is now FR-08b (keep the other icons), so an untouched setting travels as 0.
         assertEquals(0, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_HIDE_OTHER_ICONS)])
-        // The network-only toggle must cross the channel too, defaulting off.
+        // Both statuses may take the middle by default, so the legacy "hide both" column stays off.
         assertEquals(0, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_NETWORK_ONLY)])
+        assertEquals(1, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_SHOW_AIRPLANE)])
+        assertEquals(1, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_SHOW_DND)])
+        assertEquals(DuoPrefs.DND_MIDDLE, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_DND_MODE)])
         // The dual-SIM line choice travels as a string, defaulting to the automatic data line.
         assertEquals("auto", row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_SIM_CHOICE)])
+        assertEquals(40, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_PERCENT_HEIGHT)])
+        assertEquals(1, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_SPLIT_INDICATORS)])
+        assertEquals(-18, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_INDICATORS_OFFSET_X)])
+        // Off unless the user asks: a missing choice keeps the cellular dots.
+        assertEquals(0, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_WIFI_DOTS)])
+        assertEquals(DuoPrefs.DEFAULT_EDGE_PADDING, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_EDGE_PADDING)])
+        // One set published alone is copied into the landscape columns, so rotation does not go blank.
+        assertEquals(130, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.LAND_PREFIX + DuoPrefs.COL_SIZE_PERCENT)])
+        assertEquals(7, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.LAND_PREFIX + DuoPrefs.COL_OFFSET_X)])
     }
 
     @Test
-    fun `the network-only toggle travels through the channel`() {
-        DuoPrefs.write(context, DuoSettings(networkOnly = true))
-        assertEquals(true, DuoPrefs.read(context).networkOnly)
+    fun `airplane and do not disturb travel through the channel on their own`() {
+        DuoPrefs.write(context, DuoSettings(showAirplane = true, dndMode = DuoPrefs.DND_OFF))
+        val read = DuoPrefs.read(context)
+        assertEquals(true, read.showAirplane)
+        assertEquals(DuoPrefs.DND_OFF, read.dndMode)
+        val row = DuoSettingsProvider.rowFor(read, revision = 1L)
+        assertEquals(1, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_SHOW_AIRPLANE)])
+        assertEquals(0, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_SHOW_DND)])
+        assertEquals(DuoPrefs.DND_OFF, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_DND_MODE)])
+        // One of them is still allowed, so an older module must not treat this as "hide both".
+        assertEquals(0, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_NETWORK_ONLY)])
+    }
+
+    @Test
+    fun `an old network-only choice keeps both statuses out until the user picks again`() {
+        context.getSharedPreferences("duo_settings", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(DuoPrefs.COL_NETWORK_ONLY, true)
+            .apply()
+        val read = DuoPrefs.read(context)
+        assertEquals(false, read.showAirplane)
+        assertEquals(DuoPrefs.DND_OFF, read.dndMode)
+    }
+
+    @Test
+    fun `edge spacing travels through the channel and can be zero`() {
+        DuoPrefs.write(context, DuoSettings(edgePadding = 0))
+        assertEquals(0, DuoPrefs.read(context).edgePadding)
+        DuoPrefs.write(context, DuoSettings(edgePadding = 9_999))
+        assertEquals(DuoPrefs.MAX_EDGE_PADDING, DuoPrefs.read(context).edgePadding)
+        val row = DuoSettingsProvider.rowFor(DuoSettings(edgePadding = 25), revision = 1L)
+        assertEquals(25, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_EDGE_PADDING)])
+        assertEquals(25, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.LAND_PREFIX + DuoPrefs.COL_EDGE_PADDING)])
+    }
+
+    @Test
+    fun `a row without edge spacing keeps the full slot`() {
+        val columns = DuoPrefs.PORTRAIT_COLUMNS.filter { it != DuoPrefs.COL_EDGE_PADDING }.toTypedArray()
+        val full = DuoSettingsProvider.rowFor(DuoSettings(sizePercent = 100), 1L)
+        val values = full.copyOfRange(0, DuoPrefs.PORTRAIT_COLUMNS.size).toMutableList()
+        values.removeAt(DuoPrefs.PORTRAIT_COLUMNS.indexOf(DuoPrefs.COL_EDGE_PADDING))
+        val cursor = MatrixCursor(columns).apply { addRow(values) }
+        cursor.moveToFirst()
+        val read = DuoSettingsClient.fromCursor(cursor, Configuration.ORIENTATION_PORTRAIT)
+        assertEquals(DuoPrefs.DEFAULT_EDGE_PADDING, read.edgePadding)
+    }
+
+    @Test
+    fun `do not disturb on the signal dots travels through the channel`() {
+        DuoPrefs.write(context, DuoSettings(dndMode = DuoPrefs.DND_DOTS))
+        assertEquals(DuoPrefs.DND_DOTS, DuoPrefs.read(context).dndMode)
         val row = DuoSettingsProvider.rowFor(DuoPrefs.read(context), revision = 1L)
-        assertEquals(1, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_NETWORK_ONLY)])
+        assertEquals(DuoPrefs.DND_DOTS, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_DND_MODE)])
+        // Dots do not take the middle, so an older module must not also draw the moon there.
+        assertEquals(0, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_SHOW_DND)])
+        assertEquals(0, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_NETWORK_ONLY)])
+        val cursor = MatrixCursor(DuoPrefs.COLUMNS).apply { addRow(row.toList()) }
+        cursor.moveToFirst()
+        val read = DuoSettingsClient.fromCursor(cursor, Configuration.ORIENTATION_PORTRAIT)
+        assertEquals(DuoPrefs.DND_DOTS, read.dndMode)
+        assertEquals(false, read.showDnd)
+    }
+
+    @Test
+    fun `a row without the do not disturb mode keeps the older switch`() {
+        val columns = DuoPrefs.PORTRAIT_COLUMNS.filter { it != DuoPrefs.COL_DND_MODE }.toTypedArray()
+        val full = DuoSettingsProvider.rowFor(DuoSettings(dndMode = DuoPrefs.DND_MIDDLE), 1L)
+        val values = full.copyOfRange(0, DuoPrefs.PORTRAIT_COLUMNS.size).toMutableList()
+        values.removeAt(DuoPrefs.PORTRAIT_COLUMNS.indexOf(DuoPrefs.COL_DND_MODE))
+        val on = MatrixCursor(columns).apply { addRow(values) }
+        on.moveToFirst()
+        assertEquals(DuoPrefs.DND_MIDDLE, DuoSettingsClient.fromCursor(on, Configuration.ORIENTATION_PORTRAIT).dndMode)
+
+        val offValues = values.toMutableList()
+        offValues[columns.indexOf(DuoPrefs.COL_SHOW_DND)] = 0
+        val off = MatrixCursor(columns).apply { addRow(offValues) }
+        off.moveToFirst()
+        assertEquals(DuoPrefs.DND_OFF, DuoSettingsClient.fromCursor(off, Configuration.ORIENTATION_PORTRAIT).dndMode)
+    }
+
+    @Test
+    fun `the wifi-dots toggle travels through the channel`() {
+        DuoPrefs.write(context, DuoSettings(wifiDots = true))
+        assertEquals(true, DuoPrefs.read(context).wifiDots)
+        val row = DuoSettingsProvider.rowFor(DuoPrefs.read(context), revision = 1L)
+        assertEquals(1, row[DuoPrefs.COLUMNS.indexOf(DuoPrefs.COL_WIFI_DOTS)])
     }
 
     @Test
@@ -164,5 +269,98 @@ class SettingsChannelTest {
         val history = DuoPrefs.statusHistory(context)
         assertEquals("the repeat must not be stored twice", 2, history.size)
         assertTrue(history.last().endsWith("stage=2 renderer=Rive"))
+    }
+
+    @Test
+    fun `portrait and landscape settings are stored apart`() {
+        context.getSharedPreferences("duo_settings", Context.MODE_PRIVATE).edit().clear().commit()
+        DuoPrefs.write(
+            context,
+            DuoSettings(enabled = true, sizePercent = 80, offsetX = 10, iconColor = "black"),
+            DuoOrientation.PORTRAIT
+        )
+        DuoPrefs.write(
+            context,
+            DuoSettings(enabled = false, sizePercent = 160, offsetX = -30, iconColor = "white", wifiDots = true),
+            DuoOrientation.LANDSCAPE
+        )
+        val portrait = DuoPrefs.read(context, DuoOrientation.PORTRAIT)
+        val landscape = DuoPrefs.read(context, DuoOrientation.LANDSCAPE)
+        assertEquals(80, portrait.sizePercent)
+        assertEquals(10, portrait.offsetX)
+        assertEquals(true, portrait.enabled)
+        assertEquals("black", portrait.iconColor)
+        assertEquals(false, portrait.wifiDots)
+        assertEquals(160, landscape.sizePercent)
+        assertEquals(-30, landscape.offsetX)
+        assertEquals(false, landscape.enabled)
+        assertEquals("white", landscape.iconColor)
+        assertEquals(true, landscape.wifiDots)
+    }
+
+    @Test
+    fun `landscape starts as a copy of portrait until it is edited`() {
+        context.getSharedPreferences("duo_settings", Context.MODE_PRIVATE).edit().clear().commit()
+        DuoPrefs.write(context, DuoSettings(sizePercent = 140, offsetX = 12, showPercent = false), DuoOrientation.PORTRAIT)
+        val landscape = DuoPrefs.read(context, DuoOrientation.LANDSCAPE)
+        assertEquals(140, landscape.sizePercent)
+        assertEquals(12, landscape.offsetX)
+        assertEquals(false, landscape.showPercent)
+    }
+
+    @Test
+    fun `the module reads the set that matches the status bar orientation`() {
+        val portrait = DuoSettings(
+            enabled = true,
+            sizePercent = 80,
+            offsetX = 4,
+            tapAction = "toggle_flashlight",
+            percentHeight = 20
+        )
+        val landscape = DuoSettings(
+            enabled = false,
+            sizePercent = 170,
+            offsetX = -22,
+            tapAction = "take_screenshot",
+            percentHeight = 90,
+            splitIndicators = true,
+            wifiDots = true,
+            dndMode = DuoPrefs.DND_DOTS
+        )
+        val cursor = MatrixCursor(DuoPrefs.COLUMNS).apply {
+            addRow(DuoSettingsProvider.rowFor(portrait, 7L, landscape).toList())
+        }
+        cursor.moveToFirst()
+        val inPortrait = DuoSettingsClient.fromCursor(cursor, Configuration.ORIENTATION_PORTRAIT)
+        val inLandscape = DuoSettingsClient.fromCursor(cursor, Configuration.ORIENTATION_LANDSCAPE)
+        assertEquals(80, inPortrait.sizePercent)
+        assertEquals(4, inPortrait.offsetX)
+        assertEquals(true, inPortrait.enabled)
+        assertEquals("toggle_flashlight", inPortrait.tapAction)
+        assertEquals(20, inPortrait.percentHeight)
+        assertEquals(7L, inPortrait.revision)
+        assertEquals(170, inLandscape.sizePercent)
+        assertEquals(-22, inLandscape.offsetX)
+        assertEquals(false, inLandscape.enabled)
+        assertEquals("take_screenshot", inLandscape.tapAction)
+        assertEquals(90, inLandscape.percentHeight)
+        assertEquals(true, inLandscape.splitIndicators)
+        assertEquals(true, inLandscape.wifiDots)
+        assertEquals(DuoPrefs.DND_DOTS, inLandscape.dndMode)
+        assertEquals(DuoPrefs.DND_MIDDLE, inPortrait.dndMode)
+        assertEquals(7L, inLandscape.revision)
+    }
+
+    @Test
+    fun `a row without landscape columns keeps the portrait set in landscape`() {
+        val full = DuoSettingsProvider.rowFor(DuoSettings(sizePercent = 111, offsetX = 6), 3L)
+        val cursor = MatrixCursor(DuoPrefs.PORTRAIT_COLUMNS).apply {
+            addRow(full.copyOfRange(0, DuoPrefs.PORTRAIT_COLUMNS.size).toList())
+        }
+        cursor.moveToFirst()
+        val inLandscape = DuoSettingsClient.fromCursor(cursor, Configuration.ORIENTATION_LANDSCAPE)
+        assertEquals(111, inLandscape.sizePercent)
+        assertEquals(6, inLandscape.offsetX)
+        assertEquals(3L, inLandscape.revision)
     }
 }

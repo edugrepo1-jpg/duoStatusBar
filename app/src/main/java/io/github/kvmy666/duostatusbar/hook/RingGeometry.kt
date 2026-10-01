@@ -68,4 +68,42 @@ object RingGeometry {
      * so `100` still fits the gap.
      */
     fun percentFontSize(text: String): Float = if (text.length >= 3) 26f else 32f
+
+    /**
+     * How far the battery percentage can be lifted above its original top-gap seat, in the 120-unit
+     * design space. A center punch-hole (Samsung Fold) cuts through the digits when they sit in
+     * the gap. The artboard always has room for the full lift; the setting only slides the label
+     * between the original seat and this one. `rive/duo/scene.rml` matches: artboard height 136,
+     * group y 77.5, and `percentY` runs from [PERCENT_TOP_Y] up to [PERCENT_TOP_Y] minus this.
+     */
+    const val PERCENT_LIFT = 16f
+
+    /** The text node's y at the original seat. originY is 0, so this is the top of the text box. */
+    const val PERCENT_TOP_Y = -60f
+
+    /** Half the 42-unit text box. The canvas centres the glyphs; Rive places the box by its top. */
+    const val PERCENT_BOX_HALF = 21f
+
+    /**
+     * Text-box top for a percentage-height setting. 0 is the original seat, 100 is fully raised
+     * ([PERCENT_LIFT] above that).
+     */
+    fun percentTopY(heightPercent: Int): Float =
+        PERCENT_TOP_Y - PERCENT_LIFT * heightPercent.coerceIn(0, 100) / 100f
+
+    /** The original square artboard. The ring still occupies this square; [ARTBOARD_HEIGHT] is taller. */
+    const val ARTBOARD_SIZE = 120f
+
+    /** Artboard height after [PERCENT_LIFT] was added above the ring. */
+    const val ARTBOARD_HEIGHT = ARTBOARD_SIZE + PERCENT_LIFT
+
+    /** View height for a ring [side] px wide, including the raised percentage. */
+    fun elementHeightPx(side: Int): Int =
+        (side * ARTBOARD_HEIGHT / ARTBOARD_SIZE).toInt().coerceAtLeast(1)
+
+    /**
+     * Moves a taller view up so the ring stays where the old square view put it. The added height
+     * then sticks out above the ring, which is where the percentage is drawn.
+     */
+    fun ringAnchorShiftY(side: Int): Float = -(PERCENT_LIFT / 2f) * (side / ARTBOARD_SIZE)
 }

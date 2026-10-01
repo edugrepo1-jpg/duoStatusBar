@@ -18,6 +18,18 @@ data class DuoVisual(
     val percentOpacity: Float,
     val percentFontSize: Float,
     /**
+     * Top of the percentage text box, in design units relative to the ring centre. [RingGeometry.PERCENT_TOP_Y]
+     * is the original seat; more negative sits higher, up to a full [RingGeometry.PERCENT_LIFT].
+     */
+    val percentY: Float,
+    /**
+     * 1 draws the battery ring, the percentage and the bolt. 0 hides them. [DuoPart] sets this;
+     * the original element leaves both groups visible.
+     */
+    val ringOpacity: Float = 1f,
+    /** 1 draws the icons that sit inside the ring (Wi-Fi and the middle slot). 0 hides them. */
+    val indicatorsOpacity: Float = 1f,
+    /**
      * The cellular generation shown in the middle slot when Wi-Fi is off — "5G"/"4G"/"3G"/"2G", or
      * empty when there is no service. Empty unless the slot is actually holding it, so a hidden
      * occupant never carries stale text (FR-06).
@@ -30,6 +42,19 @@ data class DuoVisual(
     val cell2Opacity: Float,
     val cell3Opacity: Float,
     val cell4Opacity: Float,
+    /**
+     * The same four places as the signal dots, drawn as the white Do Not Disturb crescent.
+     * 0 leaves the gray circle; 1 is the crescent that has filled that circle in.
+     */
+    val moon1Opacity: Float,
+    val moon2Opacity: Float,
+    val moon3Opacity: Float,
+    val moon4Opacity: Float,
+    /**
+     * One crescent in the middle of the signal-dot row. 1 only when Do Not Disturb is on the dots
+     * and that row is fully hidden (airplane mode with Wi-Fi off), so the status is still visible.
+     */
+    val centerMoonOpacity: Float,
     val tint: Int,
     val fgColor: Int,
     /**
@@ -79,6 +104,9 @@ data class DuoVisual(
             trackOpacity = at(trackOpacity, other.trackOpacity),
             percentOpacity = at(percentOpacity, other.percentOpacity),
             percentFontSize = at(percentFontSize, other.percentFontSize),
+            percentY = at(percentY, other.percentY),
+            ringOpacity = at(ringOpacity, other.ringOpacity),
+            indicatorsOpacity = at(indicatorsOpacity, other.indicatorsOpacity),
             boltOpacity = at(boltOpacity, other.boltOpacity),
             wifiOuterOpacity = at(wifiOuterOpacity, other.wifiOuterOpacity),
             wifiMidOpacity = at(wifiMidOpacity, other.wifiMidOpacity),
@@ -86,6 +114,11 @@ data class DuoVisual(
             cell2Opacity = at(cell2Opacity, other.cell2Opacity),
             cell3Opacity = at(cell3Opacity, other.cell3Opacity),
             cell4Opacity = at(cell4Opacity, other.cell4Opacity),
+            moon1Opacity = at(moon1Opacity, other.moon1Opacity),
+            moon2Opacity = at(moon2Opacity, other.moon2Opacity),
+            moon3Opacity = at(moon3Opacity, other.moon3Opacity),
+            moon4Opacity = at(moon4Opacity, other.moon4Opacity),
+            centerMoonOpacity = at(centerMoonOpacity, other.centerMoonOpacity),
             percentText = if (past) other.percentText else percentText,
             networkText = if (past) other.networkText else networkText,
             tint = if (past) other.tint else tint,

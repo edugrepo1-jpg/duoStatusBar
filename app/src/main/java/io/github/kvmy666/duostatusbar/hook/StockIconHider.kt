@@ -24,10 +24,15 @@ internal class StockIconHider {
      * battery, so the battery must keep a real position to measure against - and that position has to
      * survive a rotation, which a GONE 0x0 view cannot.
      */
-    fun hideAllExcept(container: ViewGroup, keep: View?, keepLayout: View? = null) {
+    fun hideAllExcept(
+        container: ViewGroup,
+        keep: View?,
+        keepLayout: View? = null,
+        alsoKeep: Collection<View> = emptyList()
+    ) {
         for (i in 0 until container.childCount) {
             val child = container.getChildAt(i)
-            if (child === keep) continue
+            if (child === keep || alsoKeep.any { it === child }) continue
             if (child === keepLayout) hideKeepLayout(child) else hide(child)
         }
         logOnce.once("hide") {
@@ -44,10 +49,15 @@ internal class StockIconHider {
      * view whose slot cannot be read is left alone unless it is plainly the battery, so an unmeasured
      * ROM keeps the user's other icons rather than losing them.
      */
-    fun hideReplaced(container: ViewGroup, keep: View?, keepLayout: View? = null) {
+    fun hideReplaced(
+        container: ViewGroup,
+        keep: View?,
+        keepLayout: View? = null,
+        alsoKeep: Collection<View> = emptyList()
+    ) {
         for (i in 0 until container.childCount) {
             val child = container.getChildAt(i)
-            if (child === keep) continue
+            if (child === keep || alsoKeep.any { it === child }) continue
             when {
                 isReplaced(child) -> if (child === keepLayout) hideKeepLayout(child) else hide(child)
                 child is ViewGroup -> hideReplaced(child, keep, keepLayout)

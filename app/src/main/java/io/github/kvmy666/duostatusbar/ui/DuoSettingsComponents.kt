@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import io.github.kvmy666.duostatusbar.DuoRiveStill
 import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.hook.DuoMapping
+import io.github.kvmy666.duostatusbar.hook.DuoVisual
 import io.github.kvmy666.duostatusbar.settings.DuoActions
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.StockIconHider
@@ -109,14 +110,21 @@ internal fun FallbackAlert(
  * set exactly.
  */
 @Composable
-internal fun PositionEditor(offsetDp: Int, enabled: Boolean, onOffset: (Int) -> Unit) {
+internal fun PositionEditor(
+    offsetDp: Int,
+    enabled: Boolean,
+    label: String? = null,
+    hint: String? = null,
+    visual: DuoVisual? = null,
+    onOffset: (Int) -> Unit
+) {
     val density = LocalDensity.current
     var drag by remember { mutableFloatStateOf(offsetDp.toFloat()) }
     LaunchedEffect(offsetDp) { drag = offsetDp.toFloat() }
     val limit = DuoPrefs.MAX_OFFSET.toFloat()
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(stringResource(R.string.settings_position), style = MaterialTheme.typography.bodyMedium)
+        Text(label ?: stringResource(R.string.settings_position), style = MaterialTheme.typography.bodyMedium)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -144,7 +152,7 @@ internal fun PositionEditor(offsetDp: Int, enabled: Boolean, onOffset: (Int) -> 
                     .align(Alignment.CenterEnd)
                     .padding(end = 16.dp)
                     .size(32.dp),
-                visual = DuoMapping.visual(
+                visual = visual ?: DuoMapping.visual(
                     level = 78,
                     charging = false,
                     saver = false,
@@ -158,7 +166,7 @@ internal fun PositionEditor(offsetDp: Int, enabled: Boolean, onOffset: (Int) -> 
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = stringResource(R.string.settings_position_hint),
+                text = hint ?: stringResource(R.string.settings_position_hint),
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.weight(1f)
             )
