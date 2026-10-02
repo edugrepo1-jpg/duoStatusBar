@@ -28,8 +28,8 @@ No system files are touched. Nothing is patched. The module only *draws*.
   a dual-SIM phone you choose which line the spheres follow.
 * **A charging story:** plug in and the lightning bolt rises from the middle of the ring into the top gap.
 * **Airplane, Do Not Disturb and 5G** slide into the middle — and back out — with a soft morph.
-* **Network icons only, if you want:** one switch keeps the middle to Wi-Fi and 5G/4G and never lets
-  Do Not Disturb or Airplane take it.
+* **Choose what sits in the middle:** Wi-Fi and 5G/4G always can, and Airplane mode and Do Not Disturb
+  each have their own switch.
 * **Make it yours:** size, position, animation speed, and which animations you want (or none at all).
 * **Tap it (optional):** hand taps to the [Auto Expand](https://github.com/kvmy666/AutoExpandNotifications)
   module to toggle Wi-Fi, Do Not Disturb, airplane mode or power saving.
@@ -80,7 +80,7 @@ Open the app and you'll find:
 |---|---|
 | **Battery icon** | Turn it on, show or hide the percentage, change the **size**, drag the **position**, and choose whether changes apply **live** or after a restart |
 | **Animations** | A master switch, an animation **speed**, and separate toggles for **Appear**, **Disappear** and **Charging** |
-| **Appearance** | **Icon colour** (match the status bar, or force black/white), **smooth graphics**, the status-bar **clock in the system font**, and **Show only Wi-Fi and 5G/4G** (never DND or Airplane in the ring) |
+| **Appearance** | **Icon colour** (match the status bar, or force black/white), **smooth graphics**, the status-bar **clock in the system font**, and separate switches for whether **Airplane mode** and **Do Not Disturb** can take the middle of the ring |
 | **Status bar icons** | Your other icons (silent, vibrate, alarm, network speed…) stay visible by default; you can hide them if you prefer, and optionally hide your phone's own Wi-Fi, cellular and battery icons with **Shizuku** |
 | **Tap actions** | Choose what a single tap, double tap and long press do (with Auto Expand) |
 | **About** | See the module's status, share a report, or support the developer |

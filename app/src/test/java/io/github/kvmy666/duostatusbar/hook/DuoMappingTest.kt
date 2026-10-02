@@ -193,6 +193,54 @@ class DuoMappingTest {
     }
 
     @Test
+    fun `percentage height slides from the original seat to fully raised`() {
+        val original = DuoMapping.visual(
+            level = 50, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, percentHeight = 0
+        )
+        val halfway = DuoMapping.visual(
+            level = 50, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, percentHeight = 50
+        )
+        val raised = DuoMapping.visual(
+            level = 50, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, percentHeight = 100
+        )
+        assertEquals(RingGeometry.PERCENT_TOP_Y, original.percentY, 0.0001f)
+        assertEquals(RingGeometry.PERCENT_TOP_Y - RingGeometry.PERCENT_LIFT, raised.percentY, 0.0001f)
+        assertEquals((original.percentY + raised.percentY) / 2f, halfway.percentY, 0.0001f)
+        // The demo morph has to travel the same distance, or the settings preview would lie.
+        assertEquals(raised.percentY, original.lerp(raised, 1f).percentY, 0.0001f)
+        assertEquals(halfway.percentY, original.lerp(raised, 0.5f).percentY, 0.0001f)
+    }
+
+    @Test
+    fun `edge spacing can give the whole slot back`() {
+        assertEquals(0, edgeInsetPx(80, 100))
+        assertEquals(-40, edgeInsetPx(80, 50))
+        assertEquals(-80, edgeInsetPx(80, 0))
+        assertEquals(-83, edgeInsetPx(83, 0))
+        assertEquals(0, edgeInsetPx(0, 0))
+        assertEquals(0, edgeInsetPx(80, 250))
+    }
+
+    @Test
+    fun `a part shows one group and hides the other`() {
+        val full = visual(50)
+        assertEquals(1f, DuoPart.ALL.apply(full).ringOpacity, 0.0001f)
+        assertEquals(1f, DuoPart.ALL.apply(full).indicatorsOpacity, 0.0001f)
+        val ring = DuoPart.RING.apply(full)
+        assertEquals(1f, ring.ringOpacity, 0.0001f)
+        assertEquals(0f, ring.indicatorsOpacity, 0.0001f)
+        val icons = DuoPart.INDICATORS.apply(full)
+        assertEquals(0f, icons.ringOpacity, 0.0001f)
+        assertEquals(1f, icons.indicatorsOpacity, 0.0001f)
+        // The percentage seat is the ring's, so splitting the icons must not move it.
+        assertEquals(full.percentY, ring.percentY, 0.0001f)
+        assertEquals(icons.indicatorsOpacity, ring.lerp(icons, 1f).indicatorsOpacity, 0.0001f)
+    }
+
+    @Test
     fun `airplane mode blanks the cellular ramps and takes the middle slot`() {
         val v = visual(70, airplane = true)
         assertEquals(DuoMapping.MIDDLE_AIRPLANE, v.middleMode)
@@ -202,11 +250,173 @@ class DuoMappingTest {
     }
 
     @Test
+    fun `wifi dots follow wifi and vanish when airplane has no wifi`() {
+        fun spheres(
+            airplane: Boolean,
+            wifiOn: Boolean,
+            wifiLevel: Int,
+            cellLevel: Int,
+            wifiDots: Boolean
+        ): List<Float> {
+            val v = DuoMapping.visual(
+                level = 70, charging = false, saver = false, showPercent = true,
+                wifiLevel = wifiLevel, cellLevel = cellLevel, airplane = airplane,
+                wifiOn = wifiOn, wifiDots = wifiDots
+            )
+            return listOf(v.cell1Opacity, v.cell2Opacity, v.cell3Opacity, v.cell4Opacity)
+        }
+
+        // Off keeps today's look: airplane blanks the cellular spheres to the empty ramp.
+        assertEquals(
+            listOf(0.3f, 0.3f, 0.3f, 0.3f),
+            spheres(airplane = true, wifiOn = false, wifiLevel = 0, cellLevel = 4, wifiDots = false)
+        )
+        // On, airplane, Wi-Fi off: the spheres have nothing to report, so they disappear.
+        assertEquals(
+            listOf(0f, 0f, 0f, 0f),
+            spheres(airplane = true, wifiOn = false, wifiLevel = 0, cellLevel = 4, wifiDots = true)
+        )
+        // Airplane mode with Wi-Fi live: the spheres report Wi-Fi.
+        // Level 1 covers stock bars 1–2, level 2 is stock bar 3, level 3 is a full four.
+        assertEquals(
+            listOf(1f, 1f, 0.3f, 0.3f),
+            spheres(airplane = true, wifiOn = true, wifiLevel = 1, cellLevel = 0, wifiDots = true)
+        )
+        assertEquals(
+            listOf(1f, 1f, 1f, 0.3f),
+            spheres(airplane = true, wifiOn = true, wifiLevel = 2, cellLevel = 4, wifiDots = true)
+        )
+        assertEquals(
+            listOf(1f, 1f, 1f, 1f),
+            spheres(airplane = true, wifiOn = true, wifiLevel = 3, cellLevel = 0, wifiDots = true)
+        )
+        // Out of airplane mode they stay cellular, whether or not Wi-Fi is on.
+        assertEquals(
+            listOf(1f, 1f, 1f, 1f),
+            spheres(airplane = false, wifiOn = true, wifiLevel = 2, cellLevel = 4, wifiDots = true)
+        )
+        assertEquals(
+            listOf(1f, 1f, 0.3f, 0.3f),
+            spheres(airplane = false, wifiOn = false, wifiLevel = 0, cellLevel = 2, wifiDots = true)
+        )
+    }
+
+    @Test
     fun `dnd takes the middle slot and leaves the spheres lit`() {
         val v = visual(70, dnd = true)
         assertEquals(DuoMapping.MIDDLE_DND, v.middleMode)
         // Cellular is not the middle slot: the spheres stay lit while DND is on.
         assertEquals(listOf(1f, 1f, 1f, 1f), listOf(v.cell1Opacity, v.cell2Opacity, v.cell3Opacity, v.cell4Opacity))
+        assertEquals(listOf(0f, 0f, 0f, 0f), listOf(v.moon1Opacity, v.moon2Opacity, v.moon3Opacity, v.moon4Opacity))
+    }
+
+    @Test
+    fun `dnd on the signal dots leaves the middle alone and paints moons`() {
+        val weak = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 2, airplane = false, dnd = true,
+            showDnd = false, dndDots = true
+        )
+        assertEquals(DuoMapping.MIDDLE_WIFI, weak.middleMode)
+        // The first two bars are strong, so those gray dots are gone and the white moons have filled
+        // them. The other two stay the original gray circles.
+        assertEquals(listOf(0f, 0f, 0.3f, 0.3f), listOf(weak.cell1Opacity, weak.cell2Opacity, weak.cell3Opacity, weak.cell4Opacity))
+        assertEquals(listOf(1f, 1f, 0f, 0f), listOf(weak.moon1Opacity, weak.moon2Opacity, weak.moon3Opacity, weak.moon4Opacity))
+        assertEquals(0f, weak.centerMoonOpacity)
+
+        // The mode only applies while Do Not Disturb is actually on.
+        val quiet = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 2, airplane = false, dnd = false, dndDots = true
+        )
+        assertEquals(listOf(1f, 1f, 0.3f, 0.3f), listOf(quiet.cell1Opacity, quiet.cell2Opacity, quiet.cell3Opacity, quiet.cell4Opacity))
+        assertEquals(listOf(0f, 0f, 0f, 0f), listOf(quiet.moon1Opacity, quiet.moon2Opacity, quiet.moon3Opacity, quiet.moon4Opacity))
+        assertEquals(0f, quiet.centerMoonOpacity)
+
+        // Airplane still owns the middle. Every bar is lit, so every seat is a white moon.
+        val plane = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = true, dnd = true, wifiOn = true,
+            showAirplane = true, wifiDots = true, dndDots = true
+        )
+        assertEquals(DuoMapping.MIDDLE_AIRPLANE, plane.middleMode)
+        assertEquals(listOf(1f, 1f, 1f, 1f), listOf(plane.moon1Opacity, plane.moon2Opacity, plane.moon3Opacity, plane.moon4Opacity))
+        assertEquals(listOf(0f, 0f, 0f, 0f), listOf(plane.cell1Opacity, plane.cell2Opacity, plane.cell3Opacity, plane.cell4Opacity))
+        assertEquals(0f, plane.centerMoonOpacity)
+    }
+
+    @Test
+    fun `a hidden signal row keeps one moon in the middle of the dots`() {
+        val hidden = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 0, cellLevel = 4, airplane = true, dnd = true, wifiOn = false,
+            wifiDots = true, showDnd = false, dndDots = true
+        )
+        assertEquals(DuoMapping.MIDDLE_AIRPLANE, hidden.middleMode)
+        assertEquals(listOf(0f, 0f, 0f, 0f), listOf(hidden.cell1Opacity, hidden.cell2Opacity, hidden.cell3Opacity, hidden.cell4Opacity))
+        assertEquals(listOf(0f, 0f, 0f, 0f), listOf(hidden.moon1Opacity, hidden.moon2Opacity, hidden.moon3Opacity, hidden.moon4Opacity))
+        assertEquals(1f, hidden.centerMoonOpacity)
+
+        // The same radios without the hide (Wi-Fi dots off) only dim the spheres, so the gray
+        // circles stay and the lone moon does not appear.
+        val dimmed = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 0, cellLevel = 4, airplane = true, dnd = true, wifiOn = false,
+            wifiDots = false, showDnd = false, dndDots = true
+        )
+        assertEquals(listOf(0.3f, 0.3f, 0.3f, 0.3f), listOf(dimmed.cell1Opacity, dimmed.cell2Opacity, dimmed.cell3Opacity, dimmed.cell4Opacity))
+        assertEquals(listOf(0f, 0f, 0f, 0f), listOf(dimmed.moon1Opacity, dimmed.moon2Opacity, dimmed.moon3Opacity, dimmed.moon4Opacity))
+        assertEquals(0f, dimmed.centerMoonOpacity)
+
+        // Do Not Disturb off leaves the hidden row empty.
+        val off = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 0, cellLevel = 4, airplane = true, dnd = false, wifiOn = false,
+            wifiDots = true, dndDots = true
+        )
+        assertEquals(0f, off.centerMoonOpacity)
+        assertEquals(listOf(0f, 0f, 0f, 0f), listOf(off.cell1Opacity, off.cell2Opacity, off.cell3Opacity, off.cell4Opacity))
+    }
+
+    @Test
+    fun `a strong bar eases from its gray dot into a white moon`() {
+        val gray = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 0, airplane = false, dnd = true,
+            showDnd = false, dndDots = true
+        )
+        val filled = DuoMapping.visual(
+            level = 40, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = false, dnd = true,
+            showDnd = false, dndDots = true
+        )
+        val motion = DotMoonMotion()
+        assertEquals(gray.moon1Opacity, motion.push(gray, 0L).moon1Opacity)
+        assertFalse(motion.running)
+
+        val start = motion.push(filled, 1_000L)
+        assertTrue(motion.running)
+        assertEquals(0.3f, start.cell1Opacity, 0.001f)
+        assertEquals(0f, start.moon1Opacity, 0.001f)
+        // The rest of the snapshot is already the new one; only the dots are mid-fill.
+        assertEquals(filled.percentText, start.percentText)
+
+        val mid = motion.push(filled, 1_140L)
+        assertTrue(motion.running)
+        assertTrue(mid.moon1Opacity in 0.4f..0.6f)
+        assertTrue(mid.cell1Opacity in 0.1f..0.2f)
+
+        // A battery change during the fill keeps the same ease instead of starting it over.
+        val battery = filled.copy(percentText = "39")
+        val carried = motion.push(battery, 1_140L)
+        assertEquals(mid.moon1Opacity, carried.moon1Opacity, 0.001f)
+        assertEquals("39", carried.percentText)
+
+        val done = motion.push(battery, 1_000L + DotMoonMotion.DURATION_MS)
+        assertFalse(motion.running)
+        assertEquals(1f, done.moon1Opacity)
+        assertEquals(0f, done.cell1Opacity)
+        assertEquals("39", done.percentText)
     }
 
     @Test
@@ -215,40 +425,58 @@ class DuoMappingTest {
     }
 
     @Test
-    fun `network-only ignores airplane and dnd and keeps the connection icons`() {
-        // The user's toggle: the slot is about the network, so DND and airplane never take it.
+    fun `airplane and do not disturb can each be kept out of the middle slot`() {
+        // Airplane on, Do Not Disturb off: the plane takes the slot, and DND never does.
+        assertEquals(
+            DuoMapping.MIDDLE_AIRPLANE,
+            DuoMapping.middleMode(
+                airplane = true, dnd = true, showAirplane = true, showDnd = false
+            )
+        )
         assertEquals(
             DuoMapping.MIDDLE_WIFI,
             DuoMapping.middleMode(
                 airplane = false, dnd = true, wifiOn = true, hasNetwork = false,
-                wifiConnected = true, networkOnly = true
+                wifiConnected = true, showDnd = false
             )
         )
-        // Airplane on with the toggle on: no Wi-Fi and no label, so the slot empties rather than showing
-        // the plane.
+        // Do Not Disturb on, airplane off: the moon takes the slot even while the radio is in airplane.
+        assertEquals(
+            DuoMapping.MIDDLE_DND,
+            DuoMapping.middleMode(
+                airplane = true, dnd = true, wifiOn = true, wifiConnected = true,
+                showAirplane = false, showDnd = true
+            )
+        )
+        // Neither allowed: the slot stays on the connection. No Wi-Fi and no label leaves it empty.
         assertEquals(
             DuoMapping.MIDDLE_OFF,
             DuoMapping.middleMode(
-                airplane = true, dnd = false, wifiOn = false, hasNetwork = false,
-                wifiConnected = false, networkOnly = true
+                airplane = true, dnd = true, wifiOn = false, hasNetwork = false,
+                wifiConnected = false, showAirplane = false, showDnd = false
             )
         )
-        // Wi-Fi off but on mobile data: the generation label still shows.
         assertEquals(
             DuoMapping.MIDDLE_NETWORK,
             DuoMapping.middleMode(
-                airplane = false, dnd = false, wifiOn = false, hasNetwork = true,
-                wifiConnected = false, networkOnly = true
+                airplane = true, dnd = true, wifiOn = false, hasNetwork = true,
+                wifiConnected = false, showAirplane = false, showDnd = false
             )
         )
-        // Through the full snapshot, the toggle reaches middleMode.
-        val v = DuoMapping.visual(
+        val network = DuoMapping.visual(
             level = 70, charging = false, saver = false, showPercent = true,
             wifiLevel = 3, cellLevel = 4, airplane = true, dnd = true,
-            wifiOn = false, networkText = "5G", networkOnly = true
+            wifiOn = false, networkText = "5G", showAirplane = false, showDnd = false
         )
-        assertEquals(DuoMapping.MIDDLE_NETWORK, v.middleMode)
-        assertEquals("5G", v.networkText)
+        assertEquals(DuoMapping.MIDDLE_NETWORK, network.middleMode)
+        assertEquals("5G", network.networkText)
+        val plane = DuoMapping.visual(
+            level = 70, charging = false, saver = false, showPercent = true,
+            wifiLevel = 3, cellLevel = 4, airplane = true, dnd = true,
+            wifiOn = false, networkText = "5G", showAirplane = true, showDnd = false
+        )
+        assertEquals(DuoMapping.MIDDLE_AIRPLANE, plane.middleMode)
+        assertEquals("", plane.networkText)
     }
 
     @Test

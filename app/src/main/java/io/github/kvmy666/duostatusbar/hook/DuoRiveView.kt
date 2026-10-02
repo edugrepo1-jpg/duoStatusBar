@@ -1,8 +1,10 @@
 package io.github.kvmy666.duostatusbar.hook
 
 import android.content.Context
+import android.graphics.SurfaceTexture
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.View
 import android.widget.FrameLayout
 import app.rive.runtime.kotlin.RiveAnimationView
@@ -12,6 +14,7 @@ import app.rive.runtime.kotlin.core.Fit
 import app.rive.runtime.kotlin.core.Loop
 import app.rive.runtime.kotlin.core.RendererType
 import app.rive.runtime.kotlin.core.ViewModelInstance
+import app.rive.runtime.kotlin.renderers.Renderer
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.RiveInit
@@ -32,7 +35,10 @@ import java.util.zip.ZipFile
  *
  * Every step is guarded: if anything here fails the stock status bar stays exactly as it was (FR-21).
  */
-internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement {
+internal class DuoRiveView(
+    context: Context,
+    part: DuoPart = DuoPart.ALL
+) : FrameLayout(context), DuoElement {
 
     private var rive: RiveAnimationView? = null
     private var viewModelInstance: ViewModelInstance? = null
@@ -46,8 +52,34 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
     private var polls = 0
     private var pendingVisual: DuoVisual? = null
 
-    /** The last snapshot actually written, so an identical one is skipped (battery-drain fix). */
+    /** The newest snapshot. The fill animation draws intermediates of this, not a second source. */
+    private var targetVisual: DuoVisual? = null
+
+    /** Grows a gray signal dot into the white Do Not Disturb crescent. See [DotMoonMotion]. */
+    private val motion = DotMoonMotion()
+    private var ticking = false
+    private val tick = Runnable {
+        ticking = false
+        val target = binding ?: return@Runnable
+        pump(target)
+    }
+
+    /** The last snapshot asked for, so an identical one is skipped. Fill frames are not stored here. */
     private var lastVisual: DuoVisual? = null
+    private var lastPart: DuoPart = part
+
+    /**
+     * Which group this view draws. Changing it replays the last snapshot, so turning the split
+     * layout on hides the inner icons in the ring's view without waiting for the next status tick.
+     */
+    override var part: DuoPart = part
+        set(value) {
+            if (field == value) return
+            field = value
+            val current = lastVisual ?: return
+            lastVisual = null
+            render(current)
+        }
     private val readyActions = ArrayList<() -> Unit>()
     private val failedActions = ArrayList<() -> Unit>()
 
@@ -118,7 +150,7 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
                 // Touch feedback is not needed from Rive: any gesture the user asks for is handled one level
                 // up and handed to Auto Expand. Letting Rive consume touches would swallow it instead.
                 .setTouchPassThrough(true)
-            val view = RiveAnimationView(builder)
+            val view = GuardedRiveView(builder)
             addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
             rive = view
 
@@ -183,16 +215,30 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
 
     /** Pushes a full state snapshot into the drawing. Never throws. */
     override fun render(v: DuoVisual) {
+        // Before the instance binds there is nothing to write to. Remember the newest state and replay
+        // it once the machine is live. That replay must not count as already drawn: the file's own first
+        // frame is a full ring reading "100", and marking this snapshot done would leave that frame up
+        // until the next status change. A new icon-cluster view hits this every time split mode turns on.
+        val target = binding ?: run { pendingVisual = v; return }
         // An identical snapshot changes nothing on screen, and each real write also re-wakes the Rive
         // renderer (`artboardRenderer.start()` below). Skipping repeats is what keeps the element from
         // re-rendering on every status-bar layout pass, which was a steady battery drain.
-        if (v == lastVisual) return
+        if (v == lastVisual && part == lastPart) return
         lastVisual = v
-        // Before the instance binds there is nothing to write to; remember the newest state and replay it
-        // the moment the machine is live, so the element never shows a stale first frame.
-        val target = binding ?: run { pendingVisual = v; return }
+        lastPart = part
+        targetVisual = v
+        pump(target)
+    }
+
+    /**
+     * Writes the current fill frame. While a gray dot is still becoming a moon, arms the next frame
+     * so the renderer stays awake until the fill finishes — an idle pause mid-way would freeze it.
+     */
+    private fun pump(target: DuoBinding) {
+        val next = targetVisual ?: return
+        val shown = part.apply(motion.push(next, SystemClock.uptimeMillis()))
         val failures = try {
-            target.apply(v)
+            target.apply(shown)
         } catch (t: Throwable) {
             L.e("render failed: ${t.javaClass.simpleName}: ${t.message}")
             return
@@ -209,6 +255,10 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
         if (renderActive) {
             startRenderer()
             scheduleIdleStop()
+            if (motion.running && !ticking) {
+                ticking = true
+                handler.postDelayed(tick, FRAME_MS)
+            }
         }
     }
 
@@ -217,9 +267,12 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
         renderActive = active
         if (active) {
             startRenderer()
-            scheduleIdleStop()
+            val target = binding
+            if (target != null && motion.running) pump(target) else scheduleIdleStop()
         } else {
             handler.removeCallbacks(idleStop)
+            handler.removeCallbacks(tick)
+            ticking = false
             try {
                 rive?.artboardRenderer?.stop()
             } catch (t: Throwable) {
@@ -268,6 +321,7 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
     override fun teardown() {
         try {
             handler.removeCallbacks(idleStop)
+            handler.removeCallbacks(tick)
             rive?.stop()
             removeAllViews()
         } catch (_: Throwable) {
@@ -276,7 +330,10 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
         viewModelInstance = null
         binding = null
         pendingVisual = null
+        targetVisual = null
+        ticking = false
         lastVisual = null
+        lastPart = DuoPart.ALL
         readyActions.clear()
         failedActions.clear()
         renderActive = false
@@ -338,5 +395,71 @@ internal class DuoRiveView(context: Context) : FrameLayout(context), DuoElement 
 
         /** Idle time after the last change before the renderer is paused (see [idleStop]). */
         private const val IDLE_MS = 3_000L
+
+        /** How often a dot-to-moon fill writes the next frame. */
+        private const val FRAME_MS = 16L
     }
 }
+
+
+/**
+ * A [RiveAnimationView] that waits for Rive's canvas worker before the Surface is released.
+ *
+ * rive-android 10.2.0 releases the Java [android.view.Surface] on the UI thread as soon as the
+ * texture is lost or resized (`onSurfaceTextureDestroyed`, and `onSurfaceTextureSizeChanged`,
+ * which calls `onSurfaceTextureAvailable`). The draw runs on a shared worker thread and calls
+ * `Surface.lockCanvas`. If that call is still in flight, the Surface throws
+ * `IllegalStateException: Surface has already been released`, and the native code does not clear
+ * the exception, so ART aborts SystemUI.
+ *
+ * [Renderer.stop] only queues the halt. Deleting a throwaway Canvas renderer waits on that same
+ * worker until every job queued ahead of it — including an in-flight frame — has finished. The
+ * real renderer stays alive; [isAttached][Renderer.isAttached] is cleared so a status tick cannot
+ * start another frame until the next surface is installed.
+ */
+private class GuardedRiveView(builder: RiveAnimationView.Builder) : RiveAnimationView(builder) {
+
+    override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
+        awaitCanvasWorker()
+        super.onSurfaceTextureAvailable(surface, width, height)
+    }
+
+    override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
+        awaitCanvasWorker()
+        return super.onSurfaceTextureDestroyed(surface)
+    }
+
+    private fun awaitCanvasWorker() {
+        val current = renderer ?: return
+        if (!current.hasCppObject) return
+        if (!current.isAttached && !current.isPlaying) return
+        current.isAttached = false
+        try {
+            current.stop()
+        } catch (t: Throwable) {
+            L.w("rive stop before surface release: ${t.javaClass.simpleName}: ${t.message}")
+        }
+        val gate = CanvasWorkerGate()
+        try {
+            gate.make()
+            gate.delete()
+            L.i("Rive worker drained before surface release")
+        } catch (t: Throwable) {
+            L.w("rive worker drain: ${t.javaClass.simpleName}: ${t.message}")
+        }
+    }
+}
+
+/**
+ * Exists only so its [delete][Renderer.delete] can wait on the shared Canvas worker.
+ *
+ * Every Canvas [Renderer] in this process draws on one worker. [Renderer.delete] posts a job and
+ * blocks until that job, and everything queued before it, has finished. This renderer is never
+ * given a surface and never touches the file controller, so deleting it does not dispose the
+ * animation that is on screen.
+ */
+private class CanvasWorkerGate : Renderer(RendererType.Canvas, false) {
+    override fun draw() {}
+    override fun advance(elapsed: Float) {}
+}
+

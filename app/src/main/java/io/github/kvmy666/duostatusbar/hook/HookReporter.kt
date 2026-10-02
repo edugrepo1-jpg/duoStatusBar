@@ -30,6 +30,9 @@ internal class HookReporter(
                 settings?.let {
                     append(" · size=").append(it.sizePercent).append('%')
                     append(" · offset=").append(it.offsetX).append("dp")
+                    append(" · split=").append(it.splitIndicators)
+                    append(" · icons=").append(it.indicatorsOffsetX).append("dp")
+                    append(" · edge=").append(it.edgePadding).append('%')
                     append(" · percent=").append(it.showPercent)
                     append(" · rev=").append(it.revision)
                 }

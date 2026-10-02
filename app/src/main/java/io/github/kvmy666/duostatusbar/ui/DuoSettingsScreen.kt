@@ -35,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -44,6 +45,7 @@ import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.RootLogs
 import io.github.kvmy666.duostatusbar.settings.DuoActions
+import io.github.kvmy666.duostatusbar.settings.DuoOrientation
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
 import io.github.kvmy666.duostatusbar.settings.StockIconHider
@@ -66,6 +68,9 @@ import kotlinx.coroutines.withContext
  * `hook/DuoHook.hookSettingsChanges`). The app cannot write to the module directly, so this handshake is
  * the mechanism — the app owns the values, the module applies them.
  *
+ * Portrait and landscape each have their own copy. The phone's current orientation is the copy on
+ * screen and the copy the status bar uses; rotating swaps both.
+ *
  * One exception is the size: resizing the Rive view while System UI is running is what used to take it
  * down, so a size change is only applied on the next start. That is why the size row carries a Restart
  * button and says so.
@@ -73,7 +78,8 @@ import kotlinx.coroutines.withContext
 @Composable
 fun DuoSettingsScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    var settings by remember { mutableStateOf(DuoPrefs.read(context)) }
+    val orientation = DuoOrientation.of(LocalConfiguration.current.orientation)
+    var settings by remember(orientation) { mutableStateOf(DuoPrefs.read(context, orientation)) }
     var status by remember { mutableStateOf(DuoPrefs.status(context)) }
     var history by remember { mutableStateOf(DuoPrefs.statusHistory(context)) }
     var dump by remember { mutableStateOf(DuoPrefs.dump(context)) }
@@ -133,11 +139,20 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
     fun update(new: DuoSettings) {
         val wasEnabled = settings.enabled
         settings = new
-        DuoPrefs.write(context, new)
+        DuoPrefs.write(context, new, orientation)
         context.sendBroadcast(Intent(DuoPrefs.ACTION_SETTINGS_CHANGED))
         // Issue #4: the Shizuku icon hiding only makes sense while the element is drawing. Turning the
-        // master switch off puts the stock icons back rather than leaving a bare status bar.
-        if (wasEnabled && !new.enabled && DuoPrefs.hideStockIcons(context)) {
+        // master switch off puts the stock icons back rather than leaving a bare status bar. The other
+        // orientation can still be on, and that blacklist is one value for the whole phone, so it stays
+        // until both orientations are off.
+        val other = if (orientation == DuoOrientation.LANDSCAPE) {
+            DuoOrientation.PORTRAIT
+        } else {
+            DuoOrientation.LANDSCAPE
+        }
+        if (wasEnabled && !new.enabled && DuoPrefs.hideStockIcons(context) &&
+            !DuoPrefs.read(context, other).enabled
+        ) {
             StockIconHider.apply(context, false) { }
         }
     }
@@ -180,6 +195,16 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                 )
             }
         }
+
+        Text(
+            text = stringResource(
+                if (orientation == DuoOrientation.LANDSCAPE) R.string.settings_orientation_landscape
+                else R.string.settings_orientation_portrait
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Medium
+        )
 
         OutlinedTextField(
             value = query,

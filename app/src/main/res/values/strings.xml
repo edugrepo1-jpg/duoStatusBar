@@ -5,6 +5,8 @@
 
     <!-- Search -->
     <string name="settings_search">Search settings</string>
+    <string name="settings_orientation_portrait">Portrait settings. Rotate the phone to edit landscape.</string>
+    <string name="settings_orientation_landscape">Landscape settings. Rotate the phone to edit portrait.</string>
 
     <!-- Battery icon -->
     <string name="section_element">Battery icon</string>
@@ -12,6 +14,8 @@
     <string name="settings_master_detail">Turns the ring on or off. When it is off, your phone\'s normal status bar is used and nothing is changed.</string>
     <string name="settings_percent">Show battery percentage</string>
     <string name="settings_percent_detail">Puts the number inside the ring instead of a plain circle.</string>
+    <string name="settings_percent_height">Percentage height</string>
+    <string name="settings_percent_height_detail">Raises the number above a camera cutout. The low end is the original position and the high end is fully raised. The ring stays where it is.</string>
     <string name="settings_size">Size</string>
     <string name="settings_size_restart">Changing the size needs a restart to take effect.</string>
     <string name="settings_restart">Restart System UI</string>
@@ -19,6 +23,14 @@
     <string name="settings_live_apply_detail">When on, size and position move the icon straight away. Turn it off if the status bar ever restarts while you drag — then changes apply after you tap Restart System UI.</string>
     <string name="settings_position">Position</string>
     <string name="settings_position_hint">Drag the battery icon left or right</string>
+    <string name="settings_split">Icons outside the ring</string>
+    <string name="settings_split_detail">Moves Wi-Fi and the other icons out of the ring. Signal strength stays on the ring. The ring can stay on a camera cutout, and the icons get their own position — including on the right.</string>
+    <string name="settings_ring_position">Ring position</string>
+    <string name="settings_ring_position_hint">Drag the ring left or right. The icons stay where Icon position puts them.</string>
+    <string name="settings_indicators_position">Icon position</string>
+    <string name="settings_indicators_position_hint">Drag the icons left or right. The ring stays where Ring position puts it.</string>
+    <string name="settings_edge_padding">Edge spacing</string>
+    <string name="settings_edge_padding_detail">Space kept between the screen edge and your other status icons, such as sound and vibrate. 100% is the icon\'s own width. 0 places those icons against the edge. The ring stays where you put it.</string>
     <string name="settings_position_reset">Reset</string>
 
     <!-- Animations -->
@@ -44,13 +56,21 @@
     <string name="settings_icon_color_auto">Match status bar</string>
     <string name="settings_icon_color_black">Black</string>
     <string name="settings_icon_color_white">White</string>
-    <string name="settings_network_only">Show only Wi-Fi and 5G/4G</string>
-    <string name="settings_network_only_detail">Keeps the middle of the ring to the Wi-Fi icon and the 5G/4G label. When on, Do Not Disturb and Airplane never replace them.</string>
+    <string name="settings_middle_slot">Middle of the ring</string>
+    <string name="settings_middle_slot_detail">Wi-Fi and the 5G/4G label sit here. These can take their place.</string>
+    <string name="settings_show_airplane">Airplane mode</string>
+    <string name="settings_show_dnd">Do Not Disturb</string>
+    <string name="settings_dnd_detail">Where the moon appears while Do Not Disturb is on.</string>
+    <string name="settings_dnd_off">Off</string>
+    <string name="settings_dnd_middle">Middle of the ring</string>
+    <string name="settings_dnd_dots">Signal dots</string>
     <string name="settings_sim">Cellular line</string>
     <string name="settings_sim_detail">On a dual-SIM phone, which line the four signal spheres follow.</string>
     <string name="settings_sim_auto">Automatic (data line)</string>
     <string name="settings_sim_1">SIM 1</string>
     <string name="settings_sim_2">SIM 2</string>
+    <string name="settings_wifi_dots">Signal dots follow Wi-Fi</string>
+    <string name="settings_wifi_dots_detail">While Airplane mode is off, the four dots show cellular signal. In Airplane mode they show Wi-Fi strength, and they disappear if Wi-Fi is off too.</string>
 
     <!-- Customize -->
     <string name="section_customize">Customize your Duo</string>

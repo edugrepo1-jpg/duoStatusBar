@@ -66,8 +66,11 @@ object DuoMapping {
         wifiOn: Boolean = true,
         hasNetwork: Boolean = false,
         wifiConnected: Boolean = true,
-        networkOnly: Boolean = false
-    ): Int = SignalMapping.middleMode(airplane, dnd, wifiOn, hasNetwork, wifiConnected, networkOnly)
+        showAirplane: Boolean = true,
+        showDnd: Boolean = true
+    ): Int = SignalMapping.middleMode(
+        airplane, dnd, wifiOn, hasNetwork, wifiConnected, showAirplane, showDnd
+    )
 
     fun networkGeneration(type: Int, nrConnected: Boolean = false): String =
         SignalMapping.networkGeneration(type, nrConnected)
@@ -95,11 +98,26 @@ object DuoMapping {
         networkText: String = "",
         /** Whether the charging journey plays; false shows the bolt instantly. */
         animateCharge: Boolean = true,
+        /** Whether Airplane mode may take the middle slot. Off leaves that place to the network. */
+        showAirplane: Boolean = true,
+        /** Whether Do Not Disturb may take the middle slot. Off leaves that place to the network. */
+        showDnd: Boolean = true,
         /**
-         * The "network icons only" switch: true keeps the middle slot to Wi-Fi + 5G/4G and never lets
-         * airplane or DND occupy it (the user's toggle, FR-06).
+         * When true and [dnd] is on, each strong signal bar fills its gray dot into the white
+         * crescent. A weak bar stays the gray circle. The middle slot stays with Wi-Fi, airplane,
+         * or the generation. If the row is hidden entirely, one moon remains in the middle of it.
          */
-        networkOnly: Boolean = false
+        dndDots: Boolean = false,
+        /**
+         * Where the percentage sits: 0 is the original top-gap seat, 100 is fully raised so a center
+         * punch-hole does not cut through the digits. The ring does not move.
+         */
+        percentHeight: Int = 100,
+        /**
+         * When true, airplane mode turns the four spheres into Wi-Fi strength, and they disappear
+         * if Wi-Fi is off too. Out of airplane mode they stay the cellular bars.
+         */
+        wifiDots: Boolean = false
     ): DuoVisual {
         // The middle slot holds exactly one occupant (FR-06/FR-16): airplane wins, then DND, then
         // Wi-Fi; with Wi-Fi off the slot shows the cellular generation instead. The hand-over itself
@@ -108,9 +126,15 @@ object DuoMapping {
         // Wi-Fi only owns the slot when it is the active data path: a connected-but-internet-less AP
         // still leaves the phone on mobile data, so the slot shows the cellular generation instead of a
         // Wi-Fi glyph while the user is plainly on 4G/5G (user-reported).
-        val mode = SignalMapping.middleMode(airplane, dnd, wifiOn, networkText.isNotEmpty(), wifiConnected, networkOnly)
+        // Dots mode and the middle moon are different places for the same status. If both are
+        // asked for, the dots win and the middle stays on the connection.
+        val mode = SignalMapping.middleMode(
+            airplane, dnd, wifiOn, networkText.isNotEmpty(), wifiConnected,
+            showAirplane, showDnd && !dndDots
+        )
         val (outer, middle, dot) = SignalMapping.wifiOpacities(wifiLevel)
-        val cells = SignalMapping.cellOpacities(if (airplane) 0 else cellLevel)
+        val cells = SignalMapping.sphereOpacities(cellLevel, wifiLevel, airplane, wifiOn, wifiDots)
+        val (circles, crescents, centerMoon) = signalDots(cells, dnd && dndDots)
         val percent = if (showPercent && !charging) level.toString() else ""
         val closed = RingGeometry.gapClosed(charging, showPercent)
         return DuoVisual(
@@ -122,15 +146,21 @@ object DuoMapping {
             percentText = percent.ifEmpty { " " },
             percentOpacity = if (percent.isEmpty()) 0f else 1f,
             percentFontSize = RingGeometry.percentFontSize(percent.ifEmpty { "50" }),
+            percentY = RingGeometry.percentTopY(percentHeight),
             // Only the slot's actual occupant carries text: a hidden one never shows a stale label.
             networkText = if (mode == SignalMapping.MIDDLE_NETWORK) networkText else "",
             boltOpacity = if (charging) 1f else 0f,
             wifiOuterOpacity = outer,
             wifiMidOpacity = middle,
-            cell1Opacity = cells[0],
-            cell2Opacity = cells[1],
-            cell3Opacity = cells[2],
-            cell4Opacity = cells[3],
+            cell1Opacity = circles[0],
+            cell2Opacity = circles[1],
+            cell3Opacity = circles[2],
+            cell4Opacity = circles[3],
+            moon1Opacity = crescents[0],
+            moon2Opacity = crescents[1],
+            moon3Opacity = crescents[2],
+            moon4Opacity = crescents[3],
+            centerMoonOpacity = centerMoon,
             tint = Colors.tint(level, charging, saver, fgColor),
             fgColor = fgColor,
             middleMode = mode,
@@ -139,6 +169,28 @@ object DuoMapping {
             charging = charging,
             visible = visible,
             animateCharge = animateCharge
+        )
+    }
+
+    /**
+     * The four signal dots, plus the lone moon that stands in when that row is hidden.
+     *
+     * With the moon-dots mode off, the circles keep the sphere opacities and no crescent is drawn.
+     * With it on, a fully lit bar becomes the white crescent and its circle is gone; a dim bar stays
+     * the gray circle. The views ease between those. A fully hidden row (every sphere at 0) draws
+     * none of the four and leaves one crescent in the middle of them.
+     */
+    private fun signalDots(
+        cells: List<Float>,
+        moonsOn: Boolean
+    ): Triple<List<Float>, List<Float>, Float> {
+        val none = listOf(0f, 0f, 0f, 0f)
+        if (!moonsOn) return Triple(cells, none, 0f)
+        if (cells.all { it == 0f }) return Triple(none, none, 1f)
+        return Triple(
+            cells.map { if (it >= 1f) 0f else it },
+            cells.map { if (it >= 1f) 1f else 0f },
+            0f
         )
     }
 }

@@ -2,12 +2,17 @@ package io.github.kvmy666.duostatusbar.hook
 
 import android.app.Application
 import android.content.BroadcastReceiver
+import android.content.ComponentCallbacks
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.res.Configuration
+import android.hardware.display.DisplayManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.view.Display
+import android.view.Surface
 import android.view.View
 import android.view.ViewGroup
 import de.robv.android.xposed.XC_MethodHook
@@ -46,6 +51,12 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      */
     private var app: Context? = null
     private var host: DuoIconHost? = null
+
+    /** The orientation whose settings are currently applied, so a config change can switch sets. */
+    private var appliedOrientation = Configuration.ORIENTATION_UNDEFINED
+
+    /** The next [settingsApply] came from a rotation, so the saved size for that orientation is drawn. */
+    private val orientationPending = AtomicBoolean(false)
     private var monitor: DuoStateMonitor? = null
     private var statusBarRoot: View? = null
 
@@ -79,8 +90,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     private val settingsApply = Runnable {
         val ctx = app ?: return@Runnable
         L.guard("DuoHook settings changed") {
+            val applySavedSize = orientationPending.getAndSet(false)
             val stage = DuoGuard(ctx).stage()
-            val settings = host?.refreshSettings()
+            val settings = host?.refreshSettings(applySavedSize)
             when {
                 stage == DuoGuard.OFF -> host?.teardown()
                 host?.duo == null -> scheduleAttach(attempt = 0)
@@ -222,6 +234,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             }
             if (stage == DuoGuard.OFF) {
                 // Retry only while the provider itself was unreachable; a real "off" answer is final.
+                // An unreachable read looks like "off", so it must not be treated as the other
+                // orientation being off too — that would skip the hooks and never retry.
                 if (DuoSettingsClient.providerUnreachable && attempt < MAX_STAGE_RETRIES) {
                     L.w("settings provider unreachable (attempt ${attempt + 1}/$MAX_STAGE_RETRIES) - retrying")
                     handler.postDelayed({
@@ -229,16 +243,29 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     }, STAGE_RETRY_MS)
                     return@guard
                 }
-                L.i("gated off - nothing hooked. Enable with: ${guard.enableHint}, then restart SystemUI")
-                return@guard
+                // Off in *both* orientations leaves the process untouched, the same as a single off switch.
+                // Off in only this orientation still installs the hooks: rotating has to be able to attach
+                // the other set without a System UI restart.
+                if (!DuoSettingsClient.otherOrientationEnabled(ctx)) {
+                    L.i("gated off - nothing hooked. Enable with: ${guard.enableHint}, then restart SystemUI")
+                    return@guard
+                }
             }
             L.i("application ready: ${ctx.packageName} (stage $stage)")
             ensureHost(ctx)
             hookShadeHeader()
             hookStatusIconContainer()
             hookBarAppearance()
+            // The settings receiver is already registered in start(), before this gate, so a restart
+            // request still arrives when the module reads as off. Orientation is installed here, once
+            // we know a rotation might need to attach the other set.
+            hookOrientation()
             // The window may already have been captured by the early addView hook; attach now.
-            statusBarRoot?.let { scheduleAttach(attempt = 0) }
+            if (stage == DuoGuard.OFF) {
+                L.i("this orientation is off - waiting to apply the other orientation")
+            } else {
+                statusBarRoot?.let { scheduleAttach(attempt = 0) }
+            }
         }
     }
 
@@ -311,6 +338,90 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             )
             L.i("listening for app settings changes")
         }
+    }
+
+    /**
+     * Rotation swaps which stored set is drawn.
+     *
+     * The status-bar window on this ROM does not get a configuration callback whose orientation
+     * actually changes, so watching only that left the previous set on screen until some other
+     * settings write happened to re-read. The display's rotation is what the phone really did.
+     */
+    private fun hookOrientation() {
+        val ctx = app ?: return
+        appliedOrientation = orientationFrom(ctx)
+        L.guard("DuoHook orientation") {
+            ctx.registerComponentCallbacks(object : ComponentCallbacks {
+                override fun onConfigurationChanged(newConfig: Configuration) {
+                    noteCurrentOrientation(ctx)
+                }
+
+                override fun onLowMemory() {}
+            })
+            val displays = ctx.getSystemService(DisplayManager::class.java)
+            displays?.registerDisplayListener(object : DisplayManager.DisplayListener {
+                override fun onDisplayAdded(displayId: Int) {}
+
+                override fun onDisplayRemoved(displayId: Int) {}
+
+                override fun onDisplayChanged(displayId: Int) {
+                    noteCurrentOrientation(ctx)
+                }
+            }, handler)
+            L.i("orientation listener installed")
+        }
+    }
+
+    /**
+     * The orientation to draw. Resources and the display can update a moment apart; a display that
+     * has already left the set we are drawing wins, otherwise the configuration does, which is the
+     * same value a later settings read uses.
+     */
+    private fun noteCurrentOrientation(ctx: Context) {
+        val configured = ctx.resources.configuration.orientation
+        val fromDisplay = orientationFromRotation(displayRotation(ctx))
+        if (fromDisplay != Configuration.ORIENTATION_UNDEFINED && fromDisplay != appliedOrientation) {
+            noteOrientation(fromDisplay)
+            return
+        }
+        noteOrientation(configured)
+    }
+
+    /** What is on screen right now, for the initial value so the first layout does not re-apply. */
+    private fun orientationFrom(ctx: Context): Int {
+        val fromDisplay = orientationFromRotation(displayRotation(ctx))
+        if (fromDisplay != Configuration.ORIENTATION_UNDEFINED) return fromDisplay
+        return ctx.resources.configuration.orientation
+    }
+
+    private fun displayRotation(ctx: Context): Int? = try {
+        ctx.getSystemService(DisplayManager::class.java)
+            ?.getDisplay(Display.DEFAULT_DISPLAY)
+            ?.rotation
+    } catch (_: Throwable) {
+        null
+    }
+
+    private fun orientationFromRotation(rotation: Int?): Int = when (rotation) {
+        Surface.ROTATION_90, Surface.ROTATION_270 -> Configuration.ORIENTATION_LANDSCAPE
+        Surface.ROTATION_0, Surface.ROTATION_180 -> Configuration.ORIENTATION_PORTRAIT
+        else -> Configuration.ORIENTATION_UNDEFINED
+    }
+
+    /** Applies [next] when it is a real orientation and not the one already drawn. */
+    private fun noteOrientation(next: Int) {
+        if (next != Configuration.ORIENTATION_PORTRAIT && next != Configuration.ORIENTATION_LANDSCAPE) return
+        if (next == appliedOrientation) return
+        appliedOrientation = next
+        DuoSettingsClient.useOrientation(next)
+        orientationPending.set(true)
+        L.i(
+            "orientation is now " +
+                "${if (next == Configuration.ORIENTATION_LANDSCAPE) "landscape" else "portrait"}" +
+                " - applying that set"
+        )
+        handler.removeCallbacks(settingsApply)
+        handler.post(settingsApply)
     }
 
     private fun hookWindowManagerAddView() {
@@ -434,6 +545,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     // Hide pass only. Do NOT re-read system state here: the status bar re-lays out on
                     // every clock tick, and refreshing Wi-Fi/cell/etc plus re-rendering Rive on each one
                     // kept SystemUI awake at ~1 Hz — the battery drain. State is already broadcast-driven.
+                    // Orientation is an int compare and only posts work when it actually changed.
+                    // The display listener covers a rotation that has not reached this configuration yet.
+                    app?.let { noteOrientation(it.resources.configuration.orientation) }
                     host?.reapplyHiding()
                 }
             }

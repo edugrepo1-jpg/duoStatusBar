@@ -33,9 +33,10 @@ class DuoSettingsProvider : ContentProvider() {
     ): Cursor? {
         val ctx = context ?: return null
         return try {
-            val s = DuoPrefs.read(ctx)
+            val portrait = DuoPrefs.read(ctx, DuoOrientation.PORTRAIT)
+            val landscape = DuoPrefs.read(ctx, DuoOrientation.LANDSCAPE)
             MatrixCursor(DuoPrefs.COLUMNS).apply {
-                addRow(rowFor(s, DuoPrefs.revision(ctx)))
+                addRow(rowFor(portrait, DuoPrefs.revision(ctx), landscape))
             }
         } catch (t: Throwable) {
             L.w("query failed: ${t.javaClass.simpleName}: ${t.message}")
@@ -102,13 +103,32 @@ class DuoSettingsProvider : ContentProvider() {
 
         /**
          * The single row the module reads: one value per column in [DuoPrefs.COLUMNS], booleans as 1/0.
+         * Portrait columns come first; landscape repeats them (except the shared revision) so the module
+         * can pick a set from the status bar's own orientation.
          *
+         * [landscape] defaults to [settings] so a caller that only has one copy still publishes a full row.
          * Pure on purpose. The provider's own plumbing needs a framework context, which unit tests cannot
          * convincingly supply — but the *shape* of what crosses the uid boundary is exactly the part that
          * breaks silently (a reordered column means the module reads the size as the offset), so it is
          * separated out and tested directly.
          */
-        internal fun rowFor(settings: DuoSettings, revision: Long): Array<Any> = arrayOf(
+        internal fun rowFor(
+            settings: DuoSettings,
+            revision: Long,
+            landscape: DuoSettings = settings
+        ): Array<Any> {
+            val portrait = encoded(settings, revision)
+            val land = encoded(landscape, revision)
+            val tail = ArrayList<Any>(DuoPrefs.LANDSCAPE_COLUMNS.size)
+            for (i in portrait.indices) {
+                if (DuoPrefs.PORTRAIT_COLUMNS[i] == DuoPrefs.COL_REVISION) continue
+                tail.add(land[i])
+            }
+            return (portrait.toList() + tail).toTypedArray()
+        }
+
+        /** One orientation's values, in [DuoPrefs.PORTRAIT_COLUMNS] order. */
+        private fun encoded(settings: DuoSettings, revision: Long): Array<Any> = arrayOf(
             if (settings.enabled) 1 else 0,
             if (settings.useRive) 1 else 0,
             if (settings.showPercent) 1 else 0,
@@ -127,8 +147,16 @@ class DuoSettingsProvider : ContentProvider() {
             if (settings.chargingEnabled) 1 else 0,
             settings.iconColor,
             if (settings.hideOtherIcons) 1 else 0,
-            if (settings.networkOnly) 1 else 0,
-            settings.simChoice
+            if (!settings.showAirplane && !DuoPrefs.dndInMiddle(settings.dndMode)) 1 else 0,
+            settings.simChoice,
+            settings.percentHeight.coerceIn(DuoPrefs.MIN_PERCENT_HEIGHT, DuoPrefs.MAX_PERCENT_HEIGHT),
+            if (settings.splitIndicators) 1 else 0,
+            settings.indicatorsOffsetX.coerceIn(-DuoPrefs.MAX_OFFSET, DuoPrefs.MAX_OFFSET),
+            if (settings.wifiDots) 1 else 0,
+            if (settings.showAirplane) 1 else 0,
+            if (DuoPrefs.dndInMiddle(settings.dndMode)) 1 else 0,
+            settings.edgePadding.coerceIn(DuoPrefs.MIN_EDGE_PADDING, DuoPrefs.MAX_EDGE_PADDING),
+            DuoPrefs.normalizeDndMode(settings.dndMode)
         )
     }
 }

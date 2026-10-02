@@ -37,6 +37,12 @@ internal class DuoIconHost(private val context: Context) {
     private var element: DuoElement? = null
 
     /**
+     * The inner icons, drawn by a second view of the same element when [ModuleSettings.splitIndicators]
+     * is on. Null in the original layout, where [element] draws the ring and the icons together.
+     */
+    private var indicators: DuoElement? = null
+
+    /**
      * The strip the stock icons live in and are hidden from. Normally the same as [host]; on a ROM whose
      * strip is a custom container that refuses foreign children (HyperOS's `MiuiStatusBatteryContainer`
      * measured the element 0x0 and nothing drew), [host] is a standard ancestor and this stays the strip.
@@ -87,6 +93,9 @@ internal class DuoIconHost(private val context: Context) {
         var bar: View? = null
         var element: DuoElement? = null
 
+        /** The inner-icon view for this bar, present only while the split layout is on. */
+        var indicators: DuoElement? = null
+
         /**
          * The slot width captured *before* the stock icons were hidden. Re-measuring later would read
          * the hidden battery's 0-width and fall back to the strip height, which changes the element's
@@ -105,7 +114,9 @@ internal class DuoIconHost(private val context: Context) {
      */
     fun onStatusIconAdded(view: View) {
         try {
-            if (view === element?.ui || extras.any { it.element?.ui === view }) return
+            if (view === element?.ui || view === indicators?.ui ||
+                extras.any { it.element?.ui === view || it.indicators?.ui === view }
+            ) return
             var parent: View? = view.parent as? View
             while (parent != null) {
                 if (parent === host || extras.any { it.container === parent }) {
@@ -165,9 +176,16 @@ internal class DuoIconHost(private val context: Context) {
 
     val duo: DuoElement? get() = element
 
+    /** The ring and, when split, the icon cluster, on every bar. */
+    private fun allElements(): List<DuoElement> =
+        listOfNotNull(element, indicators) + extras.flatMap { listOfNotNull(it.element, it.indicators) }
+
+    /** Views this module added, so a hiding pass never treats them as stock icons. */
+    private fun ourViews(): List<View> = allElements().map { it.ui }
+
     /** Pushes a snapshot at every element that is drawing, in every bar. */
     fun render(v: DuoVisual) {
-        for (target in listOfNotNull(element) + extras.mapNotNull { it.element }) {
+        for (target in allElements()) {
             try {
                 target.render(v)
             } catch (t: Throwable) {
@@ -273,7 +291,7 @@ internal class DuoIconHost(private val context: Context) {
         logClass: String
     ): Boolean {
         val slot = ExtraBar(name, center)
-        val candidate = createElement(elementRoot, stage)
+        val candidate = createElement(elementRoot, stage, ringPart())
         slot.container = target
         slot.bar = cap ?: target
         slot.basePx = geometry.measuredWidth(target)
@@ -284,6 +302,7 @@ internal class DuoIconHost(private val context: Context) {
         candidate.ui.layoutParams = layoutParamsFor(target, side)
         target.addView(candidate.ui)
         applyExtraLayout(slot)
+        syncExtraIndicators(slot)
         candidate.onReady {
             if (slot.element !== candidate) return@onReady
             hideStock(target, candidate.ui)
@@ -300,30 +319,75 @@ internal class DuoIconHost(private val context: Context) {
         return true
     }
 
-    /** The container decides the LayoutParams type: the strips are LinearLayouts, the shade header is not. */
+    /**
+     * The container decides the LayoutParams type: the strips are LinearLayouts, the shade header is not.
+     * Height is taller than [side] so the percentage can draw above the ring without moving the ring.
+     */
+    /** The ring's layout: full drawing size, with the strip keeping only the edge-spacing setting. */
     private fun layoutParamsFor(container: ViewGroup, side: Int): ViewGroup.LayoutParams =
-        layoutParamsFor(container, side, side)
+        layoutParamsFor(
+            container,
+            side,
+            RingGeometry.elementHeightPx(side),
+            edgeInsetPx(side, settings.edgePadding)
+        )
 
-    private fun layoutParamsFor(container: ViewGroup, width: Int, height: Int): ViewGroup.LayoutParams =
-        when (container) {
+    /**
+     * [inset] is the start margin, zero or negative. 0 keeps [width] in the strip. A negative margin
+     * hands that much back, so icons Duo does not replace (sound, vibrate, alarm) can sit closer to
+     * the screen edge. The icon cluster passes the full negative width and reserves nothing.
+     */
+    private fun layoutParamsFor(
+        container: ViewGroup,
+        width: Int,
+        height: Int,
+        inset: Int
+    ): ViewGroup.LayoutParams {
+        val lp = when (container) {
             is LinearLayout -> LinearLayout.LayoutParams(width, height)
             is android.widget.FrameLayout -> android.widget.FrameLayout.LayoutParams(width, height)
             else -> ViewGroup.LayoutParams(width, height)
         }
+        // Fresh params start at 0, so a zero inset is already correct. Only a flowing strip uses it.
+        if (inset != 0 && container is LinearLayout && lp is ViewGroup.MarginLayoutParams) {
+            if (container.layoutDirection == View.LAYOUT_DIRECTION_RTL) lp.rightMargin = inset
+            else lp.leftMargin = inset
+        }
+        return lp
+    }
+
+    /**
+     * Gives [view] its drawing size and the strip margin [inset].
+     *
+     * Re-assigning [View.layoutParams] requests a layout pass, and a layout pass that resizes the Rive
+     * view is what used to take System UI down. The size is therefore touched only when it changed.
+     * A spacing change updates the margin alone, which does not resize the drawing.
+     */
+    private fun assignBox(view: View, container: ViewGroup, side: Int, inset: Int) {
+        val height = RingGeometry.elementHeightPx(side)
+        val lp = view.layoutParams
+        if (lp == null || lp.width != side || lp.height != height) {
+            view.layoutParams = layoutParamsFor(container, side, height, inset)
+            view.requestLayout()
+            return
+        }
+        if (container !is LinearLayout || lp !is ViewGroup.MarginLayoutParams) return
+        val rtl = container.layoutDirection == View.LAYOUT_DIRECTION_RTL
+        val leading = if (rtl) lp.rightMargin else lp.leftMargin
+        val trailing = if (rtl) lp.leftMargin else lp.rightMargin
+        if (leading == inset && trailing == 0) return
+        lp.leftMargin = if (rtl) 0 else inset
+        lp.rightMargin = if (rtl) inset else 0
+        view.layoutParams = lp
+    }
 
     private fun applyExtraLayout(slot: ExtraBar) {
         val target = slot.container ?: return
         val view = slot.element?.ui ?: return
         try {
             val side = geometry.sidePx(target, slot.bar, slot.basePx)
-            val lp = view.layoutParams
-            // Same rule as applyLayout: never request a layout pass unless the size actually changed.
-            if (lp == null || lp.width != side || lp.height != side) {
-                view.layoutParams = layoutParamsFor(target, side)
-                view.requestLayout()
-            }
-            view.translationX = settings.offsetX * context.resources.displayMetrics.density
-            view.translationY = if (slot.center) geometry.windowCenterShiftY(target, slot.bar) else 0f
+            assignBox(view, target, side, edgeInsetPx(side, settings.edgePadding))
+            place(view, target, slot.bar, side, settings.offsetX, slot.center)
         } catch (t: Throwable) {
             L.w("${slot.name} layout: ${t.message}")
         }
@@ -332,27 +396,37 @@ internal class DuoIconHost(private val context: Context) {
     /** FR-16: whether the percentage should be drawn — asked by the state monitor on every render. */
     val showPercent: Boolean get() = settings.showPercent
 
+    /** 0 is the original percentage seat; 100 is fully raised. Asked on every render, so it moves live. */
+    val percentHeight: Int get() = settings.percentHeight
+
     /** FR-15b: "auto", "black" or "white" — asked by the state monitor on every render. */
     val iconColor: String get() = settings.iconColor
 
-    /**
-     * Whether the middle slot is restricted to the network icons (Wi-Fi + 5G/4G) and never shows DND or
-     * airplane — asked by the state monitor on every render.
-     */
-    val networkOnly: Boolean get() = settings.networkOnly
+    /** Whether Airplane mode may take the middle of the ring. Asked on every render. */
+    val showAirplane: Boolean get() = settings.showAirplane
+
+    /** How Do Not Disturb is drawn: "off", "middle", or "dots". Asked on every render. */
+    val dndMode: String get() = settings.dndMode
+
+    /** Whether Do Not Disturb may take the middle of the ring. Asked on every render. */
+    val showDnd: Boolean get() = settings.showDnd
 
     /** Which cellular line the spheres follow on a dual-SIM phone: "auto", "sim1" or "sim2". */
     val simChoice: String get() = settings.simChoice
+
+    /** When true, airplane mode turns the spheres into Wi-Fi, hiding them if Wi-Fi is off too. */
+    val wifiDots: Boolean get() = settings.wifiDots
 
     /**
      * FR-08/08b: hides the stock views per the user's choice — everything, or only what Duo replaces.
      * One place so the main bar, the keyguard bar and the shade header can never disagree.
      */
     private fun hideStock(container: ViewGroup, keep: View?, keepLayout: View? = null) {
+        val ours = ourViews()
         if (settings.hideOtherIcons) {
-            hider.hideAllExcept(container, keep, keepLayout)
+            hider.hideAllExcept(container, keep, keepLayout, ours)
         } else {
-            hider.hideReplaced(container, keep, keepLayout)
+            hider.hideReplaced(container, keep, keepLayout, ours)
         }
     }
 
@@ -375,7 +449,7 @@ internal class DuoIconHost(private val context: Context) {
      * half-drawn.
      */
     fun setElementsVisible(on: Boolean) {
-        for (target in listOfNotNull(element) + extras.mapNotNull { it.element }) {
+        for (target in allElements()) {
             try {
                 target.ui.visibility = if (on) View.VISIBLE else View.GONE
                 // Off screen means no drawing at all: a looping Rive idle animation would otherwise keep
@@ -389,7 +463,7 @@ internal class DuoIconHost(private val context: Context) {
 
     /** FR-25: fires the arrival on every bar, so the lock screen wakes with the rest of the element. */
     fun revealAll(ms: Int) {
-        for (target in listOfNotNull(element) + extras.mapNotNull { it.element }) {
+        for (target in allElements()) {
             try {
                 target.reveal(ms)
             } catch (t: Throwable) {
@@ -402,18 +476,28 @@ internal class DuoIconHost(private val context: Context) {
      * Re-reads the user's settings and applies what can change while running (size, offset).
      * Called on attach and whenever the app says something changed, so no restart is needed.
      */
-    fun refreshSettings(): ModuleSettings {
+    fun refreshSettings(applySavedSize: Boolean = false): ModuleSettings {
         val fresh = DuoSettingsClient.read(context)
         val changed = fresh != settings
         val hideModeChanged = changed && fresh.hideOtherIcons != settings.hideOtherIcons
         settings = fresh
         if (changed) {
             L.i("settings rev ${fresh.revision}: size ${fresh.sizePercent}%, offset ${fresh.offsetX}dp, " +
-                    "percent=${fresh.showPercent}, rive=${fresh.useRive}, live=${fresh.liveApply}"
+                    "percent=${fresh.showPercent}, percentHeight=${fresh.percentHeight}%, " +
+                    "split=${fresh.splitIndicators}, icons=${fresh.indicatorsOffsetX}dp, " +
+                    "edge=${fresh.edgePadding}%, " +
+                    "rive=${fresh.useRive}, live=${fresh.liveApply}"
             )
-            if (fresh.liveApply) {
+            // A drag must not resize the Rive view (that restart loop is why size is restart-only).
+            // Rotation is one saved size for the orientation now on screen, so it is applied here.
+            if (applySavedSize) geometry.applySize(fresh.sizePercent)
+            if (fresh.liveApply || applySavedSize) {
                 applyLayout()
-                for (slot in extras) applyExtraLayout(slot)
+                syncIndicators()
+                for (slot in extras) {
+                    applyExtraLayout(slot)
+                    syncExtraIndicators(slot)
+                }
             } else {
                 // The safe path: size and position are saved but wait for the next start. Gestures and
                 // the clock's font are not geometry, so they can still change live.
@@ -444,29 +528,181 @@ internal class DuoIconHost(private val context: Context) {
         val view = element?.ui ?: return
         try {
             val side = geometry.sidePx(target, root)
-            val lp = view.layoutParams
-            // Only touch the view's bounds when the size actually changes. Re-assigning layoutParams
+            // assignBox only rewrites layoutParams when the box actually changed. Re-assigning them
             // (even to the same numbers) requests a layout pass, and a layout pass on the Rive
-            // TextureView is what took System UI down; the size is restart-only now, so this normally
-            // does nothing at all and a settings change can never reshape the drawing.
-            if (lp == null || lp.width != side || lp.height != side) {
-                view.layoutParams = layoutParamsFor(target, side)
-                view.requestLayout()
-            }
-            if (overlay) {
-                // The parent is a plain FrameLayout that places children top-left, so the element is moved
-                // onto the battery by translation; the battery keeps its layout (INVISIBLE) to measure.
-                hideOverlayAnchor()
-                anchorOnBattery(view, target, side)
-            } else {
-                view.translationX = settings.offsetX * context.resources.displayMetrics.density
-                // The strip sits low in the window, so centring on it wastes the space above. Centre the
-                // element in the whole status bar instead, which is what lets it grow to the window height.
-                view.translationY = geometry.windowCenterShiftY(target, root)
-            }
-            gestures.install(view, settings.tapAction, settings.doubleTapAction, settings.longPressAction)
+            // TextureView is what took System UI down on rotation.
+            assignBox(view, target, side, edgeInsetPx(side, settings.edgePadding))
+            place(view, target, root, side, settings.offsetX, center = true)
+            installGestures(view)
+            indicators?.ui?.let { installGestures(it) }
         } catch (t: Throwable) {
             L.w("applyLayout: ${t.message}")
+        }
+    }
+
+    /**
+     * Moves [view] by [offsetDp] and, unless this is an overlay, centres it the way the ring is centred.
+     * The ring and the icon cluster share this so a split layout cannot drift from the original one.
+     */
+    private fun place(
+        view: View,
+        container: ViewGroup,
+        windowRoot: View?,
+        side: Int,
+        offsetDp: Int,
+        center: Boolean
+    ) {
+        if (overlay && container === host) {
+            // The parent is a plain FrameLayout that places children top-left, so the element is moved
+            // onto the battery by translation. On One UI 8 the anchor is not a child of the hidden
+            // strip, so this is what actually removes the stock cluster.
+            hideOverlayAnchor()
+            anchorOnBattery(view, container, side, offsetDp)
+            return
+        }
+        view.translationX = offsetDp * context.resources.displayMetrics.density
+        // The strip sits low in the window, so centring on it wastes the space above. Centre the
+        // ring in the whole status bar instead, which is what lets it grow to the window height.
+        // The view is taller than the ring; the extra shift keeps the ring put and leaves the
+        // raised percentage in the space above it.
+        view.translationY = (if (center) geometry.windowCenterShiftY(container, windowRoot) else 0f) +
+            RingGeometry.ringAnchorShiftY(side)
+    }
+
+    private fun installGestures(view: View) {
+        gestures.install(view, settings.tapAction, settings.doubleTapAction, settings.longPressAction)
+    }
+
+    /** The part the ring's view should draw for the current settings. */
+    private fun ringPart(): DuoPart = if (settings.splitIndicators) DuoPart.RING else DuoPart.ALL
+
+    /**
+     * Adds or removes the icon-cluster view on the main bar. The ring's view stays where it was;
+     * only its [DuoPart] changes, so turning the mode on does not rebuild the Rive surface that
+     * already survived attach.
+     */
+    private fun syncIndicators() {
+        val ring = element ?: return
+        val container = host ?: return
+        ring.part = ringPart()
+        if (!settings.splitIndicators) {
+            drop(indicators, container)
+            indicators = null
+            return
+        }
+        val stageRoot = root ?: return
+        indicators = ensureCluster(
+            indicators,
+            container,
+            ring.ui,
+            root,
+            stageRoot,
+            basePx = 0,
+            center = true
+        ) { indicators = it }
+    }
+
+    /** The same cluster, for a keyguard bar or the shade header. */
+    private fun syncExtraIndicators(slot: ExtraBar) {
+        val ring = slot.element ?: return
+        val container = slot.container ?: return
+        ring.part = ringPart()
+        if (!settings.splitIndicators) {
+            drop(slot.indicators, container)
+            slot.indicators = null
+            return
+        }
+        val stageRoot = slot.bar ?: container
+        slot.indicators = ensureCluster(
+            slot.indicators,
+            container,
+            ring.ui,
+            slot.bar,
+            stageRoot,
+            slot.basePx,
+            slot.center
+        ) { slot.indicators = it }
+    }
+
+    /**
+     * Returns the icon-cluster view for one bar, creating it the first time the split layout is on.
+     * [assign] publishes it before the ready callback, so a hiding pass can already see the view.
+     */
+    private fun ensureCluster(
+        existing: DuoElement?,
+        container: ViewGroup,
+        ringView: View,
+        windowRoot: View?,
+        stageRoot: View,
+        basePx: Int,
+        center: Boolean,
+        assign: (DuoElement?) -> Unit
+    ): DuoElement? {
+        val side = geometry.sidePx(container, windowRoot, basePx)
+        existing?.let { cluster ->
+            place(cluster.ui, container, windowRoot, side, settings.indicatorsOffsetX, center)
+            installGestures(cluster.ui)
+            return cluster
+        }
+        val stage = guard.stage()
+        if (stage == DuoGuard.OFF) return null
+        val candidate = createElement(stageRoot, stage, DuoPart.INDICATORS)
+        // A LinearLayout would otherwise reserve a second slot and shove the clock. The cluster keeps
+        // no strip space of its own; edge spacing belongs to the ring. Overlay parents stack children,
+        // so the margin is only for the strip.
+        candidate.ui.layoutParams = layoutParamsFor(
+            container, side, RingGeometry.elementHeightPx(side), edgeInsetPx(side, 0)
+        )
+        val index = container.indexOfChild(ringView)
+        if (index >= 0) container.addView(candidate.ui, index + 1) else container.addView(candidate.ui)
+        assign(candidate)
+        allowOverflow(container)
+        place(candidate.ui, container, windowRoot, side, settings.indicatorsOffsetX, center)
+        installGestures(candidate.ui)
+        candidate.onReady {
+            candidate.reveal(settings.revealMs)
+            L.i("icon cluster injected (${side}px, offset ${settings.indicatorsOffsetX}dp)")
+        }
+        candidate.onFailed {
+            L.w("icon cluster did not bind - drawing it with Canvas")
+            val canvas = try {
+                DuoCanvasView(context, DuoPart.INDICATORS).also { it.start() }
+            } catch (t: Throwable) {
+                L.e("icon cluster fallback failed: ${t.javaClass.simpleName}: ${t.message}")
+                drop(candidate, container)
+                assign(null)
+                return@onFailed
+            }
+            swap(container, candidate, canvas, ringView)
+            assign(canvas)
+            place(canvas.ui, container, windowRoot, side, settings.indicatorsOffsetX, center)
+            installGestures(canvas.ui)
+            canvas.onReady { canvas.reveal(settings.revealMs) }
+        }
+        return candidate
+    }
+
+    /** Replaces [from] with [to] in [container], keeping it next to the ring. */
+    private fun swap(container: ViewGroup, from: DuoElement, to: DuoElement, ringView: View) {
+        val index = container.indexOfChild(from.ui).takeIf { it >= 0 }
+            ?: (container.indexOfChild(ringView) + 1).takeIf { it > 0 }
+        try {
+            from.teardown()
+            container.removeView(from.ui)
+        } catch (t: Throwable) {
+            L.w("cluster swap remove: ${t.message}")
+        }
+        to.ui.layoutParams = from.ui.layoutParams
+        if (index != null && index <= container.childCount) container.addView(to.ui, index)
+        else container.addView(to.ui)
+    }
+
+    private fun drop(view: DuoElement?, container: ViewGroup?) {
+        view ?: return
+        try {
+            container?.removeView(view.ui)
+            view.teardown()
+        } catch (_: Throwable) {
         }
     }
 
@@ -486,7 +722,8 @@ internal class DuoIconHost(private val context: Context) {
      * Called from a `dispatchTouchEvent` hook on the status bar, above the point where the bar swallows
      * touches, because the injected view never receives them. See [ElementGestures.handle].
      */
-    fun handleElementTouch(event: MotionEvent): Boolean = gestures.handle(event, element?.ui)
+    fun handleElementTouch(event: MotionEvent): Boolean =
+        gestures.handle(event, listOfNotNull(element?.ui, indicators?.ui))
 
     /**
      * Finds `system_icons`, injects the Duo element, hides what it replaces. True on success.
@@ -531,8 +768,8 @@ internal class DuoIconHost(private val context: Context) {
             // Pin the slot width now, while the battery view still has its real width: once the stock
             // icons are hidden it reads 0 and the fallback would change the size mid-session.
             val basePx = geometry.measuredWidth(target)
-            val candidate = createElement(statusBarRoot, stage)
             refreshSettings()
+            val candidate = createElement(statusBarRoot, stage, ringPart())
             // Capture the size once per process: live size changes are deferred to a restart (see
             // [SlotGeometry.appliedSize]) because resizing the Rive view live used to take System UI down.
             geometry.capture(settings.sizePercent, basePx)
@@ -575,6 +812,7 @@ internal class DuoIconHost(private val context: Context) {
             host = container
             element = candidate
             applyLayout()
+            syncIndicators()
             clock.apply(root, settings.systemClockFont)
             // The stock icons are hidden and the first reveal fires only once the element reports itself
             // live. A Rive state machine binds *after* this method returns (it needs the view attached to a
@@ -622,7 +860,7 @@ internal class DuoIconHost(private val context: Context) {
         // Tell the app so it can ask the user to send the log; this is the failure we most need evidence for.
         DuoSettingsClient.reportFallback(context, "Rive did not bind on ${android.os.Build.MODEL}; using the simple drawing")
         val canvas = try {
-            DuoCanvasView(context).also { it.start() }
+            DuoCanvasView(context, ringPart()).also { it.start() }
         } catch (t: Throwable) {
             L.e("Canvas fallback failed: ${t.javaClass.simpleName}: ${t.message}")
             return
@@ -634,24 +872,28 @@ internal class DuoIconHost(private val context: Context) {
         } catch (t: Throwable) {
             L.w("fallback remove: ${t.message}")
         }
-        canvas.ui.layoutParams = layoutParamsFor(container, geometry.widthPx(target), ViewGroup.LayoutParams.MATCH_PARENT)
+        val width = geometry.widthPx(target)
+        canvas.ui.layoutParams = layoutParamsFor(
+            container, width, ViewGroup.LayoutParams.MATCH_PARENT, edgeInsetPx(width, settings.edgePadding)
+        )
         container.addView(canvas.ui)
         element = canvas
         applyLayout()
+        syncIndicators()
         canvas.onReady { onElementReady(canvas, target) }
         L.i("element: Canvas (fallback after Rive did not bind)")
     }
 
-    private fun createElement(root: View, stage: Int): DuoElement {
+    private fun createElement(root: View, stage: Int, part: DuoPart = DuoPart.ALL): DuoElement {
         if (stage >= DuoGuard.RIVE) {
-            riveElement(root)?.let { rive ->
-                L.i("element: Rive (stage $stage)")
+            riveElement(root, part)?.let { rive ->
+                L.i("element: Rive (stage $stage, $part)")
                 return rive
             }
         }
-        val canvas = DuoCanvasView(context)
+        val canvas = DuoCanvasView(context, part)
         canvas.start()
-        L.i("element: Canvas (stage $stage)")
+        L.i("element: Canvas (stage $stage, $part)")
         return canvas
     }
 
@@ -663,7 +905,7 @@ internal class DuoIconHost(private val context: Context) {
      * *before* the view is constructed, because a native fault kills the process before anything can be
      * caught: that record is what stops a crash loop from repeating itself on the next boot.
      */
-    private fun riveElement(root: View): DuoElement? {
+    private fun riveElement(root: View, part: DuoPart): DuoElement? {
         if (!root.isHardwareAccelerated) {
             L.w("status bar window is not hardware accelerated - Rive needs a Surface, using Canvas")
             DuoSettingsClient.reportFallback(context, "no hardware acceleration on ${android.os.Build.MODEL}; using the simple drawing")
@@ -674,7 +916,7 @@ internal class DuoIconHost(private val context: Context) {
             return null
         }
         guard.noteRiveAttempt()
-        val rive = DuoRiveView(context)
+        val rive = DuoRiveView(context, part)
         if (!rive.start()) {
             // A clean failure, not a death: hand the attempt back so the breaker only counts crashes.
             guard.clearRiveAttempts()
@@ -764,7 +1006,13 @@ internal class DuoIconHost(private val context: Context) {
             }
             host = parent
             parent.addView(view)
+            indicators?.ui?.let { icon ->
+                (icon.parent as? ViewGroup)?.removeView(icon)
+                val index = parent.indexOfChild(view)
+                if (index >= 0) parent.addView(icon, index + 1) else parent.addView(icon)
+            }
             applyLayout()
+            syncIndicators()
             L.i("element re-attached into ${parent.javaClass.simpleName} after the strip was rebuilt")
             true
         } catch (t: Throwable) {
@@ -776,12 +1024,16 @@ internal class DuoIconHost(private val context: Context) {
     /** Removes the element and puts the stock icons back exactly as they were. */
     fun teardown() {
         try {
+            drop(indicators, host)
+            indicators = null
             element?.let { host?.removeView(it.ui) }
             element?.teardown()
         } catch (_: Throwable) {
         }
         for (slot in extras) {
             try {
+                drop(slot.indicators, slot.container)
+                slot.indicators = null
                 slot.element?.let { slot.container?.removeView(it.ui) }
                 slot.element?.teardown()
             } catch (_: Throwable) {
@@ -824,11 +1076,6 @@ internal class DuoIconHost(private val context: Context) {
     // ----------------------------------------------------------------------------- internals
 
     /**
-     * Moves [view] so its centre sits on the battery's centre, measured in the element parent's
-     * coordinates. The battery is hidden with INVISIBLE (not GONE) in overlay mode, so its frame is real
-     * and survives a rotation; the user's horizontal nudge still applies.
-     */
-    /**
      * Keeps the overlay anchor out of sight without tearing down its layout.
      *
      * On the One UI 8 path the anchor (`CombinedStatusView`) is not a child of the hidden strip, so the
@@ -847,7 +1094,12 @@ internal class DuoIconHost(private val context: Context) {
         }
     }
 
-    private fun anchorOnBattery(view: View, parent: ViewGroup, side: Int) {
+    /**
+     * Moves [view] so its centre sits on the battery's centre, measured in the element parent's
+     * coordinates. The battery is hidden with INVISIBLE (not GONE) in overlay mode, so its frame is real
+     * and survives a rotation; [offsetDp] is the user's horizontal nudge.
+     */
+    private fun anchorOnBattery(view: View, parent: ViewGroup, side: Int, offsetDp: Int) {
         val battery = anchorBattery ?: return
         try {
             val parentLocation = IntArray(2)
@@ -855,9 +1107,13 @@ internal class DuoIconHost(private val context: Context) {
             parent.getLocationInWindow(parentLocation)
             battery.getLocationInWindow(batteryLocation)
             val density = context.resources.displayMetrics.density
+            val height = RingGeometry.elementHeightPx(side)
             view.translationX = batteryLocation[0] + battery.width / 2f - parentLocation[0] -
-                    side / 2f + settings.offsetX * density
-            view.translationY = batteryLocation[1] + battery.height / 2f - parentLocation[1] - side / 2f
+                    side / 2f + offsetDp * density
+            // height/2 is the view centre; the ring sits below that, so the anchor shift brings the
+            // ring (not the empty space above it) onto the battery.
+            view.translationY = batteryLocation[1] + battery.height / 2f - parentLocation[1] -
+                    height / 2f + RingGeometry.ringAnchorShiftY(side)
         } catch (t: Throwable) {
             L.w("overlay anchor: ${t.javaClass.simpleName}: ${t.message}")
         }

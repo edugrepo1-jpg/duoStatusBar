@@ -2,13 +2,18 @@ package io.github.kvmy666.duostatusbar.ui
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -19,7 +24,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -27,8 +35,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.DuoRivePreview
+import io.github.kvmy666.duostatusbar.DuoRiveStill
 import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.hook.DuoMapping
+import io.github.kvmy666.duostatusbar.hook.DuoPart
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
 
@@ -43,8 +53,16 @@ internal fun CustomizeSection(
     if (matches(
             stringResource(R.string.section_customize), stringResource(R.string.section_element),
             stringResource(R.string.settings_master),
-            stringResource(R.string.settings_master_detail), stringResource(R.string.settings_percent),
-            stringResource(R.string.settings_percent_detail), stringResource(R.string.settings_size),
+            stringResource(R.string.settings_master_detail),             stringResource(R.string.settings_percent),
+            stringResource(R.string.settings_percent_detail),
+            stringResource(R.string.settings_percent_height),
+            stringResource(R.string.settings_percent_height_detail),
+            stringResource(R.string.settings_split),
+            stringResource(R.string.settings_split_detail),
+            stringResource(R.string.settings_indicators_position),
+            stringResource(R.string.settings_edge_padding),
+            stringResource(R.string.settings_edge_padding_detail),
+            stringResource(R.string.settings_size),
             stringResource(R.string.settings_position), stringResource(R.string.settings_live_apply)
         )
     ) Card(
@@ -83,6 +101,36 @@ internal fun CustomizeSection(
             ) { onUpdate(settings.copy(showPercent = it)) }
 
             LabelledSlider(
+                label = "${stringResource(R.string.settings_percent_height)} ${settings.percentHeight}%",
+                value = settings.percentHeight.toFloat(),
+                range = DuoPrefs.MIN_PERCENT_HEIGHT.toFloat()..DuoPrefs.MAX_PERCENT_HEIGHT.toFloat(),
+                enabled = settings.enabled && settings.showPercent,
+                preview = {
+                    DuoSettingPreview(
+                        off = demo(percentHeight = DuoPrefs.MIN_PERCENT_HEIGHT),
+                        on = demo(percentHeight = DuoPrefs.MAX_PERCENT_HEIGHT)
+                    )
+                }
+            ) { onUpdate(settings.copy(percentHeight = it.toInt())) }
+            Text(
+                text = stringResource(R.string.settings_percent_height_detail),
+                style = MaterialTheme.typography.bodySmall
+            )
+
+            SettingSwitch(
+                label = stringResource(R.string.settings_split),
+                detail = stringResource(R.string.settings_split_detail),
+                checked = settings.splitIndicators,
+                enabled = settings.enabled,
+                preview = {
+                    DuoSettingPreview(
+                        off = demo(),
+                        on = DuoPart.RING.apply(demo())
+                    )
+                }
+            ) { onUpdate(settings.copy(splitIndicators = it)) }
+
+            LabelledSlider(
                 label = "${stringResource(R.string.settings_size)} ${settings.sizePercent}%",
                 value = settings.sizePercent.toFloat(),
                 range = DuoPrefs.MIN_SIZE.toFloat()..DuoPrefs.MAX_SIZE.toFloat(),
@@ -114,8 +162,35 @@ internal fun CustomizeSection(
 
             PositionEditor(
                 offsetDp = settings.offsetX,
-                enabled = settings.enabled
+                enabled = settings.enabled,
+                label = if (settings.splitIndicators) stringResource(R.string.settings_ring_position) else null,
+                hint = if (settings.splitIndicators) stringResource(R.string.settings_ring_position_hint) else null,
+                visual = if (settings.splitIndicators) {
+                    DuoPart.RING.apply(demo())
+                } else {
+                    null
+                }
             ) { onUpdate(settings.copy(offsetX = it)) }
+            if (settings.splitIndicators) {
+                PositionEditor(
+                    offsetDp = settings.indicatorsOffsetX,
+                    enabled = settings.enabled,
+                    label = stringResource(R.string.settings_indicators_position),
+                    hint = stringResource(R.string.settings_indicators_position_hint),
+                    visual = DuoPart.INDICATORS.apply(demo())
+                ) { onUpdate(settings.copy(indicatorsOffsetX = it)) }
+            }
+
+            LabelledSlider(
+                label = "${stringResource(R.string.settings_edge_padding)} ${settings.edgePadding}%",
+                value = settings.edgePadding.toFloat(),
+                range = DuoPrefs.MIN_EDGE_PADDING.toFloat()..DuoPrefs.MAX_EDGE_PADDING.toFloat(),
+                enabled = settings.enabled
+            ) { onUpdate(settings.copy(edgePadding = it.toInt())) }
+            Text(
+                text = stringResource(R.string.settings_edge_padding_detail),
+                style = MaterialTheme.typography.bodySmall
+            )
         }
     }
 }
@@ -205,7 +280,16 @@ internal fun AppearanceSection(
 ) {
     if (matches(stringResource(R.string.section_look), stringResource(R.string.settings_renderer),
             stringResource(R.string.settings_renderer_detail), stringResource(R.string.settings_clock_font),
-            stringResource(R.string.settings_icon_color), stringResource(R.string.settings_network_only),
+            stringResource(R.string.settings_icon_color),
+            stringResource(R.string.settings_middle_slot),
+            stringResource(R.string.settings_show_airplane),
+            stringResource(R.string.settings_show_dnd),
+            stringResource(R.string.settings_dnd_detail),
+            stringResource(R.string.settings_dnd_off),
+            stringResource(R.string.settings_dnd_middle),
+            stringResource(R.string.settings_dnd_dots),
+            stringResource(R.string.settings_wifi_dots),
+            stringResource(R.string.settings_wifi_dots_detail),
             stringResource(R.string.settings_sim))
     ) Card(
         shape = RoundedCornerShape(22.dp),
@@ -238,12 +322,73 @@ internal fun AppearanceSection(
                 selectedKey = settings.iconColor,
                 enabled = settings.enabled
             ) { onUpdate(settings.copy(iconColor = it)) }
+            Text(
+                text = stringResource(R.string.settings_middle_slot),
+                style = MaterialTheme.typography.titleSmall
+            )
+            Text(
+                text = stringResource(R.string.settings_middle_slot_detail),
+                style = MaterialTheme.typography.bodySmall
+            )
             SettingSwitch(
-                label = stringResource(R.string.settings_network_only),
-                detail = stringResource(R.string.settings_network_only_detail),
-                checked = settings.networkOnly,
-                enabled = settings.enabled
-            ) { onUpdate(settings.copy(networkOnly = it)) }
+                label = stringResource(R.string.settings_show_airplane),
+                detail = null,
+                checked = settings.showAirplane,
+                enabled = settings.enabled,
+                preview = {
+                    DuoSettingPreview(
+                        off = demo(airplane = true, showAirplane = false),
+                        on = demo(airplane = true, showAirplane = true)
+                    )
+                }
+            ) { onUpdate(settings.copy(showAirplane = it)) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF101014)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    DuoRiveStill(
+                        visual = dndPreview(settings.dndMode),
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .padding(start = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    OptionPicker(
+                        label = stringResource(R.string.settings_show_dnd),
+                        options = listOf(
+                            DuoPrefs.DND_OFF to stringResource(R.string.settings_dnd_off),
+                            DuoPrefs.DND_MIDDLE to stringResource(R.string.settings_dnd_middle),
+                            DuoPrefs.DND_DOTS to stringResource(R.string.settings_dnd_dots)
+                        ),
+                        selectedKey = settings.dndMode,
+                        enabled = settings.enabled
+                    ) { onUpdate(settings.copy(dndMode = it)) }
+                    Text(
+                        text = stringResource(R.string.settings_dnd_detail),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+            SettingSwitch(
+                label = stringResource(R.string.settings_wifi_dots),
+                detail = stringResource(R.string.settings_wifi_dots_detail),
+                checked = settings.wifiDots,
+                enabled = settings.enabled,
+                preview = {
+                    DuoSettingPreview(
+                        off = demo(airplane = true, wifiLevel = 2, wifiOn = true),
+                        on = demo(airplane = true, wifiLevel = 2, wifiOn = true, wifiDots = true)
+                    )
+                }
+            ) { onUpdate(settings.copy(wifiDots = it)) }
             OptionPicker(
                 label = stringResource(R.string.settings_sim),
                 options = listOf(
@@ -516,17 +661,38 @@ private fun demo(
     charging: Boolean = false,
     showPercent: Boolean = true,
     airplane: Boolean = false,
-    dnd: Boolean = false
+    dnd: Boolean = false,
+    percentHeight: Int = DuoPrefs.DEFAULT_PERCENT_HEIGHT,
+    wifiLevel: Int = 3,
+    wifiOn: Boolean = true,
+    wifiDots: Boolean = false,
+    showAirplane: Boolean = true,
+    showDnd: Boolean = true,
+    dndDots: Boolean = false,
+    cellLevel: Int = 4
 ) = DuoMapping.visual(
     level = level,
     charging = charging,
     saver = false,
     showPercent = showPercent,
-    wifiLevel = 3,
-    cellLevel = 4,
+    wifiLevel = wifiLevel,
+    cellLevel = cellLevel,
     airplane = airplane,
-    dnd = dnd
+    dnd = dnd,
+    wifiOn = wifiOn,
+    percentHeight = percentHeight,
+    wifiDots = wifiDots,
+    showAirplane = showAirplane,
+    showDnd = showDnd,
+    dndDots = dndDots
 )
+
+/** The Do Not Disturb row, drawn as if that status is on, in the mode the user picked. */
+private fun dndPreview(mode: String) = when (mode) {
+    DuoPrefs.DND_DOTS -> demo(dnd = true, showDnd = false, dndDots = true, cellLevel = 2)
+    DuoPrefs.DND_OFF -> demo(dnd = true, showDnd = false)
+    else -> demo(dnd = true, showDnd = true)
+}
 
 /** FR-09: a level that shows a clear half-full ring rather than an empty or full one. */
 private const val DEMO_LEVEL = 72

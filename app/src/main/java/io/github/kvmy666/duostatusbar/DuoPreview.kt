@@ -69,10 +69,13 @@ fun DuoPreview(
     var saver by remember { mutableStateOf(false) }
     var airplane by remember { mutableStateOf(false) }
     var dnd by remember { mutableStateOf(false) }
+    /** When on, Do Not Disturb turns the signal dots into moons instead of taking the middle. */
+    var dndDots by remember { mutableStateOf(false) }
     var wifi by remember { mutableFloatStateOf(3f) }
     var cell by remember { mutableFloatStateOf(4f) }
     /** FR-06: with Wi-Fi off the middle slot shows the cellular generation instead of the glyph. */
     var wifiOn by remember { mutableStateOf(true) }
+    var wifiDots by remember { mutableStateOf(false) }
     var generation by remember { mutableIntStateOf(0) }
     var revealTick by remember { mutableIntStateOf(0) }
     val instance = remember { mutableStateOf<DuoBinding?>(null) }
@@ -88,7 +91,10 @@ fun DuoPreview(
         airplane = airplane,
         dnd = dnd,
         wifiOn = wifiOn,
-        networkText = GENERATIONS[generation]
+        showDnd = !dndDots,
+        dndDots = dndDots,
+        networkText = GENERATIONS[generation],
+        wifiDots = wifiDots
     )
 
     // The state machine fires on the false -> true edge, so the request is cleared afterwards.
@@ -139,9 +145,11 @@ fun DuoPreview(
         Toggle("Battery saver (yellow)", saver) { saver = it }
         Toggle("Airplane mode (morph)", airplane) { airplane = it }
         Toggle("Do Not Disturb (moon)", dnd) { dnd = it }
+        Toggle("DND moons on the signal dots", dndDots) { dndDots = it }
         LabelledSlider("Wi-Fi ${wifi.toInt()} of 3", wifi, 0f..3f, steps = 2) { wifi = it }
         LabelledSlider("Cellular ${cell.toInt()} of 4", cell, 0f..4f, steps = 3) { cell = it }
         Toggle("Wi-Fi off (cellular label in the slot)", wifiOn) { wifiOn = it }
+        Toggle("Signal dots follow Wi-Fi", wifiDots) { wifiDots = it }
         LabelledSlider(
             "Generation ${GENERATIONS[generation]}",
             generation.toFloat(), 0f..3f, steps = 2

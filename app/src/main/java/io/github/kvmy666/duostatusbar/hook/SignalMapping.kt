@@ -37,6 +37,41 @@ object SignalMapping {
         return (1..4).map { if (it <= n) 1f else 0.3f }
     }
 
+    /** Four spheres, fully gone. Used when they have nothing left to report. */
+    private val HIDDEN_SPHERES = listOf(0f, 0f, 0f, 0f)
+
+    /**
+     * What the four spheres under the ring should show.
+     *
+     * With [wifiDots] off, they are the cellular bars, dimmed to empty while airplane mode is on.
+     * With it on they stay cellular whenever airplane mode is off. Airplane mode hands them to
+     * Wi-Fi while that radio is on, and removes them when Wi-Fi is off too.
+     */
+    fun sphereOpacities(
+        cellLevel: Int,
+        wifiLevel: Int,
+        airplane: Boolean,
+        wifiOn: Boolean,
+        wifiDots: Boolean
+    ): List<Float> = when {
+        !wifiDots || !airplane -> cellOpacities(if (airplane) 0 else cellLevel)
+        wifiOn -> cellOpacities(wifiAsSpheres(wifiLevel))
+        else -> HIDDEN_SPHERES
+    }
+
+    /**
+     * Duo's Wi-Fi level (0..3) back onto four spheres.
+     *
+     * The glyph compresses the stock four-bar icon (1–2 bars → 1, 3 → 2, 4 → 3). The spheres have
+     * a place for each stock bar, so each compressed step lands on the stronger bar it stands for.
+     */
+    private fun wifiAsSpheres(wifiLevel: Int): Int = when (wifiLevel.coerceIn(0, 3)) {
+        0 -> 0
+        1 -> 2
+        2 -> 3
+        else -> 4
+    }
+
     /** The middle slot's occupants, in the order the state machine expects (see `scene.rml`). */
     const val MIDDLE_OFF = 0
     const val MIDDLE_WIFI = 1
@@ -50,6 +85,9 @@ object SignalMapping {
      * FR-06/FR-16: airplane wins the slot, then DND, then a **connected** Wi-Fi, then the cellular
      * generation. [wifiConnected] is false when the radio is on but there is no network through it, in
      * which case the phone is on mobile data and the generation is the honest thing to show.
+     *
+     * [showAirplane] and [showDnd] are the user's choices. A status that is off is skipped, so the
+     * slot stays on Wi-Fi or the generation. Wi-Fi and the generation are always eligible.
      */
     fun middleMode(
         airplane: Boolean,
@@ -57,16 +95,11 @@ object SignalMapping {
         wifiOn: Boolean = true,
         hasNetwork: Boolean = false,
         wifiConnected: Boolean = true,
-        networkOnly: Boolean = false
+        showAirplane: Boolean = true,
+        showDnd: Boolean = true
     ): Int = when {
-        // The "network icons only" switch: the slot is about the connection, so DND and airplane are
-        // deliberately ignored and neither can take it.
-        networkOnly && wifiOn && wifiConnected -> MIDDLE_WIFI
-        networkOnly && hasNetwork -> MIDDLE_NETWORK
-        networkOnly && wifiOn -> MIDDLE_WIFI
-        networkOnly -> MIDDLE_OFF
-        airplane -> MIDDLE_AIRPLANE
-        dnd -> MIDDLE_DND
+        showAirplane && airplane -> MIDDLE_AIRPLANE
+        showDnd && dnd -> MIDDLE_DND
         wifiOn && wifiConnected -> MIDDLE_WIFI
         hasNetwork -> MIDDLE_NETWORK
         // Wi-Fi on but not connected, and no generation to name: keep the dim glyph rather than empty.
