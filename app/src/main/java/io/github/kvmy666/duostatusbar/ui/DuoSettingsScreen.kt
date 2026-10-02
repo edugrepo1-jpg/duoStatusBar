@@ -48,6 +48,7 @@ import io.github.kvmy666.duostatusbar.settings.DuoActions
 import io.github.kvmy666.duostatusbar.settings.DuoOrientation
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
+import io.github.kvmy666.duostatusbar.settings.StageOverride
 import io.github.kvmy666.duostatusbar.settings.StockIconHider
 import io.github.kvmy666.duostatusbar.settings.TelegramLog
 import io.github.kvmy666.duostatusbar.settings.UpdateChecker
@@ -92,6 +93,10 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
     var pendingExport by remember { mutableStateOf("") }
     var moduleLoadAt by remember { mutableStateOf(DuoPrefs.moduleLoadTime(context)) }
     var fallback by remember { mutableStateOf(DuoPrefs.fallback(context)) }
+    // A leftover adb stage override pins the module to the simple drawing; the app can read it.
+    var stageOverride by remember { mutableStateOf(StageOverride.read(context)) }
+    var clearingOverride by remember { mutableStateOf(false) }
+    var overrideFailed by remember { mutableStateOf(false) }
     var checkUpdates by remember { mutableStateOf(DuoPrefs.checkUpdates(context)) }
     var checkingUpdate by remember { mutableStateOf(false) }
     var updateMessage by remember { mutableStateOf("") }
@@ -133,6 +138,7 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             dump = DuoPrefs.dump(context)
             moduleLoadAt = DuoPrefs.moduleLoadTime(context)
             fallback = DuoPrefs.fallback(context)
+            stageOverride = StageOverride.read(context)
         }
     }
 
@@ -239,6 +245,43 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                 onDismiss = {
                     DuoPrefs.writeFallback(context, "")
                     fallback = ""
+                }
+            )
+        }
+
+        // A leftover adb override is the other reason the simple drawing shows with no warning: the app's
+        // own settings ask for Rive, but `Settings.Global` outranks them. Explain it and offer the clear.
+        val override = stageOverride
+        if (override != null && query.isBlank()) {
+            StageOverrideAlert(
+                value = override,
+                busy = clearingOverride,
+                command = StageOverride.clearCommand,
+                failed = overrideFailed,
+                onClear = {
+                    if (!clearingOverride) {
+                        clearingOverride = true
+                        overrideFailed = false
+                        scope.launch {
+                            withContext(Dispatchers.IO) { RootLogs.clearStageOverride() }
+                            clearingOverride = false
+                            stageOverride = StageOverride.read(context)
+                            if (stageOverride == null) {
+                                // The module re-reads on a settings broadcast, but the override lived in a
+                                // store it cached; a restart makes the change deterministic.
+                                restartSystemUi(context)
+                            } else {
+                                overrideFailed = true
+                                Toast.makeText(
+                                    context,
+                                    context.getString(
+                                        R.string.settings_override_failed, StageOverride.clearCommand
+                                    ),
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        }
+                    }
                 }
             )
         }

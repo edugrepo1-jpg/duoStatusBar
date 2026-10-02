@@ -137,4 +137,11 @@
     <string name="settings_donate">Support the developer</string>
     <string name="settings_log_share_title">Send Duo log</string>
     <string name="settings_version">Duo Status Bar %1$s</string>
+    <!-- A leftover adb stage override pins the module to the simple drawing. -->
+    <string name="settings_override_title">An adb override is active</string>
+    <string name="settings_override_message">An adb setting is forcing the simple drawing (stage %1$d), so the animated element is off even though it is enabled here. Clear the override to use animations again.</string>
+    <string name="settings_override_clear">Clear override</string>
+    <string name="settings_override_clearing">Clearing…</string>
+    <string name="settings_override_failed">Could not clear it automatically. Run: %1$s</string>
+    <string name="settings_override_command">Command: %1$s</string>
 </resources>

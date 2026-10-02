@@ -142,6 +142,25 @@ internal object RootLogs {
         false
     }
 
+    /**
+     * Removes a leftover `duo_statusbar_stage` adb override and clears the Rive crash counter, so a
+     * device that was once pinned to the simple drawing (stage 1) goes back to the app's own setting.
+     * The override is a developer kill switch the app cannot write; this is the user-facing way back.
+     * Returns true only when the root shell finished (the delete itself is best-effort — `settings`
+     * reports nothing useful, so the caller re-reads the value).
+     */
+    fun clearStageOverride(): Boolean = try {
+        val script = "settings delete global duo_statusbar_stage; " +
+            "settings put global duo_statusbar_rive_attempts 0; true"
+        val finished = ProcessBuilder(findSuBinary(), "-c", script).redirectErrorStream(true).start()
+            .waitFor(ROOT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)
+        if (!finished) L.w("clear override timed out after ${ROOT_TIMEOUT_SECONDS}s")
+        finished
+    } catch (t: Throwable) {
+        L.w("clear override failed: ${t.javaClass.simpleName}: ${t.message}")
+        false
+    }
+
     private const val FAILURE_PREFIX = "root log collection failed"
 
     /**

@@ -102,6 +102,52 @@ internal fun FallbackAlert(
 }
 
 /**
+ * A leftover adb stage override (see `StageOverride`): the module is pinned to the simple drawing by a
+ * `Settings.Global` value the app cannot write. This explains it and offers the root-assisted clear so
+ * the user can get animations back without a computer.
+ */
+@Composable
+internal fun StageOverrideAlert(
+    value: Int,
+    busy: Boolean,
+    command: String,
+    failed: Boolean,
+    onClear: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+        )
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                stringResource(R.string.settings_override_title),
+                style = MaterialTheme.typography.titleMedium
+            )
+            Text(
+                stringResource(R.string.settings_override_message, value),
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                stringResource(
+                    if (failed) R.string.settings_override_failed else R.string.settings_override_command,
+                    command
+                ),
+                style = MaterialTheme.typography.bodySmall
+            )
+            Button(onClick = onClear, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    stringResource(
+                        if (busy) R.string.settings_override_clearing else R.string.settings_override_clear
+                    )
+                )
+            }
+        }
+    }
+}
+
+/**
  * FR-17: set the element's horizontal position on a status-bar-shaped preview.
  *
  * It is drawn to look like the real bar — a dark pill with the clock on the left and the element where

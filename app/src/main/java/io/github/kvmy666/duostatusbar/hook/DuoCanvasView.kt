@@ -23,8 +23,11 @@ import io.github.kvmy666.duostatusbar.L
  * It draws what is known exactly — ring with the top gap, the track, the battery colour and the
  * percentage (or the bolt while charging). The four signal dots and the crescents that fill them
  * use the same seats as the Rive ellipses, so this fallback agrees with the live element there.
- * Wi-Fi arcs stay Rive-only. The mapping is shared with the Rive path via [DuoMapping] so the ring
- * and the colour can never disagree between the two.
+ * The Wi-Fi glyph is drawn here too, from the same seats and opacities the Rive path binds — it used
+ * to be Rive-only, which left the middle slot empty (no Wi-Fi icon) whenever this fallback ran
+ * (reported: "wifi icon not show" at stage 1). The airplane glyph still remains Rive-only. The
+ * mapping is shared with the Rive path via [DuoMapping] so the ring and the colour can never
+ * disagree between the two.
  *
  * Canvas angles start at 3 o'clock, Rive trim fractions at 12 o'clock, hence [+TRIM_ORIGIN].
  */
@@ -52,6 +55,7 @@ internal class DuoCanvasView(
     }
     private val boltPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val moonPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val wifiPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val arcBounds = RectF()
 
     /** Grows a gray signal dot into the white Do Not Disturb crescent. See [DotMoonMotion]. */
@@ -161,6 +165,12 @@ internal class DuoCanvasView(
             drawMoon(canvas, cx, cy + DND_SLOT_Y * k, k, 1f)
         }
 
+        // FR-06: the Wi-Fi glyph takes the middle slot while the radio is connected. Drawn from the
+        // same seats and opacities the Rive path binds, so the fallback shows the same thing.
+        if (drawIndicators && visual.middleMode == DuoMapping.MIDDLE_WIFI) {
+            drawWifi(canvas, cx, cy, k)
+        }
+
         // Gray circles in the signal-dot seats, then the white crescents that fill them. A strong
         // bar's circle opacity falls as its moon grows, which is the fill. They belong to the ring,
         // so a split layout keeps them with it.
@@ -247,6 +257,34 @@ internal class DuoCanvasView(
         canvas.restore()
     }
 
+    /**
+     * The Wi-Fi glyph in the middle slot: the dot plus the two arcs, from the same seats and opacities
+     * the Rive path binds (outer ellipse r 31.1, mid r 18.15, both ±43.1° about 12 o'clock, dot 3.2
+     * above the Wi-Fi centre). The dot is drawn while the radio is connected; the arcs fade in with
+     * the signal exactly as Rive's `wifiMidOpacity` / `wifiOuterOpacity` do.
+     */
+    private fun drawWifi(canvas: Canvas, cx: Float, cy: Float, k: Float) {
+        val wx = cx + WIFI_CENTER_X * k
+        val wy = cy + WIFI_SLOT_Y * k
+        if (visual.wifiLevel > 0) {
+            wifiPaint.style = Paint.Style.FILL
+            wifiPaint.color = withAlpha(visual.fgColor, 1f)
+            canvas.drawCircle(wx, wy - WIFI_DOT_LIFT * k, WIFI_DOT_RADIUS * k, wifiPaint)
+        }
+        wifiPaint.style = Paint.Style.STROKE
+        wifiPaint.strokeWidth = WIFI_STROKE * k
+        wifiPaint.strokeCap = Paint.Cap.ROUND
+        drawWifiArc(canvas, wx, wy, WIFI_MID_RADIUS, k, visual.wifiMidOpacity)
+        drawWifiArc(canvas, wx, wy, WIFI_OUTER_RADIUS, k, visual.wifiOuterOpacity)
+    }
+
+    private fun drawWifiArc(canvas: Canvas, x: Float, y: Float, radius: Float, k: Float, opacity: Float) {
+        if (opacity <= 0f) return
+        arcBounds.set(x - radius * k, y - radius * k, x + radius * k, y + radius * k)
+        wifiPaint.color = withAlpha(visual.fgColor, opacity)
+        canvas.drawArc(arcBounds, WIFI_ARC_START, WIFI_ARC_SWEEP, false, wifiPaint)
+    }
+
     /** The Do Not Disturb crescent, scaled by [scale] around [x], [y]. */
     private fun drawMoon(canvas: Canvas, x: Float, y: Float, scale: Float, opacity: Float) {
         moonPaint.color = withAlpha(visual.fgColor, opacity)
@@ -278,6 +316,21 @@ internal class DuoCanvasView(
 
         /** Middle slot, design units below the ring centre — the Wi-Fi centre the moon replaces. */
         const val DND_SLOT_Y = 17f
+
+        /**
+         * The Wi-Fi glyph, copied from `scene.rml` (`wifiLayer1`, `wifiLayer2`, `wifiDot`) so the
+         * fallback and the live element occupy the same pixels. Trim 0.2394 of the circumference is
+         * 86.2°, centred on 12 o'clock, which is canvas 226.9° clockwise.
+         */
+        const val WIFI_CENTER_X = -0.5f
+        const val WIFI_SLOT_Y = 17f
+        const val WIFI_OUTER_RADIUS = 31.1f
+        const val WIFI_MID_RADIUS = 18.15f
+        const val WIFI_STROKE = 7.1f
+        const val WIFI_ARC_START = 226.9f
+        const val WIFI_ARC_SWEEP = 86.2f
+        const val WIFI_DOT_RADIUS = 5.5f
+        const val WIFI_DOT_LIFT = 3.2f
 
         /**
          * The four signal dots, design units from the ring centre. Same seats as the Rive ellipses.
