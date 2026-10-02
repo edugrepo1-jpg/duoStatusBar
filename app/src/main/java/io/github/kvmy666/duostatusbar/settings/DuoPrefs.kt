@@ -234,6 +234,7 @@ object DuoPrefs {
     private const val KEY_FALLBACK = "last_fallback"
     private const val KEY_CHECK_UPDATES = "check_updates"
     private const val KEY_UPDATE_NOTIFIED = "update_notified"
+    private const val KEY_UPDATE_CHECK_AT = "update_check_at"
     private const val KEY_LOG_SENT_AT = "log_sent_at"
     /** Set the first time landscape is saved. Until then landscape reads as a copy of portrait. */
     private const val KEY_LANDSCAPE_SET = "landscape_set"
@@ -414,6 +415,17 @@ object DuoPrefs {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putString(KEY_UPDATE_NOTIFIED, version)
+            .apply()
+    }
+
+    /** Wall-clock ms of the last successful update check, so the 1/day cadence holds across restarts. */
+    fun lastUpdateCheck(context: Context): Long =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_UPDATE_CHECK_AT, 0L)
+
+    fun writeLastUpdateCheck(context: Context, at: Long) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putLong(KEY_UPDATE_CHECK_AT, at)
             .apply()
     }
 

@@ -41,6 +41,7 @@ import io.github.kvmy666.duostatusbar.hook.DuoMapping
 import io.github.kvmy666.duostatusbar.hook.DuoPart
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
+import io.github.kvmy666.duostatusbar.settings.UpdateInfo
 
 // ------------------------------------------------------------------ Battery icon
 @Composable
@@ -504,7 +505,8 @@ internal fun AboutSection(
     checkingUpdate: Boolean,
     onCheckNow: () -> Unit,
     updateMessage: String,
-    updateUrl: String?
+    updateInfo: UpdateInfo?,
+    onDownload: () -> Unit
 ) {
     val context = LocalContext.current
     val emptyStatus = stringResource(R.string.settings_no_status)
@@ -620,15 +622,25 @@ internal fun AboutSection(
             if (updateMessage.isNotEmpty()) {
                 Text(updateMessage, style = MaterialTheme.typography.bodySmall)
             }
-            updateUrl?.let { url ->
-                Button(
+            updateInfo?.let { info ->
+                OutlinedButton(
                     onClick = {
                         runCatching {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.url)))
                         }
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text(stringResource(R.string.settings_update_open)) }
+                if (info.apkUrl.isNotBlank()) {
+                    Button(onClick = onDownload, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.settings_update_download))
+                    }
+                } else {
+                    Text(
+                        stringResource(R.string.settings_update_no_apk),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
             Button(
                 onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(DONATE_URL))) },

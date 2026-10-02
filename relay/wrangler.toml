@@ -11,6 +11,13 @@ class_name = "RateLimiter"
 tag = "v1"
 new_sqlite_classes = ["RateLimiter"]
 
+# Caches the GitHub release list so one fetch per TTL serves every device (see GET /releases).
+# Create it once and paste the printed id:
+#   npx wrangler kv namespace create RELEASES
+[[kv_namespaces]]
+binding = "RELEASES"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
 # Secrets are NOT here. Set them once (they are stored encrypted by Cloudflare):
 #   npx wrangler secret put TELEGRAM_BOT_TOKEN
 #   npx wrangler secret put TELEGRAM_CHAT_ID

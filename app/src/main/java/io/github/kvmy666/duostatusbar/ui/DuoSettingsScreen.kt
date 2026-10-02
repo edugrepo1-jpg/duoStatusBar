@@ -52,6 +52,8 @@ import io.github.kvmy666.duostatusbar.settings.StageOverride
 import io.github.kvmy666.duostatusbar.settings.StockIconHider
 import io.github.kvmy666.duostatusbar.settings.TelegramLog
 import io.github.kvmy666.duostatusbar.settings.UpdateChecker
+import io.github.kvmy666.duostatusbar.settings.UpdateDownloadWorker
+import io.github.kvmy666.duostatusbar.settings.UpdateInfo
 import io.github.kvmy666.duostatusbar.settings.UpdateWorker
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -100,7 +102,7 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
     var checkUpdates by remember { mutableStateOf(DuoPrefs.checkUpdates(context)) }
     var checkingUpdate by remember { mutableStateOf(false) }
     var updateMessage by remember { mutableStateOf("") }
-    var updateUrl by remember { mutableStateOf<String?>(null) }
+    var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
     val notifPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { }
@@ -390,7 +392,7 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             onCheckNow = {
                 checkingUpdate = true
                 updateMessage = ""
-                updateUrl = null
+                updateInfo = null
                 scope.launch {
                     val info = withContext(Dispatchers.IO) { UpdateChecker.check() }
                     checkingUpdate = false
@@ -398,7 +400,7 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                         info == null ->
                             updateMessage = context.getString(R.string.settings_update_failed)
                         UpdateChecker.isNewer(info.version, BuildConfig.VERSION_NAME) -> {
-                            updateUrl = info.url
+                            updateInfo = info
                             updateMessage = context.getString(
                                 R.string.settings_update_available, info.version
                             )
@@ -410,7 +412,12 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                 }
             },
             updateMessage = updateMessage,
-            updateUrl = updateUrl
+            updateInfo = updateInfo,
+            onDownload = {
+                updateInfo?.let { info ->
+                    UpdateDownloadWorker.enqueue(context, info.version, info.apkUrl, info.sha256)
+                }
+            }
         )
     }
 }

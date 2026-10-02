@@ -112,8 +112,17 @@
     <string name="settings_update_available">New version v%1$s is available.</string>
     <string name="settings_update_open">Open the release</string>
     <string name="settings_update_failed">Couldn\'t check for updates. Check your connection and try again.</string>
+    <string name="settings_update_download">Download and install</string>
+    <string name="settings_update_no_apk">This release has no APK attached; open the release page instead.</string>
     <string name="update_notification_title">Duo Status Bar update</string>
     <string name="update_notification_text">Version %1$s is available — tap to open the release</string>
+    <string name="update_action_download">Download</string>
+    <string name="update_downloading_title">Downloading update</string>
+    <string name="update_downloading_text">Downloading Duo Status Bar %1$s…</string>
+    <string name="update_ready_title">Update ready to install</string>
+    <string name="update_ready_text">Duo Status Bar %1$s downloaded and verified — tap to install</string>
+    <string name="update_failed_title">Update download failed</string>
+    <string name="update_failed_text">Couldn\'t download Duo Status Bar %1$s. Check your connection and try again.</string>
 
     <!-- About -->
     <string name="section_about">About</string>

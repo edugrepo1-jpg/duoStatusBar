@@ -23,7 +23,15 @@ class UpdateWorker(context: Context, params: WorkerParameters) : CoroutineWorker
     override suspend fun doWork(): Result {
         val context = applicationContext
         if (!DuoPrefs.checkUpdates(context)) return Result.success()
-        val info = withContext(Dispatchers.IO) { UpdateChecker.updateAvailable() } ?: return Result.success()
+        // One check per day, even if the OS delivers the periodic work early. The manual button forces.
+        val now = System.currentTimeMillis()
+        if (now - DuoPrefs.lastUpdateCheck(context) < CHECK_INTERVAL_MS) return Result.success()
+        val info = withContext(Dispatchers.IO) { UpdateChecker.check() } ?: return Result.success()
+        // A readable answer (even "up to date") counts as the check; a failure above does not, so it retries.
+        DuoPrefs.writeLastUpdateCheck(context, now)
+        if (!UpdateChecker.isNewer(info.version, io.github.kvmy666.duostatusbar.BuildConfig.VERSION_NAME)) {
+            return Result.success()
+        }
         // Only announce each release once; a re-check for the same version stays quiet.
         if (DuoPrefs.updateNotified(context) == info.version) return Result.success()
         UpdateNotifications.notify(context, info)
@@ -33,7 +41,8 @@ class UpdateWorker(context: Context, params: WorkerParameters) : CoroutineWorker
 
     companion object {
         private const val NAME = "duo-update-check"
-        private const val INTERVAL_HOURS = 6L
+        private const val INTERVAL_HOURS = 24L
+        private const val CHECK_INTERVAL_MS = 24L * 60 * 60 * 1000
 
         /** Schedules the periodic check, or cancels it, to match the user's toggle. Never throws. */
         fun apply(context: Context) {
