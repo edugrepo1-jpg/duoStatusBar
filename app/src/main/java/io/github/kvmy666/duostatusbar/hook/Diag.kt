@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import io.github.kvmy666.duostatusbar.BuildConfig
+import io.github.kvmy666.duostatusbar.DeviceFacts
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
 import io.github.kvmy666.duostatusbar.hook.rom.RomProfiles
@@ -82,6 +83,7 @@ internal object Diag {
             appendLine("  DEVICE=${Build.DEVICE} PRODUCT=${Build.PRODUCT} HARDWARE=${Build.HARDWARE}")
             appendLine("  DISPLAY=${Build.DISPLAY} ID=${Build.ID}")
             appendLine("  SDK_INT=${Build.VERSION.SDK_INT} RELEASE=${Build.VERSION.RELEASE} INCREMENTAL=${Build.VERSION.INCREMENTAL}")
+            appendLine("  SELINUX=${DeviceFacts.selinux()} ABI=${DeviceFacts.abi()}")
 
             appendLine("rom adapter:")
             appendLine("  id=${rom.id} label=${rom.label}")

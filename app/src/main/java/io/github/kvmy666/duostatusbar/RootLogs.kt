@@ -116,6 +116,7 @@ internal object RootLogs {
         appendLine("MANUFACTURER=${android.os.Build.MANUFACTURER} BRAND=${android.os.Build.BRAND} MODEL=${android.os.Build.MODEL}")
         appendLine("DEVICE=${android.os.Build.DEVICE} PRODUCT=${android.os.Build.PRODUCT}")
         appendLine("SDK=${android.os.Build.VERSION.SDK_INT} RELEASE=${android.os.Build.VERSION.RELEASE} DISPLAY=${android.os.Build.DISPLAY}")
+        appendLine("selinux=${DeviceFacts.selinux()} abi=${DeviceFacts.abi()}")
         appendLine("rootShell=${findSuBinary()}")
         append("note=root capture unavailable; ask the user to grant root to Duo Status Bar in their root manager, then reopen the About screen.")
     }

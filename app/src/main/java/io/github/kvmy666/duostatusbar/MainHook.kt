@@ -21,6 +21,10 @@ class MainHook : IXposedHookLoadPackage {
             // process reports `packageName = "system"`, so a package-only check silently skipped every
             // hook (issue #5). See [SystemUiProcess].
             if (SystemUiProcess.isTarget(lpparam.packageName, lpparam.processName)) {
+                // Once per SystemUI load: the two facts that decide whether native Rive can load at all.
+                // A report without them cannot tell "Rive is denied by SELinux" from "Rive crashed".
+                L.i("device: selinux=${DeviceFacts.selinux()} abi=${DeviceFacts.abi()} " +
+                        "sdk=${android.os.Build.VERSION.SDK_INT}")
                 DuoHook(lpparam).install()
             } else {
                 L.i("out of scope: not SystemUI - doing nothing")
