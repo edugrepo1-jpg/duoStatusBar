@@ -48,6 +48,8 @@ import io.github.kvmy666.duostatusbar.settings.DuoActions
 import io.github.kvmy666.duostatusbar.settings.DuoOrientation
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
+import io.github.kvmy666.duostatusbar.settings.ModuleHealthCheck
+import io.github.kvmy666.duostatusbar.settings.ModuleState
 import io.github.kvmy666.duostatusbar.settings.StageOverride
 import io.github.kvmy666.duostatusbar.settings.StockIconHider
 import io.github.kvmy666.duostatusbar.settings.TelegramLog
@@ -99,6 +101,8 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
     var stageOverride by remember { mutableStateOf(StageOverride.read(context)) }
     var clearingOverride by remember { mutableStateOf(false) }
     var overrideFailed by remember { mutableStateOf(false) }
+    // Whether the module is working, running old code, or unable to report (see ModuleHealthCheck).
+    var moduleHealth by remember { mutableStateOf(ModuleHealthCheck.of(context)) }
     var checkUpdates by remember { mutableStateOf(DuoPrefs.checkUpdates(context)) }
     var checkingUpdate by remember { mutableStateOf(false) }
     var updateMessage by remember { mutableStateOf("") }
@@ -141,6 +145,7 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             moduleLoadAt = DuoPrefs.moduleLoadTime(context)
             fallback = DuoPrefs.fallback(context)
             stageOverride = StageOverride.read(context)
+            moduleHealth = ModuleHealthCheck.of(context)
         }
     }
 
@@ -166,6 +171,38 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
     }
 
     val onUpdate: (DuoSettings) -> Unit = { update(it) }
+
+    // One-tap bug report, shared by the About button and the module-health card: packs the description,
+    // the module status and the logs, uploads it, and falls back to the share sheet.
+    fun collectAndSend() {
+        if (collecting) return
+        collecting = true
+        logSent = false
+        scope.launch {
+            val logs = withContext(Dispatchers.IO) { RootLogs.collect() }
+            collecting = false
+            val message = problem.trim()
+            val report = buildFullReport(problem, settings, status, history, dump, moduleLoadAt, logs)
+            val file = writeDiagnostics(context, report)
+            if (file == null) {
+                shareText(context, report)
+            } else {
+                val caption = message.take(200).ifBlank { "Duo Status Bar log" }
+                val result = withContext(Dispatchers.IO) { TelegramLog.send(context, file, caption) }
+                when (result) {
+                    TelegramLog.Result.SENT -> {
+                        logSent = true
+                        Toast.makeText(context, R.string.settings_log_sent, Toast.LENGTH_LONG).show()
+                    }
+                    TelegramLog.Result.RATE_LIMITED -> Toast.makeText(
+                        context, R.string.settings_log_wait, Toast.LENGTH_LONG
+                    ).show()
+                    TelegramLog.Result.FAILED ->
+                        fileUri(context, file)?.let { shareLog(context, it) } ?: shareText(context, report)
+                }
+            }
+        }
+    }
 
     Column(
         modifier = modifier
@@ -221,6 +258,18 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
+
+        // Red health card: not loaded, running old code after an update, or loaded but unable to report
+        // (the One UI 8 "Unknown authority" case). Recovery buttons plus a one-tap report.
+        if (moduleHealth.state != ModuleState.OK && query.isBlank()) {
+            ModuleHealthCard(
+                state = moduleHealth.state,
+                busy = collecting,
+                onRestart = { restartSystemUi(context) },
+                onReboot = { scope.launch { withContext(Dispatchers.IO) { RootLogs.reboot() } } },
+                onReport = { collectAndSend() }
+            )
+        }
 
         // Fallback alert (see DuoPrefs.fallback): the module could not draw the animated element and is
         // using the simple drawing. Ask for the log where the developer watches — Telegram or GitHub.
@@ -329,41 +378,7 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             problem = problem,
             onProblemChange = { problem = it; logSent = false },
             collecting = collecting,
-            onCollect = {
-                collecting = true
-                logSent = false
-                scope.launch {
-                    val logs = withContext(Dispatchers.IO) { RootLogs.collect() }
-                    collecting = false
-                    val message = problem.trim()
-                    val report = buildFullReport(
-                        problem, settings, status, history, dump, moduleLoadAt, logs
-                    )
-                    val file = writeDiagnostics(context, report)
-                    if (file == null) {
-                        shareText(context, report)
-                    } else {
-                        val caption = message.take(200).ifBlank { "Duo Status Bar log" }
-                        val result = withContext(Dispatchers.IO) {
-                            TelegramLog.send(context, file, caption)
-                        }
-                        when (result) {
-                            TelegramLog.Result.SENT -> {
-                                logSent = true
-                                Toast.makeText(
-                                    context, R.string.settings_log_sent, Toast.LENGTH_LONG
-                                ).show()
-                            }
-                            TelegramLog.Result.RATE_LIMITED -> Toast.makeText(
-                                context, R.string.settings_log_wait, Toast.LENGTH_LONG
-                            ).show()
-                            TelegramLog.Result.FAILED ->
-                                fileUri(context, file)?.let { shareLog(context, it) }
-                                    ?: shareText(context, report)
-                        }
-                    }
-                }
-            },
+            onCollect = { collectAndSend() },
             logSent = logSent,
             exporting = exporting,
             onExport = {

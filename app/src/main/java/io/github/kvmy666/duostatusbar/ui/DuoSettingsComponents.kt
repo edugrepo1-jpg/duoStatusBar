@@ -48,6 +48,7 @@ import io.github.kvmy666.duostatusbar.hook.DuoMapping
 import io.github.kvmy666.duostatusbar.hook.DuoVisual
 import io.github.kvmy666.duostatusbar.settings.DuoActions
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
+import io.github.kvmy666.duostatusbar.settings.ModuleState
 import io.github.kvmy666.duostatusbar.settings.StockIconHider
 
 /**
@@ -142,6 +143,51 @@ internal fun StageOverrideAlert(
                         if (busy) R.string.settings_override_clearing else R.string.settings_override_clear
                     )
                 )
+            }
+        }
+    }
+}
+
+/**
+ * The module-health card (red): the module is not running, is running old code after an update, or is
+ * loaded but cannot report. It offers the two ways to recover and a one-tap report, which is what a
+ * "no report in the log" report needs to become actionable.
+ */
+@Composable
+internal fun ModuleHealthCard(
+    state: ModuleState,
+    busy: Boolean,
+    onRestart: () -> Unit,
+    onReboot: () -> Unit,
+    onReport: () -> Unit
+) {
+    val title = when (state) {
+        ModuleState.NEEDS_RESTART -> R.string.module_health_restart_title
+        ModuleState.NOT_REPORTING -> R.string.module_health_noreport_title
+        else -> R.string.module_health_never_title
+    }
+    val text = when (state) {
+        ModuleState.NEEDS_RESTART -> R.string.module_health_restart_text
+        ModuleState.NOT_REPORTING -> R.string.module_health_noreport_text
+        else -> R.string.settings_module_never
+    }
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer,
+            contentColor = MaterialTheme.colorScheme.onErrorContainer
+        )
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(stringResource(title), style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(text), style = MaterialTheme.typography.bodyMedium)
+            Button(onClick = onRestart, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.settings_restart))
+            }
+            OutlinedButton(onClick = onReboot, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.settings_reboot))
+            }
+            OutlinedButton(onClick = onReport, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(if (busy) R.string.settings_collecting else R.string.settings_report_bug))
             }
         }
     }

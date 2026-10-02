@@ -131,6 +131,13 @@
     <string name="settings_module_never">The module has not loaded into System UI yet. In LSPosed, enable Duo Status Bar and tick System UI in its scope, then reboot (or restart System UI).</string>
     <string name="settings_module_loaded">Module loaded into System UI at %1$s</string>
     <string name="settings_module_loaded_recent">Module is loaded into System UI (see status above)</string>
+    <string name="settings_reboot">Reboot</string>
+    <string name="settings_report_bug">Send a bug report</string>
+    <string name="module_health_restart_title">Restart needed</string>
+    <string name="module_health_restart_text">The app was updated, but System UI is still running the previous version of Duo. Restart System UI, or reboot, to apply it.</string>
+    <string name="module_health_noreport_title">Duo is loaded but not responding</string>
+    <string name="module_health_noreport_text">Duo is loaded into System UI but has not reported its status. Restart System UI; if it still does not work, send a bug report so it can be fixed.</string>
+    <string name="module_health_never_title">Duo is not running</string>
     <string name="settings_problem">What went wrong? (optional)</string>
     <string name="settings_problem_hint">Describe the problem in a few words, then report it</string>
     <string name="settings_collect_log">Send the bug to the developer</string>

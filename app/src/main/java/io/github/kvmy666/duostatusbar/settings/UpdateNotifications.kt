@@ -23,7 +23,12 @@ import java.io.File
  */
 internal object UpdateNotifications {
 
-    private const val CHANNEL = "duo_updates"
+    /** Alerts pop as heads-up. A channel's importance cannot be raised after creation, hence a new id. */
+    internal const val CHANNEL_ALERTS = "duo_updates_alerts"
+
+    /** The download's foreground notification stays quiet (low importance). */
+    internal const val CHANNEL_PROGRESS = "duo_updates_progress"
+
     private const val ID = 0x5A18
 
     /** Android 13+ only shows a notification if the app was granted POST_NOTIFICATIONS. */
@@ -36,19 +41,20 @@ internal object UpdateNotifications {
     fun notify(context: Context, info: UpdateInfo) {
         if (!permitted(context)) return
         try {
-            ensureChannel(context)
+            ensureAlertsChannel(context)
             val open = PendingIntent.getActivity(
                 context,
                 ID,
                 Intent(Intent.ACTION_VIEW, Uri.parse(info.url)),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             )
-            val builder = NotificationCompat.Builder(context, CHANNEL)
+            val builder = NotificationCompat.Builder(context, CHANNEL_ALERTS)
                 .setSmallIcon(android.R.drawable.stat_sys_download_done)
                 .setContentTitle(context.getString(R.string.update_notification_title))
                 .setContentText(context.getString(R.string.update_notification_text, info.version))
                 .setContentIntent(open)
                 .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
             if (info.apkUrl.isNotBlank()) {
                 builder.addAction(
                     android.R.drawable.stat_sys_download,
@@ -84,7 +90,7 @@ internal object UpdateNotifications {
     fun install(context: Context, file: File, version: String) {
         if (!permitted(context)) return
         try {
-            ensureChannel(context)
+            ensureAlertsChannel(context)
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, "application/vnd.android.package-archive")
@@ -96,13 +102,14 @@ internal object UpdateNotifications {
                 intent,
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             )
-            val notification = NotificationCompat.Builder(context, CHANNEL)
+            val notification = NotificationCompat.Builder(context, CHANNEL_ALERTS)
                 .setSmallIcon(android.R.drawable.stat_sys_download_done)
                 .setContentTitle(context.getString(R.string.update_ready_title))
                 .setContentText(context.getString(R.string.update_ready_text, version))
                 .setContentIntent(pending)
                 .setAutoCancel(true)
                 .setOngoing(false)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .build()
             (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
                 .notify(ID, notification)
@@ -115,8 +122,8 @@ internal object UpdateNotifications {
     fun downloadFailed(context: Context, version: String) {
         if (!permitted(context)) return
         try {
-            ensureChannel(context)
-            val notification = NotificationCompat.Builder(context, CHANNEL)
+            ensureAlertsChannel(context)
+            val notification = NotificationCompat.Builder(context, CHANNEL_ALERTS)
                 .setSmallIcon(android.R.drawable.stat_notify_error)
                 .setContentTitle(context.getString(R.string.update_failed_title))
                 .setContentText(context.getString(R.string.update_failed_text, version))
@@ -129,15 +136,30 @@ internal object UpdateNotifications {
         }
     }
 
-    /** Also called by the download worker before it builds its own foreground notification. */
-    internal fun ensureChannel(context: Context) {
+    /** High importance, so a new release and a ready install pop as heads-up, not only in the shade. */
+    internal fun ensureAlertsChannel(context: Context) = channel(
+        context, CHANNEL_ALERTS, "Update alerts", NotificationManager.IMPORTANCE_HIGH,
+        "A new Duo Status Bar release or a downloaded update"
+    )
+
+    /** Low importance: the foreground download should not interrupt. Called by the download worker. */
+    internal fun ensureProgressChannel(context: Context) = channel(
+        context, CHANNEL_PROGRESS, "Update download", NotificationManager.IMPORTANCE_LOW,
+        "Progress of an update download"
+    )
+
+    private fun channel(
+        context: Context,
+        id: String,
+        name: String,
+        importance: Int,
+        description: String
+    ) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (manager.getNotificationChannel(CHANNEL) != null) return
+        if (manager.getNotificationChannel(id) != null) return
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL, "Updates", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "Duo Status Bar updates"
-            }
+            NotificationChannel(id, name, importance).apply { this.description = description }
         )
     }
 }

@@ -161,6 +161,21 @@ internal object RootLogs {
         false
     }
 
+    /**
+     * Reboots the phone through root, for the case a System UI restart alone does not clear (a module
+     * update that needs a clean process). Returns whether the root shell was launched; the device then
+     * reboots, so a true result does not mean the call completed.
+     */
+    fun reboot(): Boolean = try {
+        val finished = ProcessBuilder(findSuBinary(), "-c", "reboot").redirectErrorStream(true).start()
+            .waitFor(ROOT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)
+        if (!finished) L.w("reboot timed out after ${ROOT_TIMEOUT_SECONDS}s")
+        finished
+    } catch (t: Throwable) {
+        L.w("reboot failed: ${t.javaClass.simpleName}: ${t.message}")
+        false
+    }
+
     private const val FAILURE_PREFIX = "root log collection failed"
 
     /**

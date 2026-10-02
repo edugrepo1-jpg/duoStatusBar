@@ -106,8 +106,8 @@ class UpdateDownloadWorker(context: Context, params: WorkerParameters) :
 
     private fun foregroundInfo(version: String, percent: Int): ForegroundInfo {
         // The channel must exist even when a download is started straight from the app (no prior notify).
-        UpdateNotifications.ensureChannel(applicationContext)
-        val notification: Notification = NotificationCompat.Builder(applicationContext, CHANNEL)
+        UpdateNotifications.ensureProgressChannel(applicationContext)
+        val notification: Notification = NotificationCompat.Builder(applicationContext, UpdateNotifications.CHANNEL_PROGRESS)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle(applicationContext.getString(R.string.update_downloading_title))
             .setContentText(applicationContext.getString(R.string.update_downloading_text, version))
@@ -129,7 +129,6 @@ class UpdateDownloadWorker(context: Context, params: WorkerParameters) :
         const val KEY_ERROR = "error"
 
         private const val NAME = "duo-update-download"
-        private const val CHANNEL = "duo_updates"
         private const val NOTIFICATION_ID = 0x5A19
 
         /** Enqueues one download, replacing any previous request. Sent from the notification's action. */
