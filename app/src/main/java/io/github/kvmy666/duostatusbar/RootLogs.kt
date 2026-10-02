@@ -132,9 +132,10 @@ internal object RootLogs {
         val script = "pkill -f com.android.systemui; " +
             "killall com.android.systemui 2>/dev/null; " +
             "kill -9 ${'$'}(pidof com.android.systemui) 2>/dev/null; true"
-        ProcessBuilder(findSuBinary(), "-c", script).redirectErrorStream(true).start()
+        val finished = ProcessBuilder(findSuBinary(), "-c", script).redirectErrorStream(true).start()
             .waitFor(ROOT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)
-        true
+        if (!finished) L.w("root restart timed out after ${ROOT_TIMEOUT_SECONDS}s")
+        finished
     } catch (t: Throwable) {
         L.w("root restart failed: ${t.javaClass.simpleName}: ${t.message}")
         false
