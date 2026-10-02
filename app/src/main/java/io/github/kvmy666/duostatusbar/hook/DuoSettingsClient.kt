@@ -444,15 +444,15 @@ internal object DuoSettingsClient {
         )
     }
 
-    /** Tells the app what the module actually did, for the diagnostics screen. Never throws. */
+    /**
+     * Tells the app what the module actually did, for the diagnostics screen. The provider is tried
+     * first; only when it fails (the One UI 8 case) does the broadcast bridge carry the report. Never
+     * throws.
+     */
     fun report(context: Context, status: String) {
-        try {
-            val extras = Bundle().apply { putString("status", status) }
-            context.contentResolver.call(uri, "status", null, extras)
-        } catch (t: Throwable) {
-            L.w("status report failed: ${t.javaClass.simpleName}: ${t.message}")
+        if (!reportViaProvider(context, "status", "status", status)) {
+            broadcastToApp(context, SettingsBridge.ACTION_STATUS_PUSH, SettingsBridge.EXTRA_STATUS, status)
         }
-        broadcastToApp(context, SettingsBridge.ACTION_STATUS_PUSH, SettingsBridge.EXTRA_STATUS, status)
     }
 
     /**
@@ -461,13 +461,9 @@ internal object DuoSettingsClient {
      * release path. Never throws.
      */
     fun reportDump(context: Context, dump: String) {
-        try {
-            val extras = Bundle().apply { putString("dump", dump) }
-            context.contentResolver.call(uri, "dump", null, extras)
-        } catch (t: Throwable) {
-            L.w("dump report failed: ${t.javaClass.simpleName}: ${t.message}")
+        if (!reportViaProvider(context, "dump", "dump", dump)) {
+            broadcastToApp(context, SettingsBridge.ACTION_DUMP_PUSH, SettingsBridge.EXTRA_DUMP, dump)
         }
-        broadcastToApp(context, SettingsBridge.ACTION_DUMP_PUSH, SettingsBridge.EXTRA_DUMP, dump)
     }
 
     /**
@@ -476,14 +472,20 @@ internal object DuoSettingsClient {
      * at each module load). Never throws.
      */
     fun reportFallback(context: Context, reason: String) {
-        try {
-            val extras = Bundle().apply { putString("fallback", reason) }
-            context.contentResolver.call(uri, "fallback", null, extras)
-        } catch (t: Throwable) {
-            L.w("fallback report failed: ${t.javaClass.simpleName}: ${t.message}")
+        if (!reportViaProvider(context, "fallback", "fallback", reason)) {
+            broadcastToApp(context, SettingsBridge.ACTION_FALLBACK_PUSH, SettingsBridge.EXTRA_FALLBACK, reason)
         }
-        broadcastToApp(context, SettingsBridge.ACTION_FALLBACK_PUSH, SettingsBridge.EXTRA_FALLBACK, reason)
     }
+
+    /** True when the provider accepted the report; false means the bridge should carry it instead. */
+    private fun reportViaProvider(context: Context, method: String, key: String, value: String): Boolean =
+        try {
+            val extras = Bundle().apply { putString(key, value) }
+            context.contentResolver.call(uri, method, null, extras) != null
+        } catch (t: Throwable) {
+            L.w("$method report failed: ${t.javaClass.simpleName}: ${t.message}")
+            false
+        }
 
     /** The provider-independent report path: a broadcast the app's receiver stores. Never throws. */
     private fun broadcastToApp(context: Context, action: String, key: String, value: String) {
