@@ -10,9 +10,12 @@ better and add tests, but they must not change any of the following.
 1. **Log strings and the `DuoSB` tag.** The diagnostic dump and the compact status line are what we fix
    ROMs from. No rewording, reordering, merging or removing. New lines may be added only inside the
    existing sections, and never on the attach/hide path.
-2. **Container probe order.** `RomAdapter.containerIds` order, then `stripAroundAnchors`
-   (`batteryId`, `statusIcons`, `status_icons`, `system_icons`), then `chooseElementParent`,
-   `findComposeIconView`, `findBar`, `findShadeIconsArea`.
+2. **Container probe order.** `RomAdapter.containerIds` order (a measured profile from
+   `assets/rom-profiles.json` is accepted first, but only when `measured`), then `stripAroundAnchors`
+   (`batteryId`, `statusIcons`, `status_icons`, `system_icons`), then the additive `roleScan`
+   (lowest common ancestor of the battery view and the `StatusIconContainer`), then
+   `chooseElementParent`, `findComposeIconView`, `findBar`, `findShadeIconsArea`. `roleScan` runs
+   only after the id and anchor paths fail, so a ROM that resolved before is unchanged.
 3. **Reflection targets and their exact names/values.** `ActivityThread.mInitialApplication`,
    `mBoundApplication.appContext` (and **never** `mSystemContext` — its package is `android`, which the
    provider rejects), `WindowManagerGlobal.mViews` / `mView`, window types `2000`/`2040`,
@@ -26,10 +29,25 @@ better and add tests, but they must not change any of the following.
    anchor; never hide a strip the element is not drawing in; `restore()` puts everything back exactly.
 6. **Stage precedence.** `duo_statusbar_stage` (adb override) → app settings → off. Keys unchanged.
 7. **Settings provider contract.** Authority `io.github.kvmy666.duostatusbar.settings`, and the column set
-   and order in `DuoPrefs.COLUMNS` / `DuoSettingsProvider.rowFor`.
+   and order in `DuoPrefs.COLUMNS` / `DuoSettingsProvider.rowFor`. `COLUMNS` is now
+   `PORTRAIT_COLUMNS + LANDSCAPE_COLUMNS` (landscape repeats portrait under the `land_` prefix, except
+   `COL_REVISION`, which is shared). The app and module ship in one APK, so the order only changes when
+   both sides change together; an older module ignores columns it does not know, and the old
+   `COL_NETWORK_ONLY` key is still written for backward compatibility. Portrait column order may not be
+   reordered without a matching migration.
 8. **Rive.** `DuoBinder` property names and `PROPERTY_COUNT`, `scene.rml` binds, and
-   `app/src/main/res/raw/duo.riv` must equal the scene build (CI `cmp`). No Rive changes in the refactor.
-9. **Fallback order.** Rive → Canvas; attach retry count/timings; overlay-vs-strip placement.
+   `app/src/main/res/raw/duo.riv` must equal the scene build (CI `cmp`). The baseline after PR #11 adds
+   the split groups (`ringGroup`, `indicatorsGroup`, `cellGroup`), the raised-percentage bind
+   (`percentY`), and the DND-dot moons (`moon1..4Opacity/Scale`, `centerMoonOpacity/Scale`); the
+   `DuoPart` enum (`ALL` / `RING` / `INDICATORS`) selects which groups a surface draws. A refactor must
+   not rename these binds.
+9. **Fallback order.** Rive → Canvas; attach retry count/timings; overlay-vs-strip placement. A split
+   layout (`splitIndicators`, default **off**) creates a second surface for the icon cluster; each
+   surface falls back to Canvas independently, and the ring's surface is never rebuilt just because the
+   cluster is added. The element view is `RingGeometry.elementHeightPx(side)` tall (not square) so the
+   percentage can rise: `ringAnchorShiftY` keeps the ring at its original position, and the default
+   `percentHeight = 100` maps to the same absolute text seat as the pre-PR square view
+   (`77.5 - 76 = 61.5 - 60`). Moving either constant moves what every user sees.
 
 ## Safety procedure for every refactor phase
 
