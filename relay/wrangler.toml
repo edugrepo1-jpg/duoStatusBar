@@ -16,7 +16,7 @@ new_sqlite_classes = ["RateLimiter"]
 #   npx wrangler kv namespace create RELEASES
 [[kv_namespaces]]
 binding = "RELEASES"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "5fe692a0d2994354b57bcef67b98d310"
 
 # Secrets are NOT here. Set them once (they are stored encrypted by Cloudflare):
 #   npx wrangler secret put TELEGRAM_BOT_TOKEN
