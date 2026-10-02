@@ -1,3 +1,18 @@
+# Duo Status Bar 1.4.0-beta.1 — pre-release
+
+This beta is mostly about supporting more phones and making problems easier to fix.
+
+- **More custom ROMs work.** The status-bar icon area is now found by what it contains, not only by
+  names we already knew, so phones we have never measured are more likely to work.
+- **A new ROM can be added with a data file**, without a new APK.
+- **Better reports.** Phones with locked-bootloader root can now send their device details and logs,
+  and every report shows the device's SELinux state and ABI.
+- **From the community contribution:** separate portrait and landscape settings, a raised battery
+  percentage for punch-hole cameras, and separate Airplane / Do Not Disturb controls.
+- **Fixed:** the simple drawing (stage 1) did not show the Wi-Fi icon. The app now also explains and
+  clears a leftover adb override that pins the simple drawing.
+- A simpler README and small fixes.
+
 # Duo Status Bar 1.3.2-beta.2 — pre-release
 
 Adds a fix from the **Samsung Galaxy S25 Ultra (SM-S948N)** report and a new way to reach the developer.
