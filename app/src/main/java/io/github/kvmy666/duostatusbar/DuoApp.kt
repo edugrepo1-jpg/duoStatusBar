@@ -1,6 +1,7 @@
 package io.github.kvmy666.duostatusbar
 
 import android.app.Application
+import io.github.kvmy666.duostatusbar.settings.SettingsBridge
 import io.github.kvmy666.duostatusbar.settings.UpdateWorker
 
 class DuoApp : Application() {
@@ -12,5 +13,8 @@ class DuoApp : Application() {
         RiveInit.ensure(this)
         // Keep the background update check in step with the user's toggle (idempotent).
         UpdateWorker.apply(this)
+        // Publish the settings on the provider-independent channel, so System UI has them even on a ROM
+        // where it cannot see the provider (One UI 8).
+        SettingsBridge.push(this)
     }
 }

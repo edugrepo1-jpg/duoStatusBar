@@ -14,6 +14,14 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- The provider-independent app <-> System UI channel. The module registers its receiver with this
+         signature permission, so only this app can push settings; the app holds it too. -->
+    <permission
+        android:name="io.github.kvmy666.duostatusbar.permission.SETTINGS"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="io.github.kvmy666.duostatusbar.permission.SETTINGS" />
 
     <application
         android:name=".DuoApp"
@@ -53,6 +61,32 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- The provider-independent settings channel (see SettingsBridge): System UI asks for the
+             settings, and reports its status back. Exported so the System UI uid can reach them. -->
+        <receiver
+            android:name=".settings.BootCompletedReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name=".settings.SettingsRequestReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="io.github.kvmy666.duostatusbar.action.SETTINGS_REQUEST" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name=".settings.StatusBridgeReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="io.github.kvmy666.duostatusbar.action.STATUS_PUSH" />
+                <action android:name="io.github.kvmy666.duostatusbar.action.DUMP_PUSH" />
+                <action android:name="io.github.kvmy666.duostatusbar.action.FALLBACK_PUSH" />
+            </intent-filter>
+        </receiver>
 
         <!-- The update notification's Download action bridges here to the download worker. Not exported:
              only this app's own PendingIntent targets it. -->

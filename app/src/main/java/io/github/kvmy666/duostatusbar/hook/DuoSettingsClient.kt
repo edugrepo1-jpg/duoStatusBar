@@ -1,12 +1,18 @@
 package io.github.kvmy666.duostatusbar.hook
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.res.Configuration
 import android.database.Cursor
+import android.database.MatrixCursor
 import android.net.Uri
 import android.os.Bundle
+import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
+import io.github.kvmy666.duostatusbar.settings.SettingsBridge
 
 /**
  * Reads the user's settings out of the app's provider, from inside System UI (FR-03/16/17).
@@ -104,6 +110,9 @@ internal object DuoSettingsClient {
 
     private const val TAG = "DuoSB"
 
+    /** How often the bridge may ask the app to push, so a broken provider cannot spam it. */
+    private const val BRIDGE_REQUEST_MS = 15_000L
+
     /**
      * Orientation reported by the status-bar window's own configuration change. Resources on the
      * application context can lag that callback, so a read during the swap trusts this when it is set.
@@ -168,43 +177,123 @@ internal object DuoSettingsClient {
     var providerUnreachable: Boolean = false
         private set
 
-    fun read(context: Context): ModuleSettings = try {
-        val started = android.os.SystemClock.elapsedRealtime()
+    // ------------------------------------------------------------ provider-independent bridge
+    // On a ROM where System UI cannot see the app's provider (One UI 8: "Unknown authority"), settings
+    // arrive over a broadcast. The payload is the exact provider row, parsed by the same [fromCursor], so
+    // the two channels can never drift.
+
+    @Volatile private var bridgeRegistered = false
+    @Volatile private var bridge: ModuleSettings? = null
+    @Volatile private var bridgeLandscape: ModuleSettings? = null
+    @Volatile private var lastRequestAt = 0L
+
+    private val bridgeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(c: Context?, intent: Intent?) {
+            if (intent?.action != SettingsBridge.ACTION_SETTINGS_PUSH) return
+            try {
+                @Suppress("UNCHECKED_CAST")
+                val values = intent.getSerializableExtra(SettingsBridge.EXTRA_VALUES) as? ArrayList<Any?>
+                    ?: return
+                val cursor = MatrixCursor(DuoPrefs.COLUMNS).apply { addRow(values) }
+                cursor.moveToFirst()
+                bridge = fromCursor(cursor, Configuration.ORIENTATION_PORTRAIT)
+                bridgeLandscape = fromCursor(cursor, Configuration.ORIENTATION_LANDSCAPE)
+                providerUnreachable = false
+                L.i("settings bridge: rev ${bridge?.revision} received")
+            } catch (t: Throwable) {
+                L.w("settings bridge receive: ${t.javaClass.simpleName}: ${t.message}")
+            }
+        }
+    }
+
+    /** Registers the bridge receiver once. Safe to call from the read path; never throws. */
+    private fun ensureBridge(context: Context) {
+        if (bridgeRegistered) return
+        synchronized(this) {
+            if (bridgeRegistered) return
+            try {
+                // EXPORTED so the app (a different uid) can deliver; the signature permission still
+                // restricts the sender to our own app.
+                context.registerReceiver(
+                    bridgeReceiver,
+                    IntentFilter(SettingsBridge.ACTION_SETTINGS_PUSH),
+                    SettingsBridge.PERMISSION,
+                    null,
+                    Context.RECEIVER_EXPORTED
+                )
+                bridgeRegistered = true
+                L.i("settings bridge registered")
+            } catch (t: Throwable) {
+                L.w("settings bridge register: ${t.javaClass.simpleName}: ${t.message}")
+            }
+        }
+    }
+
+    /** Asks the app to push the settings, rate-limited so a broken provider cannot spam it. */
+    private fun requestFromApp(context: Context) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastRequestAt < BRIDGE_REQUEST_MS) return
+        lastRequestAt = now
+        try {
+            context.sendBroadcast(
+                Intent(SettingsBridge.ACTION_SETTINGS_REQUEST).setPackage(BuildConfig.APPLICATION_ID)
+            )
+            L.i("settings bridge: requested from app")
+        } catch (t: Throwable) {
+            L.w("settings bridge request: ${t.javaClass.simpleName}: ${t.message}")
+        }
+    }
+
+    /**
+     * The settings for the current orientation. The provider is tried first; when it cannot be reached,
+     * the last bridge push is used, and the app is asked to push if the bridge is empty too.
+     */
+    fun read(context: Context): ModuleSettings {
+        ensureBridge(context)
         val orientation = effectiveOrientation(context)
+        val fromProvider = readProvider(context, orientation)
+        if (fromProvider != null) {
+            providerUnreachable = false
+            return fromProvider
+        }
+        providerUnreachable = true
+        val bridged = if (orientation == Configuration.ORIENTATION_LANDSCAPE) bridgeLandscape else bridge
+        if (bridged != null) {
+            L.i("settings via bridge (rev ${bridged.revision})")
+            return bridged
+        }
+        requestFromApp(context)
+        return ModuleSettings.DEFAULT
+    }
+
+    /** The provider read, or null when the provider could not be reached (as opposed to "off"). */
+    private fun readProvider(context: Context, orientation: Int): ModuleSettings? = try {
+        val started = android.os.SystemClock.elapsedRealtime()
         val cursor = context.contentResolver.query(uri, null, null, null, null)
         if (cursor == null) {
             // A provider that answers always returns a row (see DuoSettingsProvider), so a null cursor is
             // "could not be reached", never "the module is off".
-            providerUnreachable = true
-            L.w("settings provider returned no cursor - treating as unreachable, not as off")
-            ModuleSettings.DEFAULT
+            L.w("settings provider returned no cursor - trying the bridge")
+            null
         } else {
-            // The provider always adds a row when it answers (see DuoSettingsProvider.rowFor), so an empty
-            // cursor means the authority was answered by something else - also "unreachable", not "off".
-            var rowRead = false
-            val result = cursor.use { c ->
+            cursor.use { c ->
                 if (!c.moveToFirst()) {
-                    ModuleSettings.DEFAULT
+                    // Answered without a row: also "unreachable", not "off".
+                    L.w("settings provider returned no row - trying the bridge")
+                    null
                 } else {
-                    rowRead = true
-                    fromCursor(c, orientation)
+                    val result = fromCursor(c, orientation)
+                    // Logged because this is a synchronous binder call from System UI's boot path: if it
+                    // is ever slow, it is slow there, and that deserves a number rather than a guess.
+                    val which = if (orientation == Configuration.ORIENTATION_LANDSCAPE) "landscape" else "portrait"
+                    L.i("settings read in ${android.os.SystemClock.elapsedRealtime() - started} ms (rev ${result.revision}, $which)")
+                    result
                 }
             }
-            providerUnreachable = !rowRead
-            if (!rowRead) {
-                L.w("settings provider returned no row - treating as unreachable, not as off")
-            } else {
-                // Logged because this is a synchronous binder call from System UI's boot path: if it is
-                // ever slow, it is slow there, and that deserves a number rather than a guess.
-                val which = if (orientation == Configuration.ORIENTATION_LANDSCAPE) "landscape" else "portrait"
-                L.i("settings read in ${android.os.SystemClock.elapsedRealtime() - started} ms (rev ${result.revision}, $which)")
-            }
-            result
         }
     } catch (t: Throwable) {
-        providerUnreachable = true
-        L.w("settings unreadable (${t.javaClass.simpleName}: ${t.message}) - using defaults")
-        ModuleSettings.DEFAULT
+        L.w("settings unreadable (${t.javaClass.simpleName}: ${t.message}) - trying the bridge")
+        null
     }
 
     /**
@@ -214,18 +303,23 @@ internal object DuoSettingsClient {
      * hook to apply the other set. A missing landscape column counts as the portrait value, which is
      * what an older settings app publishes.
      */
-    fun otherOrientationEnabled(context: Context): Boolean = try {
+    fun otherOrientationEnabled(context: Context): Boolean {
         val landscapeNow = effectiveOrientation(context) == Configuration.ORIENTATION_LANDSCAPE
-        val column = if (landscapeNow) DuoPrefs.COL_ENABLED else DuoPrefs.LAND_PREFIX + DuoPrefs.COL_ENABLED
-        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-            if (!cursor.moveToFirst()) return false
-            val index = cursor.getColumnIndex(column)
-            val resolved = if (index >= 0) index else cursor.getColumnIndexOrThrow(DuoPrefs.COL_ENABLED)
-            cursor.getInt(resolved) == 1
-        } ?: false
-    } catch (t: Throwable) {
-        L.w("other orientation unreadable (${t.javaClass.simpleName}: ${t.message})")
-        false
+        val other = if (landscapeNow) Configuration.ORIENTATION_PORTRAIT else Configuration.ORIENTATION_LANDSCAPE
+        try {
+            val column = if (landscapeNow) DuoPrefs.COL_ENABLED else DuoPrefs.LAND_PREFIX + DuoPrefs.COL_ENABLED
+            val read = context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (!cursor.moveToFirst()) return@use null
+                val index = cursor.getColumnIndex(column)
+                val resolved = if (index >= 0) index else cursor.getColumnIndexOrThrow(DuoPrefs.COL_ENABLED)
+                cursor.getInt(resolved) == 1
+            }
+            if (read != null) return read
+        } catch (t: Throwable) {
+            L.w("other orientation unreadable (${t.javaClass.simpleName}: ${t.message})")
+        }
+        val bridged = if (other == Configuration.ORIENTATION_LANDSCAPE) bridgeLandscape else bridge
+        return bridged?.enabled ?: false
     }
 
     /**
@@ -358,6 +452,7 @@ internal object DuoSettingsClient {
         } catch (t: Throwable) {
             L.w("status report failed: ${t.javaClass.simpleName}: ${t.message}")
         }
+        broadcastToApp(context, SettingsBridge.ACTION_STATUS_PUSH, SettingsBridge.EXTRA_STATUS, status)
     }
 
     /**
@@ -372,6 +467,7 @@ internal object DuoSettingsClient {
         } catch (t: Throwable) {
             L.w("dump report failed: ${t.javaClass.simpleName}: ${t.message}")
         }
+        broadcastToApp(context, SettingsBridge.ACTION_DUMP_PUSH, SettingsBridge.EXTRA_DUMP, dump)
     }
 
     /**
@@ -385,6 +481,18 @@ internal object DuoSettingsClient {
             context.contentResolver.call(uri, "fallback", null, extras)
         } catch (t: Throwable) {
             L.w("fallback report failed: ${t.javaClass.simpleName}: ${t.message}")
+        }
+        broadcastToApp(context, SettingsBridge.ACTION_FALLBACK_PUSH, SettingsBridge.EXTRA_FALLBACK, reason)
+    }
+
+    /** The provider-independent report path: a broadcast the app's receiver stores. Never throws. */
+    private fun broadcastToApp(context: Context, action: String, key: String, value: String) {
+        try {
+            context.sendBroadcast(
+                Intent(action).setPackage(BuildConfig.APPLICATION_ID).putExtra(key, value)
+            )
+        } catch (t: Throwable) {
+            L.w("bridge report: ${t.javaClass.simpleName}: ${t.message}")
         }
     }
 }

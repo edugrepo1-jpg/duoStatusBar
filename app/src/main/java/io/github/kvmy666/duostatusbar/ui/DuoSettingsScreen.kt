@@ -49,6 +49,7 @@ import io.github.kvmy666.duostatusbar.settings.DuoOrientation
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
 import io.github.kvmy666.duostatusbar.settings.ModuleHealthCheck
+import io.github.kvmy666.duostatusbar.settings.SettingsBridge
 import io.github.kvmy666.duostatusbar.settings.ModuleState
 import io.github.kvmy666.duostatusbar.settings.StageOverride
 import io.github.kvmy666.duostatusbar.settings.StockIconHider
@@ -154,6 +155,9 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
         settings = new
         DuoPrefs.write(context, new, orientation)
         context.sendBroadcast(Intent(DuoPrefs.ACTION_SETTINGS_CHANGED))
+        // Also publish on the provider-independent channel, so a ROM where System UI cannot see the
+        // provider (One UI 8) still receives the change.
+        SettingsBridge.push(context)
         // Issue #4: the Shizuku icon hiding only makes sense while the element is drawing. Turning the
         // master switch off puts the stock icons back rather than leaving a bare status bar. The other
         // orientation can still be on, and that blacklist is one value for the whole phone, so it stays
