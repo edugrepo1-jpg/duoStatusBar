@@ -1,3 +1,19 @@
+# Duo Status Bar 1.4.0 — stable
+
+This release makes Duo work on more phones, adds in-app updating, and makes problems easier to fix.
+
+- **More custom ROMs work.** The status-bar icon area is found by what it contains, not only by names
+  we already knew, so phones we have never measured are more likely to work.
+- **Samsung One UI 8 and similar ROMs are fixed.** On those, System UI could not see the app's settings,
+  so Duo loaded but stayed off. There is now a second channel between the app and the module.
+- **Updates are easy.** A notification pops up for a new version, and you can download and install it
+  straight from the notification or the app.
+- **A red card when something is wrong**, with Restart System UI, Reboot, and a one-tap bug report.
+- **The simple drawing shows the Wi-Fi icon** (it was missing before).
+- From the community contribution: separate portrait and landscape settings, a raised battery
+  percentage for punch-hole cameras, and separate Airplane / Do Not Disturb controls.
+- A simpler README and small fixes.
+
 # Duo Status Bar 1.4.0-beta.1 — pre-release
 
 This beta is mostly about supporting more phones and making problems easier to fix.
