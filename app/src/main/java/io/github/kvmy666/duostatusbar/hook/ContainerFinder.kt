@@ -70,8 +70,74 @@ internal class ContainerFinder(
                     "battery/status icons: ${anchor.javaClass.simpleName}")
             return anchor
         }
+        // Final, additive fallback for a ROM that renames its ids: find the strip by the roles it must
+        // hold (a battery view and a status-icons container), not by a name we guessed. Purely additive:
+        // this runs only after the adapter ids and the anchor walk have both failed, so a ROM that
+        // resolved before behaves exactly as before.
+        val role = roleScan(root)
+        if (role != null) {
+            L.i("strip resolved by role: ${role.javaClass.simpleName} (adapter ids unresolved)")
+            return role
+        }
         L.w("no container id resolved (tried ${rom.containerIds}) - status bar left untouched")
         return null
+    }
+
+    /**
+     * Finds the strip from what it must *contain*, so an unseen ROM with renamed ids still attaches.
+     *
+     * Every status-bar icon strip holds the battery and/or the status-icons container; the lowest common
+     * ancestor of those two that is a real, non-GONE layout (and not the status-bar window itself) is the
+     * strip. A class-name match is used only after the adapter's id is tried, so a measured ROM keeps its
+     * exact behaviour. Returns null when the tree does not look like a status bar, leaving it untouched.
+     */
+    fun roleScan(root: View): ViewGroup? {
+        val icons = findStatusIconsByRole(root)
+        val battery = findBatteryByRole(root)
+        val seed = icons ?: battery ?: return null
+        var candidate: ViewGroup? = seed.parent as? ViewGroup
+        while (candidate != null && candidate !== root) {
+            if (candidate.visibility != View.GONE &&
+                (icons == null || isAncestor(candidate, icons)) &&
+                (battery == null || isAncestor(candidate, battery))
+            ) {
+                return candidate
+            }
+            candidate = candidate.parent as? ViewGroup
+        }
+        return null
+    }
+
+    /** The status-icons container by the adapter id, else by the class name every ROM keeps. */
+    private fun findStatusIconsByRole(root: View): View? {
+        for (name in listOf("statusIcons", "status_icons")) {
+            val id = RomResources.id(context, rom, name)
+            if (id != 0) root.findViewById<View>(id)?.let { return it }
+        }
+        return findByName(root, "StatusIconContainer")
+    }
+
+    /**
+     * The battery view by the adapter id, else by class name. Deliberately matches battery *views*
+     * (`BatteryMeter`/`BatteryIcon`/`BatteryView`), never a `BatteryContainer`, so the strip's parent
+     * container is not mistaken for the battery itself.
+     */
+    private fun findBatteryByRole(root: View): View? {
+        val id = RomResources.id(context, rom, rom.batteryId)
+        if (id != 0) root.findViewById<View>(id)?.let { return it }
+        return findByName(root, "BatteryMeter")
+            ?: findByName(root, "BatteryIcon")
+            ?: findByName(root, "BatteryView")
+    }
+
+    /** True when [ancestor] is [view] or one of its parents. */
+    private fun isAncestor(ancestor: View, view: View): Boolean {
+        var current: View? = view
+        while (current != null) {
+            if (current === ancestor) return true
+            current = current.parent as? View
+        }
+        return false
     }
 
     /**

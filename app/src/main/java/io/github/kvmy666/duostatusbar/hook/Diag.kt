@@ -9,6 +9,7 @@ import android.view.WindowManager
 import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
+import io.github.kvmy666.duostatusbar.hook.rom.RomProfiles
 import io.github.kvmy666.duostatusbar.hook.rom.RomResources
 
 /**
@@ -69,7 +70,8 @@ internal object Diag {
             Build.MANUFACTURER.orEmpty(),
             Build.BRAND.orEmpty(),
             Build.PRODUCT.orEmpty(),
-            Build.DISPLAY.orEmpty()
+            Build.DISPLAY.orEmpty(),
+            RomProfiles.load(context)
         )
         buildString {
             appendLine("Duo Status Bar diagnostic dump")
@@ -108,6 +110,22 @@ internal object Diag {
                 } else {
                     appendLine("  $name (0x${id.toString(16)}) -> ${found.javaClass.name} " +
                             "${found.width}x${found.height} vis=${found.visibility}")
+                }
+            }
+
+            // The role-based locator, run here so an unmeasured ROM's report already contains the strip
+            // it resolved (and its id/class), which is what a new RomProfile is written from. Read-only.
+            appendLine("role locator (unmeasured-ROM fallback):")
+            if (root == null) {
+                appendLine("  (no status bar window attached yet)")
+            } else {
+                val role = ContainerFinder(context, rom, LogOnce()).roleScan(root)
+                if (role == null) {
+                    appendLine("  no role-resolved strip")
+                } else {
+                    appendLine("  strip=${role.javaClass.name} id=${idName(role)} " +
+                            "${role.width}x${role.height} vis=${role.visibility}")
+                    appendLine("  parent=${role.parent?.javaClass?.name ?: "none"}")
                 }
             }
 

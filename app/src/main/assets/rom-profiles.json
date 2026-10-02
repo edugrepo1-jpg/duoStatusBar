@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "_comment": "Measured ROM profiles. Only entries with \"measured\": true may override the built-in defaults in RomDetection, so adding a device we have read off a phone is a data edit here, not a code change. Never add a profile whose ids were guessed - use \"measured\": false and leave it in code until a device confirms it.",
+  "profiles": [
+    {
+      "id": "oxygenos",
+      "label": "OxygenOS / OnePlus",
+      "systemUiPackage": "com.android.systemui",
+      "containerIds": ["system_icons", "system_icons_container", "status_bar_end_side_content"],
+      "batteryId": "battery",
+      "clockId": "clock",
+      "match": ["oneplus", "oxygen"],
+      "measured": true,
+      "notes": "measured on OxygenOS 16 (CPH2747): system_icons -> LinearLayout, battery 83x61 px"
+    },
+    {
+      "id": "hyperos",
+      "label": "HyperOS / MIUI",
+      "systemUiPackage": "com.android.systemui",
+      "containerIds": ["system_icons", "system_icon_area", "status_bar_icons", "statusIcons", "system_icons_container"],
+      "batteryId": "battery",
+      "clockId": "clock",
+      "match": ["xiaomi", "redmi", "poco"],
+      "measured": true,
+      "notes": "measured on HyperOS 3 (24129PN74G, Android 17): system_icons -> MiuiStatusBatteryContainer holding statusIcons + battery; system_icon_area is the parent"
+    }
+  ]
+}

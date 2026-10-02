@@ -18,8 +18,39 @@ package io.github.kvmy666.duostatusbar
 internal object RootLogs {
 
     /**
-     * Runs one `su -c` script (a single root prompt) and returns everything it printed. The compound script
+     * Where a root shell can live. `su` is not guaranteed to be on the app's `PATH`: locked-bootloader
+     * root frameworks (KernelSU, APatch, some Samsung "no unlock" roots) keep it somewhere the app
+     * process does not search, and the old code then failed with "Cannot run program su: No such file
+     * or directory" — every report from those users came back empty. Each absolute path is tried in
+     * turn, then a plain `su` so an ordinary PATH lookup is still the last resort.
+     */
+    private val SU_CANDIDATES = listOf(
+        "/system/bin/su",
+        "/system/xbin/su",
+        "/sbin/su",
+        "/debug_ramdisk/su",
+        "/data/adb/ksu/bin/su",
+        "/data/adb/ap/bin/su",
+        "/data/adb/magisk/su",
+        "su"
+    )
+
+    /** How long a root capture may take before it is abandoned, so a hung prompt cannot freeze the app. */
+    private const val ROOT_TIMEOUT_SECONDS = 25L
+
+    /**
+     * The first root shell that actually exists, preferring known absolute paths over a `PATH` lookup.
+     * Returns `"su"` when none exists so the legacy behaviour (and its error message) is unchanged.
+     */
+    internal fun findSuBinary(): String =
+        SU_CANDIDATES.firstOrNull { it != "su" && java.io.File(it).exists() } ?: "su"
+
+    /**
+     * Runs one root script (a single root prompt) and returns everything it printed. The compound script
      * is deliberate: one prompt for the whole capture is far less annoying than one per command.
+     *
+     * When no root shell can be run at all, this still returns the facts the app can read without root,
+     * so a report is never empty — see [nonRootFacts].
      */
     fun collect(): String {
         val script = """
@@ -62,7 +93,31 @@ internal object RootLogs {
             ls /data/adb 2>/dev/null
             ls /data/adb/lspd/log 2>/dev/null
         """.trimIndent()
-        return runSu(script)
+        val rooted = runRoot(script)
+        // A failed capture must still carry the device identity: on a locked-bootloader root the missing
+        // root shell is itself the answer, and the build tells us which ROM to fix next.
+        return if (rooted.startsWith(FAILURE_PREFIX)) {
+            buildString {
+                appendLine(rooted)
+                appendLine()
+                nonRootFacts()
+            }
+        } else {
+            rooted
+        }
+    }
+
+    /**
+     * The evidence available with no root at all. Weaker than the root capture, but it records the
+     * device/ROM and the installed module so a "nothing happens" report still identifies the target.
+     */
+    private fun nonRootFacts(): String = buildString {
+        appendLine("=== app-side facts (no root) ===")
+        appendLine("MANUFACTURER=${android.os.Build.MANUFACTURER} BRAND=${android.os.Build.BRAND} MODEL=${android.os.Build.MODEL}")
+        appendLine("DEVICE=${android.os.Build.DEVICE} PRODUCT=${android.os.Build.PRODUCT}")
+        appendLine("SDK=${android.os.Build.VERSION.SDK_INT} RELEASE=${android.os.Build.VERSION.RELEASE} DISPLAY=${android.os.Build.DISPLAY}")
+        appendLine("rootShell=${findSuBinary()}")
+        append("note=root capture unavailable; ask the user to grant root to Duo Status Bar in their root manager, then reopen the About screen.")
     }
 
     /**
@@ -77,24 +132,42 @@ internal object RootLogs {
         val script = "pkill -f com.android.systemui; " +
             "killall com.android.systemui 2>/dev/null; " +
             "kill -9 ${'$'}(pidof com.android.systemui) 2>/dev/null; true"
-        Runtime.getRuntime().exec(arrayOf("su", "-c", script)).waitFor()
+        ProcessBuilder(findSuBinary(), "-c", script).redirectErrorStream(true).start()
+            .waitFor(ROOT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)
         true
     } catch (t: Throwable) {
         L.w("root restart failed: ${t.javaClass.simpleName}: ${t.message}")
         false
     }
 
-    private fun runSu(script: String): String = try {
-        val process = Runtime.getRuntime().exec(arrayOf("su", "-c", script))
-        val out = process.inputStream.bufferedReader().readText()
-        val err = process.errorStream.bufferedReader().readText()
-        process.waitFor()
-        buildString {
-            if (out.isNotBlank()) append(out)
-            if (err.isNotBlank()) append("\n[stderr]\n").append(err)
-            if (isBlank()) append("(su returned no output - root denied or no su binary)")
+    private const val FAILURE_PREFIX = "root log collection failed"
+
+    /**
+     * Runs [script] through the discovered root shell. stderr is merged into stdout and read in one pass
+     * (the old two-stream read could deadlock on a large log), and the process is bounded by a timeout so
+     * a stalled root prompt cannot hang the app. Never throws.
+     */
+    private fun runRoot(script: String): String {
+        val su = findSuBinary()
+        // The read itself can block forever if the root prompt never answers, so the whole
+        // start-and-read runs on a worker that the caller abandons after the timeout.
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        return try {
+            val future = executor.submit<String> {
+                val process = ProcessBuilder(su, "-c", script)
+                    .redirectErrorStream(true)
+                    .start()
+                val out = process.inputStream.bufferedReader().readText()
+                process.waitFor()
+                out.ifBlank { "(root shell returned no output - root denied?)" }
+            }
+            future.get(ROOT_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)
+        } catch (_: java.util.concurrent.TimeoutException) {
+            "$FAILURE_PREFIX: root shell ($su) timed out after ${ROOT_TIMEOUT_SECONDS}s"
+        } catch (t: Throwable) {
+            "$FAILURE_PREFIX: ${t.javaClass.simpleName}: ${t.message} (tried $su)"
+        } finally {
+            executor.shutdownNow()
         }
-    } catch (t: Throwable) {
-        "root log collection failed: ${t.javaClass.simpleName}: ${t.message}"
     }
 }

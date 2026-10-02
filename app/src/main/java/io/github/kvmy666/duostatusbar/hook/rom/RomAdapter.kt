@@ -23,7 +23,14 @@ internal data class RomAdapter(
     /** The status-bar clock, used only to swap its typeface (the module never hides it). */
     val clockId: String = "clock",
     /** Where the facts came from — "measured" is a device, "unverified" is a guess to be replaced. */
-    val notes: String
+    val notes: String,
+    /**
+     * Lowercase substrings of the build identity that select this profile from an asset. Empty for the
+     * code defaults, so only profiles loaded from data (see [RomProfiles]) carry a match.
+     */
+    val match: List<String> = emptyList(),
+    /** True only when every id was read off a device. Asset data may override only when measured. */
+    val measured: Boolean = false
 )
 
 /**
@@ -40,7 +47,7 @@ internal object RomDetection {
         product: String,
         display: String
     ): RomAdapter {
-        val haystack = listOf(manufacturer, brand, product, display).joinToString(" ").lowercase()
+        val haystack = haystack(manufacturer, brand, product, display)
         return when {
             haystack.contains("samsung") -> samsung()
             haystack.contains("oneplus") || haystack.contains("oxygen") -> oxygenOs()
@@ -51,6 +58,29 @@ internal object RomDetection {
             else -> aosp()
         }
     }
+
+    /**
+     * The same choice, but a **measured** profile loaded from data (see [RomProfiles]) is accepted
+     * first. Only `measured` profiles may override, so a data edit can add a device we have read but
+     * can never silently replace an unverified guess — the code stays the source of truth otherwise.
+     * Kept as an overload so the pure four-argument function (and every test on it) is unchanged.
+     */
+    fun forThisRom(
+        manufacturer: String,
+        brand: String,
+        product: String,
+        display: String,
+        profiles: List<RomAdapter>
+    ): RomAdapter {
+        val haystack = haystack(manufacturer, brand, product, display)
+        profiles.firstOrNull { profile ->
+            profile.measured && profile.match.any { haystack.contains(it.lowercase()) }
+        }?.let { return it }
+        return forThisRom(manufacturer, brand, product, display)
+    }
+
+    private fun haystack(manufacturer: String, brand: String, product: String, display: String): String =
+        listOf(manufacturer, brand, product, display).joinToString(" ").lowercase()
 
     /**
      * Measured on the OnePlus 15 (CPH2747), Android 16 / OxygenOS 16.0.9.400: the strip is a `LinearLayout`
@@ -64,7 +94,9 @@ internal object RomDetection {
         systemUiPackage = AOSP,
         containerIds = listOf("system_icons", "system_icons_container", "status_bar_end_side_content"),
         batteryId = "battery",
-        notes = "measured on OxygenOS 16 (CPH2747): system_icons -> LinearLayout, battery 83x61 px"
+        notes = "measured on OxygenOS 16 (CPH2747): system_icons -> LinearLayout, battery 83x61 px",
+        match = listOf("oneplus", "oxygen"),
+        measured = true
     )
 
     /**
@@ -87,7 +119,8 @@ internal object RomDetection {
             "statusIcons"
         ),
         batteryId = "battery",
-        notes = "unverified: no ColorOS 14/16 device measured; AOSP ids first, then OPPO spellings"
+        notes = "unverified: no ColorOS 14/16 device measured; AOSP ids first, then OPPO spellings",
+        match = listOf("oppo", "oplus", "coloros")
     )
 
     /**
@@ -111,7 +144,8 @@ internal object RomDetection {
         ),
         batteryId = "battery",
         notes = "unverified: no Samsung device measured; AOSP ids first, then One UI spellings " +
-            "(systemIcons/status_icons); the battery/status-icons parent fallback covers the rest"
+            "(systemIcons/status_icons); the battery/status-icons parent fallback covers the rest",
+        match = listOf("samsung")
     )
 
     /**
@@ -138,7 +172,9 @@ internal object RomDetection {
         ),
         batteryId = "battery",
         notes = "measured on HyperOS 3 (24129PN74G, Android 17): system_icons -> " +
-            "MiuiStatusBatteryContainer holding statusIcons + battery; system_icon_area is the parent"
+            "MiuiStatusBatteryContainer holding statusIcons + battery; system_icon_area is the parent",
+        match = listOf("xiaomi", "redmi", "poco"),
+        measured = true
     )
 
     private fun aosp(): RomAdapter = RomAdapter(

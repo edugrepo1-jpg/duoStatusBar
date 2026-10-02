@@ -8,6 +8,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.hook.rom.RomDetection
+import io.github.kvmy666.duostatusbar.hook.rom.RomProfiles
 import io.github.kvmy666.duostatusbar.hook.rom.RomResources
 
 /**
@@ -141,7 +142,9 @@ internal class DuoIconHost(private val context: Context) {
         Build.MANUFACTURER.orEmpty(),
         Build.BRAND.orEmpty(),
         Build.PRODUCT.orEmpty(),
-        Build.DISPLAY.orEmpty()
+        Build.DISPLAY.orEmpty(),
+        // Measured profiles from assets may override; only `measured` ones are accepted.
+        RomProfiles.load(context)
     )
 
     /** Resolves the strip and the element's parent view from the tree; see [ContainerFinder]. */
