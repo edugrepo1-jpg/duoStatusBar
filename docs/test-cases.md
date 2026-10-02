@@ -127,6 +127,27 @@ instead of a broken status bar, and `tools/duo-verify.ps1` automates the checks 
 | H-14 | Gestures off by default | with default settings, tap/long-press the element and pull the shade down from there | nothing is consumed; the shade opens normally (FR-18) |
 | H-15 | Hand-off to Auto Expand | set a tap action, tap the element | `asked Auto Expand for '…'` and that action runs |
 
+## I. Multi-ROM locator, profiles and locked root (FR-01/FR-03) — M1/M2
+
+| ID | Case | Steps | Expected |
+|---|---|---|---|
+| I-1 | Role locator on an unmeasured ROM | install on an AOSP/GSI emulator, enable, restart System UI | `strip resolved by role: …`; the element draws; the stock bar is otherwise untouched |
+| I-2 | Measured profile override | add a `measured: true` profile to `assets/rom-profiles.json` matching the test device | the dump's `rom adapter` shows that profile's ids; a `measured: false` copy changes nothing |
+| I-3 | Dead stub is not chosen | One UI 8 report replay / device | the real cluster is anchored, not the 0×0 `system_icons` stub |
+| I-4 | Unknown ROM is left alone | a tree with neither ids nor standard classes | `no container id resolved … status bar left untouched`; no icon hidden |
+| I-5 | Locked-root log capture | KernelSU/APatch device with no `su` on the app PATH | the report still names the device and the discovered `rootShell`; no empty report |
+| I-6 | No regression on a measured ROM | OnePlus baseline, before/after the change | diagnostic diff empty except timestamps/pids |
+| I-7 | SELinux/ABI present | any report | `SELINUX=` and `ABI=` appear on the build and the app-side facts |
+
+### ROM-mode test flow
+
+1. **Baseline (OxygenOS, measured):** capture the golden dump, install, diff — must be empty.
+2. **AOSP / GSI emulator:** repeat I-1 and I-4; this is the "new ROM" path with no profile.
+3. **OEM reports (One UI, HyperOS, ColorOS):** replay the user dumps in `diagnose from users/` and
+   confirm the locator picks a non-stub strip; add a `measured` profile once a real id is confirmed.
+4. **Locked root:** run I-5; if native Rive is denied, capture the AVC denial before recommending any
+   root module (`docs/rive-selinux-root.md`).
+
 ## Linked tests (re-run together)
 
 * **B ↔ C ↔ D**: hiding, state and animation share the same view → re-run B-1, C-1, D-1 together.
