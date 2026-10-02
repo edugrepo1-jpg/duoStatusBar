@@ -623,14 +623,6 @@ internal fun AboutSection(
                 Text(updateMessage, style = MaterialTheme.typography.bodySmall)
             }
             updateInfo?.let { info ->
-                OutlinedButton(
-                    onClick = {
-                        runCatching {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.url)))
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text(stringResource(R.string.settings_update_open)) }
                 if (info.apkUrl.isNotBlank()) {
                     Button(onClick = onDownload, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.settings_update_download))
