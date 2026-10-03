@@ -65,7 +65,13 @@ internal object Diag {
         root: View?,
         stage: Int,
         settings: ModuleSettings?,
-        element: DuoElement?
+        element: DuoElement?,
+        /**
+         * Other windows the module draws into (the shade/keyguard window, the shade header). Issue #1
+         * ("the shade element jumps from right to left when Quick Settings expands") cannot be fixed
+         * without their tree, and the status-bar walk above never reaches them.
+         */
+        extraRoots: List<Pair<String, View?>> = emptyList()
     ): String = try {
         val rom = RomDetection.forThisRom(
             Build.MANUFACTURER.orEmpty(),
@@ -136,6 +142,18 @@ internal object Diag {
                 appendLine("  (no status bar window attached yet)")
             } else {
                 dumpTree(root, this, 0)
+            }
+
+            // Other bars the module draws into - the shade/keyguard window and the shade header. They are
+            // separate windows, so the status-bar walk never reaches them; the shade element's position is
+            // only visible here (Issue #1).
+            for ((name, extra) in extraRoots) {
+                appendLine("view tree ($name):")
+                if (extra == null) {
+                    appendLine("  (not captured yet)")
+                } else {
+                    dumpTree(extra, this, 0)
+                }
             }
 
             appendLine("readers:")

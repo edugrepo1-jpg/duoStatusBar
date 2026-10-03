@@ -1092,6 +1092,14 @@ internal class DuoIconHost(private val context: Context) {
         val anchor = anchorBattery ?: return
         try {
             if (anchorOriginalVisibility == null) anchorOriginalVisibility = anchor.visibility
+            // The ROM can re-show the stock battery/cluster on its own - an OEM charging animation
+            // re-inflates the bar when the charger is plugged in - and this is the only moment we see it.
+            // The line is the evidence for "the battery appears over Duo while charging".
+            if (anchor.visibility == View.VISIBLE) {
+                logOnce.once("anchorReshown") {
+                    L.i("stock anchor ${anchor.javaClass.simpleName} was re-shown by the ROM - hiding it again")
+                }
+            }
             anchor.visibility = View.INVISIBLE
         } catch (t: Throwable) {
             L.w("anchor hide: ${t.javaClass.simpleName}: ${t.message}")

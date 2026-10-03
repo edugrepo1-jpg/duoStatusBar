@@ -153,6 +153,13 @@ object DuoPrefs {
      */
     const val ACTION_RESTART_SYSTEMUI = "io.github.kvmy666.duostatusbar.RESTART_SYSTEMUI"
 
+    /**
+     * Sent by the app just before it builds a bug report. The module replies with a fresh diagnostic
+     * dump, so the report shows the bar as it is *at that moment* — the one-shot boot dump cannot show
+     * the shade expanded, which is exactly what the shade-position report needs (Issue #1).
+     */
+    const val ACTION_DIAGNOSTICS_REQUEST = "io.github.kvmy666.duostatusbar.DIAGNOSTICS_REQUEST"
+
     const val COL_ENABLED = "enabled"
     const val COL_USE_RIVE = "use_rive"
     const val COL_SHOW_PERCENT = "show_percent"

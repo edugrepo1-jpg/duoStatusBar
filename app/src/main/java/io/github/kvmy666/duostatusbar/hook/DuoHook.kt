@@ -71,7 +71,13 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     private var shadeHeader: View? = null
 
     /** Sends status and the one-shot diagnostic dump to the app. */
-    private val reporter = HookReporter({ statusBarRoot }, { host?.duo })
+    private val reporter = HookReporter(
+        { statusBarRoot },
+        { host?.duo },
+        // The shade/keyguard window and the shade header are separate windows the status-bar dump never
+        // reaches; their tree is what shows where the shade element actually sits (Issue #1).
+        { listOf("shade window" to shadeRoot, "shade header" to shadeHeader) }
+    )
 
     /** The ROM adapter, used only to resolve resource ids against SystemUI's package. */
     private val rom = RomDetection.forThisRom(
@@ -319,6 +325,21 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                                 L.w("restart failed: ${t.javaClass.simpleName}: ${t.message}")
                             }
                         }, RESTART_DELAY_MS)
+                        return
+                    }
+                    if (intent?.action == DuoPrefs.ACTION_DIAGNOSTICS_REQUEST) {
+                        // The app is building a bug report: capture the bar now (the shade may be open),
+                        // so the dump reflects the reported state instead of the boot-time one.
+                        val ctxNow = app
+                        if (ctxNow != null) {
+                            reporter.reportDiagnostics(
+                                ctxNow,
+                                DuoGuard(ctxNow).stage(),
+                                DuoSettingsClient.read(ctxNow),
+                                host?.duo
+                            )
+                            L.i("diagnostic dump refreshed on app request")
+                        }
                         return
                     }
                     // Coalesce a burst of changes (a slider drag broadcasts on every tick) into one

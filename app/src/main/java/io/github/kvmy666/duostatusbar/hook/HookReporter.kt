@@ -13,7 +13,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 internal class HookReporter(
     private val statusBarRoot: () -> View?,
-    private val duo: () -> DuoElement?
+    private val duo: () -> DuoElement?,
+    /** Other windows the module draws into (shade/keyguard window, shade header), for the dump. */
+    private val extraRoots: () -> List<Pair<String, View?>> = { emptyList() }
 ) {
 
     /** The debug diagnostic dump is written to the log once per process, not on every settings change. */
@@ -50,7 +52,7 @@ internal class HookReporter(
      * complete bug report without a special build.
      */
     fun reportDiagnostics(ctx: Context, stage: Int, settings: ModuleSettings?, element: DuoElement?) {
-        val dump = Diag.collect(ctx, statusBarRoot(), stage, settings, element)
+        val dump = Diag.collect(ctx, statusBarRoot(), stage, settings, element, extraRoots())
         DuoSettingsClient.reportDump(ctx, dump)
         if (diagnosticsLogged.compareAndSet(false, true)) {
             L.i("--- diagnostic dump (debug build) ---")

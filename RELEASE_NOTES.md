@@ -1,3 +1,14 @@
+# Duo Status Bar 1.4.1-beta.2 — pre-release
+
+Diagnostics only — no change to how the bar draws. It records the two things the current reports could
+not, so the next report can be fixed instead of guessed:
+
+- **The shade's own view tree** is now included (the shade is a separate window the report never
+  reached), which is what the "element jumps to the left when Quick Settings expands" report needs.
+- **A line when the ROM re-shows the stock battery** (e.g. during an OEM charging animation), which is
+  what the "stock battery appears over Duo while charging" report needs.
+- **"Send the bug" refreshes the dump at that moment**, not the one captured at boot.
+
 # Duo Status Bar 1.4.1-beta.1 — pre-release
 
 Straight from user logs. A beta: it goes through the pre-release channel only.

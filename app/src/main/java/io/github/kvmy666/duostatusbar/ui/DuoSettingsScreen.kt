@@ -176,6 +176,21 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
 
     val onUpdate: (DuoSettings) -> Unit = { update(it) }
 
+    /**
+     * Asks the module for a fresh diagnostic dump and returns it, so a report captures the bar as it is
+     * right now (e.g. the shade open) rather than the one-shot boot dump. Falls back to the last stored
+     * dump if the module is unreachable or does not answer in time.
+     */
+    suspend fun refreshedDump(): String = try {
+        context.sendBroadcast(
+            Intent(DuoPrefs.ACTION_DIAGNOSTICS_REQUEST).setPackage("com.android.systemui")
+        )
+        withContext(Dispatchers.IO) { Thread.sleep(900) }
+        DuoPrefs.dump(context).ifEmpty { dump }
+    } catch (t: Throwable) {
+        dump
+    }
+
     // One-tap bug report, shared by the About button and the module-health card: packs the description,
     // the module status and the logs, uploads it, and falls back to the share sheet.
     fun collectAndSend() {
@@ -186,7 +201,7 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             val logs = withContext(Dispatchers.IO) { RootLogs.collect() }
             collecting = false
             val message = problem.trim()
-            val report = buildFullReport(problem, settings, status, history, dump, moduleLoadAt, logs)
+            val report = buildFullReport(problem, settings, status, history, refreshedDump(), moduleLoadAt, logs)
             val file = writeDiagnostics(context, report)
             if (file == null) {
                 shareText(context, report)
@@ -392,7 +407,7 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                     val logs = withContext(Dispatchers.IO) { RootLogs.collect() }
                     exporting = false
                     pendingExport = buildFullReport(
-                        problem, settings, status, history, dump, moduleLoadAt, logs
+                        problem, settings, status, history, refreshedDump(), moduleLoadAt, logs
                     )
                     val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
                     exportLog.launch("duo-log-$stamp.txt")
