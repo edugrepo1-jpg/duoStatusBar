@@ -138,10 +138,22 @@ internal class DuoCanvasView(
         val drawRing = visual.ringOpacity > 0.5f
         val drawIndicators = visual.indicatorsOpacity > 0.5f
 
-        // Track: the whole ring, dimmed.
+        // Track: the two halves, dimmed, from the same bound arc lengths Rive's ringTrackL/R read. It
+        // used to be one full circle, so with the percentage off the fallback drew a closed track under
+        // the digits while the live element closed the ring (reported: "the battery bar goes all the way
+        // around, it's under the number"). The track now follows leftArc/rightArc exactly, so the two
+        // renderers cannot disagree at the top gap.
         if (drawRing) {
+            arcBounds.set(cx - radius, cy - radius, cx + radius, cy + radius)
             ring.color = withAlpha(visual.fgColor, TRACK_ALPHA)
-            canvas.drawCircle(cx, cy, radius, ring)
+            val leftTrack = visual.leftArc * 360f
+            if (leftTrack > MIN_SWEEP) {
+                canvas.drawArc(arcBounds, TRIM_ORIGIN + 360f * DuoMapping.LEFT_START, leftTrack, false, ring)
+            }
+            val rightTrack = visual.rightArc * 360f
+            if (rightTrack > MIN_SWEEP) {
+                canvas.drawArc(arcBounds, TRIM_ORIGIN + 360f * DuoMapping.RIGHT_START, rightTrack, false, ring)
+            }
         }
 
         // Progress: left arc 0-50 %, right arc 50-100 %, exactly as the .riv splits it. The trim ends

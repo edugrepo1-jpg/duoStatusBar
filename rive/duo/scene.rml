@@ -30,7 +30,7 @@
                  Text type keys: alignValue 281 (center), originX 366 / originY 367 (normalized),
                  TextStylePaint.fontSize 274, .fontAssetId 279. Node y is property key 14.     -->
 
-            <Text x="-3.5" y="-76" width="80" height="42" alignValue="center" originX="0.5" originY="0"
+            <Text x="0" y="-76" width="80" height="42" alignValue="center" originX="0.5" originY="0"
                 sizingValue="fixed" overflowValue="visible" name="percent" id="0:30">
                 <TextStylePaint fontSize="32" fontAssetId="0:40" name="PercentStyle" id="0:31">
                     <DataBindContext propertyKey="274" sourcePathIds="0:60-0:84" />

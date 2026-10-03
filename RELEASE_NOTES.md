@@ -1,3 +1,20 @@
+# Duo Status Bar 1.4.1-beta.1 — pre-release
+
+Straight from user logs. A beta: it goes through the pre-release channel only.
+
+- **The moon shows only for Do Not Disturb.** A phone put on **silent** (but not DND) used to draw the
+  DND crescent inside the ring, because silent was being treated as Do Not Disturb. Silent and DND are
+  now separate, so the moon means DND.
+- **The simple drawing's ring now matches the smooth one.** With smooth graphics off, the ring's track
+  was drawn as a full circle and passed under the number; it now leaves the same top gap the animated
+  element does.
+- **The percentage is centred.** The number sat a few pixels left of the ring's centre in the smooth
+  drawing; it is centred now, matching the simple drawing.
+- **Edge spacing works where the element overlays the battery** (HyperOS 3 and similar). On those ROMs
+  the setting was ignored and the element stayed hard against the right edge; it now moves.
+- Corrected the earlier wording: a new ROM is a **data-file** change, but the file still ships inside the
+  APK, so an app update is needed — there is no remote configuration channel.
+
 # Duo Status Bar 1.4.0 — stable
 
 This release makes Duo work on more phones, adds in-app updating, and makes problems easier to fix.
@@ -20,7 +37,9 @@ This beta is mostly about supporting more phones and making problems easier to f
 
 - **More custom ROMs work.** The status-bar icon area is now found by what it contains, not only by
   names we already knew, so phones we have never measured are more likely to work.
-- **A new ROM can be added with a data file**, without a new APK.
+- **A new ROM profile is a data file** (`rom-profiles.json`), so adding or correcting one needs no code
+  change. The file still ships inside the APK, so users install an update to receive it — there is no
+  remote configuration channel.
 - **Better reports.** Phones with locked-bootloader root can now send their device details and logs,
   and every report shows the device's SELinux state and ABI.
 - **From the community contribution:** separate portrait and landscape settings, a raised battery
