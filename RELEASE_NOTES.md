@@ -1,3 +1,15 @@
+# Duo Status Bar 1.4.1-beta.3 — pre-release
+
+Diagnostics only.
+
+- **Reports no longer need root.** The module keeps its own recent log and sends it with the diagnostic
+  dump, so a device where the app cannot run `su` (locked-bootloader root) still sends its log. This is
+  what "root log collection failed: Cannot run program su" was losing.
+- **The shade header's layout is snapshotted while the shade is open**, so the report still carries it
+  after the shade closes — the evidence the shade-position report needs.
+- The shade/keyguard window and shade-header trees are included, and "Send the bug" refreshes the dump
+  at that moment instead of using the boot-time one.
+
 # Duo Status Bar 1.4.1-beta.2 — pre-release
 
 Diagnostics only — no change to how the bar draws. It records the two things the current reports could

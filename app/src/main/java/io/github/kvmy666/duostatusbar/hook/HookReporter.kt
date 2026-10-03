@@ -21,6 +21,18 @@ internal class HookReporter(
     /** The debug diagnostic dump is written to the log once per process, not on every settings change. */
     private val diagnosticsLogged = AtomicBoolean(false)
 
+    /**
+     * The shade header tree as it was last laid out (Issue #1). Snapshotted while the shade is open,
+     * because by the time the app asks for a report the shade has closed and the bounds are gone.
+     */
+    @Volatile
+    private var extrasSnapshot: String = ""
+
+    /** Stores a rendered tree snapshot (see [Diag.treeText]) for the next diagnostic dump. */
+    fun captureExtras(snapshot: String) {
+        extrasSnapshot = snapshot
+    }
+
     fun report(ctx: Context, stage: Int, settings: ModuleSettings?) {
         L.guard("DuoHook status report") {
             val element = duo()
@@ -52,11 +64,18 @@ internal class HookReporter(
      * complete bug report without a special build.
      */
     fun reportDiagnostics(ctx: Context, stage: Int, settings: ModuleSettings?, element: DuoElement?) {
-        val dump = Diag.collect(ctx, statusBarRoot(), stage, settings, element, extraRoots())
+        val tree = Diag.collect(ctx, statusBarRoot(), stage, settings, element, extraRoots(), extrasSnapshot)
+        // The module's own log rides along, so the report carries the module's lines even on a device
+        // where the app cannot run `su` to read LSPosed's log file. Read before logging the tree, so the
+        // dump does not log itself into the buffer.
+        val moduleLog = L.recentText()
+        val dump = tree +
+            "\n=== module log (from the module, no root needed) ===\n" +
+            moduleLog + (if (moduleLog.isBlank()) "" else "\n")
         DuoSettingsClient.reportDump(ctx, dump)
         if (diagnosticsLogged.compareAndSet(false, true)) {
             L.i("--- diagnostic dump (debug build) ---")
-            Diag.log(dump)
+            Diag.log(tree)
             L.i("--- end diagnostic dump ---")
         }
     }

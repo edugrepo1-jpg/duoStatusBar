@@ -71,7 +71,9 @@ internal object Diag {
          * ("the shade element jumps from right to left when Quick Settings expands") cannot be fixed
          * without their tree, and the status-bar walk above never reaches them.
          */
-        extraRoots: List<Pair<String, View?>> = emptyList()
+        extraRoots: List<Pair<String, View?>> = emptyList(),
+        /** A previously captured tree (e.g. the shade header while it was open). */
+        extraSnapshot: String = ""
     ): String = try {
         val rom = RomDetection.forThisRom(
             Build.MANUFACTURER.orEmpty(),
@@ -147,6 +149,9 @@ internal object Diag {
             // Other bars the module draws into - the shade/keyguard window and the shade header. They are
             // separate windows, so the status-bar walk never reaches them; the shade element's position is
             // only visible here (Issue #1).
+            if (extraSnapshot.isNotBlank()) {
+                append(extraSnapshot)
+            }
             for ((name, extra) in extraRoots) {
                 appendLine("view tree ($name):")
                 if (extra == null) {
@@ -190,7 +195,20 @@ internal object Diag {
 
     /** Logs the dump through [L] (both sinks) once, so a log capture has it too. */
     fun log(dump: String) {
-        for (line in dump.lines()) L.i(line)
+        for (line in dump.lines()) L.diag(line)
+    }
+
+    /**
+     * Renders one named view tree to text. Used to snapshot a window (the shade header) at the moment
+     * it is laid out, because by the time the app asks for a report that window has been re-laid out.
+     */
+    fun treeText(name: String, view: View?): String = buildString {
+        appendLine("view tree ($name):")
+        if (view == null) {
+            appendLine("  (not captured)")
+        } else {
+            dumpTree(view, this, 0)
+        }
     }
 
     private fun appendPackageInfo(context: Context, sb: StringBuilder, pkg: String) {

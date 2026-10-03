@@ -587,6 +587,12 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                         L.guard("DuoHook shade settle") {
                             host?.reapplyHiding()
                             shadeHeader?.let { host?.attachShadeHeader(it) }
+                            // Snapshot the header's layout while the shade is open. The app-only dump
+                            // happens after the shade closed, by which point these bounds are gone
+                            // (Issue #1: the element jumps when Quick Settings expands).
+                            shadeHeader?.let {
+                                reporter.captureExtras(Diag.treeText("shade header (as last laid out)", it))
+                            }
                         }
                     }, SHADE_SETTLE_MS)
                 }
