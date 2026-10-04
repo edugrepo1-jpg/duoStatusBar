@@ -1,3 +1,26 @@
+# Duo Status Bar 1.4.2-beta.1 — pre-release
+
+Fixes the "most reports arrive empty" problem and finishes the tap actions.
+
+- **Bug reports no longer depend on root.** The old capture ran a single `su` command and, when the phone
+  would not run it (no `su` on the app's PATH, or SELinux denying the app — the common locked-bootloader
+  case), the report came back as a few hundred bytes. The capture now tries, in order: **root** (only
+  after you tap **Allow root access**), **Shizuku / Sui**, the module's own log, and the device details
+  that always work. A report is never empty, and it names how the phone is rooted
+  (`rootKind=magisk` / `kernelsu` / `kernelsu_lkm` / `apatch` / `sui` / `shizuku` / `unknown` / `none`).
+- **Root is asked for, not taken.** A new **Allow root access** button in About runs one root check and
+  remembers the answer, so no root prompt appears uninvited. With neither root nor Shizuku, reports still
+  carry the module log and the device facts.
+- **Shizuku support for the log.** When Shizuku (or Sui) is running, reports include the system log through
+  it — useful on a phone that is rooted but where the app cannot run `su` directly.
+- **Privacy kept.** Only this module's own log lines are captured (`-s DuoSB` / `duostatusbar`); a full
+  logcat is never read, so no other app's data can end up in a report.
+- **Tap actions finished.** More actions on the battery icon — **Bluetooth** and **Mobile data** work
+  right away. **Do Not Disturb**, **Airplane mode** and **Auto rotate** also work once the matching Auto
+  Expand update is installed: Duo always offered these keys, but Auto Expand's receiver ignored them, so
+  they did nothing. Tap actions still need the Auto Expand app, and Duo now says so plainly when it is
+  missing.
+
 # Duo Status Bar 1.4.1-beta.3 — pre-release
 
 Diagnostics only.

@@ -79,7 +79,7 @@
     <!-- Tap actions -->
     <string name="section_actions">Tap actions</string>
     <string name="settings_gestures_note">Taps on the battery icon are handled by the Auto Expand app, so both apps always agree on what a tap means.</string>
-    <string name="settings_gestures_missing">Install Auto Expand to make the battery icon respond to taps.</string>
+    <string name="settings_gestures_missing">Tap actions need the Auto Expand app. To use them, install Auto Expand and set the action there.</string>
     <string name="settings_tap">Single tap</string>
     <string name="settings_double_tap">Double tap</string>
     <string name="settings_long_press">Long press</string>
@@ -95,6 +95,13 @@
     <string name="settings_icons_grant">Allow Shizuku access</string>
     <string name="settings_icons_ready">Shizuku is ready.</string>
     <string name="settings_icons_failed">Shizuku couldn\'t change the icons, so nothing was changed.</string>
+
+    <!-- Diagnostics capture (root / Shizuku) -->
+    <string name="settings_root_detail">Optional. Root or Shizuku lets a bug report include the system log, so a problem can be diagnosed without guessing. Nothing is read or sent until you press send.</string>
+    <string name="settings_root_allow">Allow root access</string>
+    <string name="settings_root_granted">Root access granted. Reports include the full system log.</string>
+    <string name="settings_root_shizuku">Root not granted. Shizuku is ready and will be used for the log instead.</string>
+    <string name="settings_root_denied">Root not granted. Reports still include the module log and the device details.</string>
 
     <!-- Fallback alert -->
     <string name="fallback_title">Duo fell back to a simple drawing</string>

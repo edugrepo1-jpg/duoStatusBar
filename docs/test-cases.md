@@ -148,6 +148,37 @@ instead of a broken status bar, and `tools/duo-verify.ps1` automates the checks 
 4. **Locked root:** run I-5; if native Rive is denied, capture the AVC denial before recommending any
    root module (`docs/rive-selinux-root.md`).
 
+## J. Diagnostics capture — every root method (FR-28 / NFR-06)
+
+The report must identify the device on **every** way a phone is rooted, and on a phone that is not. The
+route is decided by measured facts (`RootProbe`), never assumed: root only after the user taps **Allow
+root access**; otherwise Shizuku/Sui if running; otherwise the module's own pushed log; the device facts
+are always appended. Every case asserts three things: (a) the report is non-empty, (b) `rootKind=` names
+the method (or `unknown`/`none`), and (c) no full logcat leaks (only `-s DuoSB` / `duostatusbar`).
+
+| ID | Environment | Setup | Expected |
+|---|---|---|---|
+| J-1 | Magisk (unlocked) | grant root | `rootKind=magisk`, `route=root`, root log capture present |
+| J-2 | KernelSU GKI (unlocked) | grant root | `rootKind=kernelsu`, `route=root` |
+| J-3 | KernelSU LKM (unlocked) | grant root; module loaded (`grep kernelsu /proc/modules`) | `rootKind=kernelsu_lkm` |
+| J-4 | KernelSU Next (GKI/LKM) | as J-2/J-3 | same paths, kind named or `unknown` — never a crash |
+| J-5 | APatch (unlocked) | grant root | `rootKind=apatch`, `route=root` |
+| J-6 | Sui (Magisk, **no `su` binary**) | `Sui.init()` answers | `rootKind=sui`, `route=shizuku` |
+| J-7 | Shizuku (root backend) | Shizuku running, uid 0 | `shizuku=running(uid=0)`, `route=shizuku` |
+| J-8 | Shizuku (adb / wireless) | Shizuku running, uid 2000 | `shizuku=running(uid=2000)`, tag-filtered logcat present |
+| J-9 | Locked-bootloader soft-root ("jailbreak") | `su` exists but SELinux denies the app | no crash, `route=shizuku` or `module_log`, `/data/adb` read recorded as denied |
+| J-10 | `su` not on the app PATH | KernelSU/APatch with a hidden `su` | absolute path discovered; `rootShell=` names it |
+| J-11 | Root denied (user taps deny) | tap Allow root → deny | `rootGranted=false`; report still complete via Shizuku/module log |
+| J-12 | Prompt timeout | no answer for 25 s | capture abandoned, app not frozen, report still produced |
+| J-13 | No root, module loaded | stock-ish phone | module log present, `rootKind=none` |
+| J-14 | No root, module never loaded | LSPosed not injected | report says so + how to get deeper logs; never empty |
+| J-15 | Privacy | any case | the capture contains only `DuoSB`/`duostatusbar` lines — never another app's data |
+
+Unit coverage (JVM, run in CI): `RootProbeTest` (one row per kind above → expected `kind` + `route`),
+`RootLogsTest` (su discovery ordering, `id` parsing, section parsing). Device rows that cannot be
+reproduced locally are marked **unverified** in the notes until a field report confirms them — the
+`rootKind=` line is what makes that report actionable.
+
 ## Linked tests (re-run together)
 
 * **B ↔ C ↔ D**: hiding, state and animation share the same view → re-run B-1, C-1, D-1 together.

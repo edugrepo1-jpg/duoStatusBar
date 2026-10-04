@@ -589,6 +589,9 @@ internal fun AboutSection(
                 text = stringResource(R.string.settings_collect_log_detail),
                 style = MaterialTheme.typography.bodySmall
             )
+            // Optional elevated capture for the log: root (asked for explicitly) or Shizuku. With
+            // neither, the report still carries the module's own log and the device facts.
+            RootAccessSetting()
             // Export: save the same report anywhere with the system file picker, independent of
             // Telegram or a network. The escape hatch when the upload path is not available.
             OutlinedButton(

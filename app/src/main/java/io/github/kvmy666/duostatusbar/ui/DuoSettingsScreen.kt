@@ -198,7 +198,7 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
         collecting = true
         logSent = false
         scope.launch {
-            val logs = withContext(Dispatchers.IO) { RootLogs.collect() }
+            val logs = withContext(Dispatchers.IO) { RootLogs.collect(context) }
             collecting = false
             val message = problem.trim()
             val report = buildFullReport(problem, settings, status, history, refreshedDump(), moduleLoadAt, logs)
@@ -300,13 +300,13 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                     if (!collecting) {
                         collecting = true
                         scope.launch {
-                            // Same full log as the About button: the module dump plus the root logcat.
-                            val logs = withContext(Dispatchers.IO) { RootLogs.collect() }
+                            // Same full log as the About button: the module dump plus the device capture.
+                            val logs = withContext(Dispatchers.IO) { RootLogs.collect(context) }
                             collecting = false
                             sendLogOnTelegram(
                                 context,
                                 buildDiagnostics(settings, status, history, dump, moduleLoadAt) +
-                                    "\n\n===== root log capture =====\n" + logs
+                                    "\n\n===== device capture =====\n" + logs
                             )
                         }
                     }
@@ -404,7 +404,7 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                 exporting = true
                 logSent = false
                 scope.launch {
-                    val logs = withContext(Dispatchers.IO) { RootLogs.collect() }
+                    val logs = withContext(Dispatchers.IO) { RootLogs.collect(context) }
                     exporting = false
                     pendingExport = buildFullReport(
                         problem, settings, status, history, refreshedDump(), moduleLoadAt, logs

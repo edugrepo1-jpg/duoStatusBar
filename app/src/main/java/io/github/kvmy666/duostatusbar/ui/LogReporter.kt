@@ -103,7 +103,7 @@ internal fun buildDiagnostics(
         }
     }
 
-/** The complete bug report: the user's description, the diagnostics, then the root log capture. */
+/** The complete bug report: the user's description, the diagnostics, then the device capture. */
 internal fun buildFullReport(
     problem: String,
     settings: DuoSettings,
@@ -120,7 +120,7 @@ internal fun buildFullReport(
         appendLine()
     }
     append(buildDiagnostics(settings, status, history, dump, moduleLoadAt))
-    append("\n\n===== root log capture =====\n")
+    append("\n\n===== device capture =====\n")
     append(logs)
 }
 

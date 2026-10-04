@@ -243,6 +243,7 @@ object DuoPrefs {
     private const val KEY_UPDATE_NOTIFIED = "update_notified"
     private const val KEY_UPDATE_CHECK_AT = "update_check_at"
     private const val KEY_LOG_SENT_AT = "log_sent_at"
+    private const val KEY_ROOT_ALLOWED = "root_allowed"
     /** Set the first time landscape is saved. Until then landscape reads as a copy of portrait. */
     private const val KEY_LANDSCAPE_SET = "landscape_set"
     private const val HISTORY_LIMIT = 20
@@ -372,6 +373,24 @@ object DuoPrefs {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KEY_HIDE_STOCK_ICONS, value)
+            .apply()
+    }
+
+    /**
+     * Whether the user granted Duo root for diagnostics. Kept separate from [DuoSettings] because the
+     * module never needs it (it is an app-side capture setting, not part of the element's contract).
+     *
+     * Root is only ever used to *read* the system log into a bug report the user explicitly sends; the
+     * capture never runs `su` before this flag is set, so no root prompt appears uninvited.
+     */
+    fun rootAllowed(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_ROOT_ALLOWED, false)
+
+    fun writeRootAllowed(context: Context, value: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_ROOT_ALLOWED, value)
             .apply()
     }
 

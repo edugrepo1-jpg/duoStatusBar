@@ -31,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,12 +45,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.kvmy666.duostatusbar.DuoRiveStill
 import io.github.kvmy666.duostatusbar.R
+import io.github.kvmy666.duostatusbar.RootLogs
 import io.github.kvmy666.duostatusbar.hook.DuoMapping
 import io.github.kvmy666.duostatusbar.hook.DuoVisual
 import io.github.kvmy666.duostatusbar.settings.DuoActions
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.ModuleState
 import io.github.kvmy666.duostatusbar.settings.StockIconHider
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The settings search gate shared by the section cards: a row is shown when the query appears in its
@@ -325,8 +330,8 @@ internal fun IconHidingSetting(enabled: Boolean) {
         }
     }
 
-    DisposableEffect(Unit) {
-        StockIconHider.observePermissionResult { grantedNow ->
+    val onPermission: (Boolean) -> Unit = remember {
+        { grantedNow ->
             granted = grantedNow
             if (grantedNow && DuoPrefs.hideStockIcons(context)) {
                 StockIconHider.apply(context, true) { ok ->
@@ -334,10 +339,14 @@ internal fun IconHidingSetting(enabled: Boolean) {
                 }
             }
         }
+    }
+
+    DisposableEffect(Unit) {
+        StockIconHider.observePermissionResult(onPermission)
         // Shizuku may have been started after the screen opened, so check once when the row appears.
         running = StockIconHider.isShizukuRunning()
         granted = StockIconHider.isPermissionGranted()
-        onDispose { StockIconHider.stopObservingPermissionResult() }
+        onDispose { StockIconHider.stopObservingPermissionResult(onPermission) }
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -434,3 +443,74 @@ internal fun OptionPicker(
         }
     }
 }
+
+/**
+ * The diagnostics privilege control (root / Shizuku).
+ *
+ * Root is optional and is only used to **read** the system log into a bug report the user explicitly
+ * sends, so it is never requested until the user asks — no root prompt appears uninvited. Shizuku is the
+ * alternative that also works with a non-rooted phone started over adb. Both are best-effort: with
+ * neither, a report still carries the module's own log and the device facts.
+ */
+@Composable
+internal fun RootAccessSetting() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var allowed by remember { mutableStateOf(DuoPrefs.rootAllowed(context)) }
+    var running by remember { mutableStateOf(StockIconHider.isShizukuRunning()) }
+    var granted by remember { mutableStateOf(StockIconHider.isPermissionGranted()) }
+    var busy by remember { mutableStateOf(false) }
+
+    val onPermission: (Boolean) -> Unit = remember {
+        { grantedNow -> granted = grantedNow }
+    }
+
+    DisposableEffect(Unit) {
+        StockIconHider.observePermissionResult(onPermission)
+        // Re-read when the row appears: Shizuku may have been started after the screen opened.
+        running = StockIconHider.isShizukuRunning()
+        granted = StockIconHider.isPermissionGranted()
+        onDispose { StockIconHider.stopObservingPermissionResult(onPermission) }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = stringResource(R.string.settings_root_detail),
+            style = MaterialTheme.typography.bodySmall
+        )
+        val status = when {
+            allowed -> stringResource(R.string.settings_root_granted)
+            running && granted -> stringResource(R.string.settings_root_shizuku)
+            running -> stringResource(R.string.settings_icons_need_permission)
+            else -> stringResource(R.string.settings_root_denied)
+        }
+        Text(status, style = MaterialTheme.typography.bodySmall)
+        if (!allowed) {
+            OutlinedButton(
+                onClick = {
+                    if (!busy) {
+                        busy = true
+                        scope.launch {
+                            val ok = withContext(Dispatchers.IO) { RootLogs.requestRoot(context) }
+                            allowed = ok
+                            busy = false
+                        }
+                    }
+                },
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.settings_root_allow))
+            }
+        }
+        if (running && !granted) {
+            OutlinedButton(
+                onClick = { StockIconHider.requestPermission() },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.settings_icons_grant))
+            }
+        }
+    }
+}
+
