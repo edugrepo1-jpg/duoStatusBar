@@ -1,17 +1,18 @@
 # Duo Status Bar 1.4.2-beta.2 — pre-release
 
-Feedback from testing beta.1.
+Fixes from testing beta.1.
 
-- **"Allow root access" now works and tells you what happened.** It was trying a single `su` path that
-  can exist but not run for the app. It now tries each known root shell that is actually runnable, and the
-  row reports the result — *Root access granted* or *Root not granted, choose Allow in your root manager
-  or use Shizuku* — instead of appearing to do nothing.
-- **The About screen no longer shows developer text.** The internal status line (`stage=… · renderer=… ·
-  attached=…`) and the status history are gone from the UI; they still travel inside the report.
-- **A report needs a description and evidence before it can be sent.** The Send and Export buttons stay
-  off until you type what went wrong, and until there is at least one source of evidence: root, Shizuku,
-  or the module's own log (the case where logs already share fine without root). The screen says which is
-  missing instead of sending an empty report.
+- **"Allow root access" now works and explains itself.** KernelSU, KernelSU Next and SukiSU never show a
+  permission popup — you must enable Duo Status Bar in the root app's Superuser list. The row now shows a
+  short animated guide (root manager → Superuser → enable Duo, with a GIF) and reports the result, instead
+  of appearing to do nothing.
+- **Revoking root is noticed.** If you turn Superuser off later, the app re-checks when you open it and the
+  row returns to "Root not granted" (in red) with the guide again.
+- **A report needs a description and evidence before it can be sent.** Send and Export stay off until you
+  type what went wrong and there is at least one source of evidence: root, Shizuku, or the module's own log
+  (the case where logs already share fine without root).
+- **A cleaner screen.** The internal status line and the long explanatory paragraphs are gone; every row
+  now has a one-line description.
 
 # Duo Status Bar 1.4.2-beta.1 — pre-release
 

@@ -56,8 +56,15 @@ internal object RootLogs {
     /** How long a root capture may take before it is abandoned, so a hung prompt cannot freeze the app. */
     private const val ROOT_TIMEOUT_SECONDS = 25L
 
-    /** A single root-grant check is bounded tighter, so trying several spellings cannot stall the UI. */
-    private const val ROOT_REQUEST_TIMEOUT_SECONDS = 15L
+    /**
+     * A single root-grant check is bounded tighter, so trying several spellings cannot stall the UI.
+     * KernelSU-family managers do not prompt and may leave the `su` call waiting when the app is not
+     * allowlisted, so this must be short.
+     */
+    private const val ROOT_REQUEST_TIMEOUT_SECONDS = 8L
+
+    /** A re-check of an already-granted root is bounded tighter still, so the guide appears quickly. */
+    private const val ROOT_RECHECK_TIMEOUT_SECONDS = 3L
 
     /** A Shizuku binder round-trip is fast; bound it so a stalled service cannot hang the report. */
     private const val SHIZUKU_TIMEOUT_SECONDS = 20L
@@ -96,9 +103,9 @@ internal object RootLogs {
      * denied prompt and a timeout all report `false`, and the report falls back to Shizuku / the module
      * log.
      */
-    fun requestRoot(context: Context): Boolean {
+    fun requestRoot(context: Context, timeoutSeconds: Long = ROOT_REQUEST_TIMEOUT_SECONDS): Boolean {
         for (candidate in suCandidates()) {
-            val output = runRoot(candidate, "id", ROOT_REQUEST_TIMEOUT_SECONDS)
+            val output = runRoot(candidate, "id", timeoutSeconds)
             if (looksRooted(output)) {
                 DuoPrefs.writeRootAllowed(context, true)
                 L.i("root access granted via $candidate")
@@ -110,6 +117,16 @@ internal object RootLogs {
         DuoPrefs.writeRootAllowed(context, false)
         L.w("root access not granted (tried ${suCandidates().joinToString(",")})")
         return false
+    }
+
+    /**
+     * Re-checks a previously granted root, so revoking it in the root manager (KernelSU Next/SukiSU) is
+     * reflected here instead of the stored flag staying `true` forever and the guide never showing. Only
+     * runs when the flag is already set, so it never prompts a user who never asked. Returns the answer.
+     */
+    fun recheckRoot(context: Context): Boolean {
+        if (!DuoPrefs.rootAllowed(context)) return false
+        return requestRoot(context, ROOT_RECHECK_TIMEOUT_SECONDS)
     }
 
     /** Shizuku's uid (0 root, 2000 shell), or -1 when it is not reachable. */

@@ -43,6 +43,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import android.widget.ImageView
 import io.github.kvmy666.duostatusbar.DuoRiveStill
 import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.RootLogs
@@ -474,6 +476,18 @@ internal fun RootAccessSetting() {
         onDispose { StockIconHider.stopObservingPermissionResult(onPermission) }
     }
 
+    // If root was granted before, verify it still is. Revoking it in the root manager (KernelSU Next /
+    // SukiSU) otherwise leaves the stored flag `true` and the guide below never appears.
+    LaunchedEffect(Unit) {
+        if (allowed) {
+            val ok = withContext(Dispatchers.IO) { RootLogs.recheckRoot(context) }
+            if (!ok) {
+                allowed = false
+                result = context.getString(R.string.settings_root_result_failed)
+            }
+        }
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             text = stringResource(R.string.settings_root_detail),
@@ -485,10 +499,69 @@ internal fun RootAccessSetting() {
             running -> stringResource(R.string.settings_icons_need_permission)
             else -> stringResource(R.string.settings_root_denied)
         }
-        Text(status, style = MaterialTheme.typography.bodySmall)
+        val elevated = allowed || (running && granted)
+        Text(
+            text = status,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (elevated) MaterialTheme.colorScheme.onSurfaceVariant
+            else MaterialTheme.colorScheme.error
+        )
         // The outcome of the last attempt, so a tap that fails says why instead of looking dead.
-        result?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        result?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
         if (!allowed) {
+            // A screenshot of the root manager's per-app Superuser screen, with the terse steps below it,
+            // so the one case that needs a manual toggle is shown rather than described.
+            // The animated GIF of the root manager's per-app Superuser toggle. Compose's Image does not
+            // animate a GIF, so it is hosted in an ImageView. ImageDecoder is used explicitly, because
+            // `setImageResource` does not always hand back an animated drawable.
+            AndroidView(
+                factory = { ctx ->
+                    ImageView(ctx).apply {
+                        adjustViewBounds = true
+                        scaleType = ImageView.ScaleType.FIT_CENTER
+                        contentDescription = ctx.getString(R.string.settings_root_guide_image)
+                        runCatching {
+                            val src = android.graphics.ImageDecoder.createSource(
+                                ctx.resources, R.drawable.guide_root_superuser
+                            )
+                            when (val d = android.graphics.ImageDecoder.decodeDrawable(src)) {
+                                is android.graphics.drawable.AnimatedImageDrawable -> {
+                                    d.repeatCount =
+                                        android.graphics.drawable.AnimatedImageDrawable.REPEAT_INFINITE
+                                    setImageDrawable(d)
+                                    d.start()
+                                }
+                                else -> setImageDrawable(d)
+                            }
+                        }.onFailure {
+                            setImageResource(R.drawable.guide_root_superuser)
+                        }
+                        // AnimatedImageDrawable only runs once it is attached and visible; start it again
+                        // after the view is attached so the loop always begins.
+                        post {
+                            (drawable as? android.graphics.drawable.AnimatedImageDrawable)?.start()
+                        }
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+            )
+            Text(
+                text = stringResource(R.string.settings_root_guide_steps),
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                text = stringResource(R.string.settings_root_guide_note),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary
+            )
             OutlinedButton(
                 onClick = {
                     if (!busy) {
