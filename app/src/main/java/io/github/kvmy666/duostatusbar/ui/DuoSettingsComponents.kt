@@ -460,6 +460,7 @@ internal fun RootAccessSetting() {
     var running by remember { mutableStateOf(StockIconHider.isShizukuRunning()) }
     var granted by remember { mutableStateOf(StockIconHider.isPermissionGranted()) }
     var busy by remember { mutableStateOf(false) }
+    var result by remember { mutableStateOf<String?>(null) }
 
     val onPermission: (Boolean) -> Unit = remember {
         { grantedNow -> granted = grantedNow }
@@ -485,22 +486,33 @@ internal fun RootAccessSetting() {
             else -> stringResource(R.string.settings_root_denied)
         }
         Text(status, style = MaterialTheme.typography.bodySmall)
+        // The outcome of the last attempt, so a tap that fails says why instead of looking dead.
+        result?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         if (!allowed) {
             OutlinedButton(
                 onClick = {
                     if (!busy) {
                         busy = true
+                        result = null
                         scope.launch {
                             val ok = withContext(Dispatchers.IO) { RootLogs.requestRoot(context) }
                             allowed = ok
                             busy = false
+                            result = context.getString(
+                                if (ok) R.string.settings_root_result_ok
+                                else R.string.settings_root_result_failed
+                            )
                         }
                     }
                 },
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(stringResource(R.string.settings_root_allow))
+                Text(
+                    stringResource(
+                        if (busy) R.string.settings_root_checking else R.string.settings_root_allow
+                    )
+                )
             }
         }
         if (running && !granted) {

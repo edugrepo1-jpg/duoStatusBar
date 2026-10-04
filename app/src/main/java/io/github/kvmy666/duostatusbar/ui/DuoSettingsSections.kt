@@ -493,6 +493,7 @@ internal fun AboutSection(
     status: String,
     history: List<String>,
     moduleLoadAt: Long,
+    accessGranted: Boolean,
     problem: String,
     onProblemChange: (String) -> Unit,
     collecting: Boolean,
@@ -509,7 +510,12 @@ internal fun AboutSection(
     onDownload: () -> Unit
 ) {
     val context = LocalContext.current
-    val emptyStatus = stringResource(R.string.settings_no_status)
+    // Sending is only allowed when the report will actually be useful: the user described the problem
+    // AND there is at least one source of evidence — root, Shizuku, or the module's own pushed log
+    // (the "my log shares fine" case, which needs no root).
+    val described = problem.trim().isNotEmpty()
+    val hasModuleLog = moduleLoadAt > 0L
+    val canSend = described && (accessGranted || hasModuleLog)
     if (matches(stringResource(R.string.section_about), stringResource(R.string.settings_status),
             stringResource(R.string.settings_collect_log),
             stringResource(R.string.settings_contact_developer),
@@ -523,28 +529,16 @@ internal fun AboutSection(
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SectionTitle(stringResource(R.string.section_about))
-            Text(
-                text = status.ifEmpty { emptyStatus },
-                style = MaterialTheme.typography.bodyMedium
-            )
+            // The raw module status (stage/renderer/attached/…) travels in the report, never on screen —
+            // it is developer jargon, not something a user should have to read.
             Text(
                 text = when {
                     moduleLoadAt > 0L ->
                         stringResource(R.string.settings_module_loaded, formatTimestamp(moduleLoadAt))
-                    status.isNotEmpty() -> stringResource(R.string.settings_module_loaded_recent)
                     else -> stringResource(R.string.settings_module_never)
                 },
                 style = MaterialTheme.typography.bodySmall
             )
-            if (history.isNotEmpty()) {
-                Text(stringResource(R.string.settings_history), style = MaterialTheme.typography.labelLarge)
-                history.takeLast(3).forEach { entry ->
-                    Text(
-                        text = entry.substringAfter(' '),
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
             // Let the user say what went wrong; it travels with the log so a fix can start from the
             // description rather than from a guess. Then one button packs status + logs and sends them.
             OutlinedTextField(
@@ -555,9 +549,19 @@ internal fun AboutSection(
                 minLines = 2,
                 modifier = Modifier.fillMaxWidth()
             )
+            if (!canSend) {
+                Text(
+                    text = stringResource(
+                        if (!described) R.string.settings_send_need_description
+                        else R.string.settings_send_need_access
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
             Button(
                 onClick = onCollect,
-                enabled = !collecting,
+                enabled = !collecting && canSend,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
@@ -596,7 +600,7 @@ internal fun AboutSection(
             // Telegram or a network. The escape hatch when the upload path is not available.
             OutlinedButton(
                 onClick = onExport,
-                enabled = !exporting && !collecting,
+                enabled = !exporting && !collecting && canSend,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(

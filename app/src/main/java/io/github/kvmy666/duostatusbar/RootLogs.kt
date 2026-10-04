@@ -56,6 +56,9 @@ internal object RootLogs {
     /** How long a root capture may take before it is abandoned, so a hung prompt cannot freeze the app. */
     private const val ROOT_TIMEOUT_SECONDS = 25L
 
+    /** A single root-grant check is bounded tighter, so trying several spellings cannot stall the UI. */
+    private const val ROOT_REQUEST_TIMEOUT_SECONDS = 15L
+
     /** A Shizuku binder round-trip is fast; bound it so a stalled service cannot hang the report. */
     private const val SHIZUKU_TIMEOUT_SECONDS = 20L
 
@@ -69,6 +72,17 @@ internal object RootLogs {
     /** The first root shell on this device, or `"su"` when none of the known paths exists. */
     internal fun findSuBinary(): String = firstExisting(SU_CANDIDATES) { File(it).exists() }
 
+    /**
+     * The `su` spellings to actually try, in order: every known absolute path that exists **and is
+     * executable by this app**, then the plain `su` PATH lookup last. A path can exist yet refuse to run
+     * for the app (e.g. `/data/adb/ksu/bin/su` is root-only); skipping it avoids reporting "denied" when
+     * a different spelling would have worked.
+     */
+    internal fun suCandidates(): List<String> {
+        val runnable = SU_CANDIDATES.filter { it != "su" && File(it).exists() && File(it).canExecute() }
+        return runnable + "su"
+    }
+
     /** Whether `id` printed uid 0 — the proof that a granted root shell really ran. */
     internal fun looksRooted(idOutput: String): Boolean {
         val text = idOutput.trim()
@@ -76,16 +90,26 @@ internal object RootLogs {
     }
 
     /**
-     * Asks for root once, on the user's explicit action, and remembers the outcome. Returns whether a
-     * root shell ran as uid 0. Never throws: a missing shell, a denied prompt and a timeout all report
-     * `false`, and the report falls back to Shizuku / the module log.
+     * Asks for root once, on the user's explicit action, and remembers the outcome. Tries each runnable
+     * `su` spelling in turn, stopping at the first that prints uid 0 — a spelling that cannot run is not
+     * the user's answer. Returns whether a root shell ran as uid 0. Never throws: a missing shell, a
+     * denied prompt and a timeout all report `false`, and the report falls back to Shizuku / the module
+     * log.
      */
     fun requestRoot(context: Context): Boolean {
-        val output = runRoot("id")
-        val granted = looksRooted(output)
-        DuoPrefs.writeRootAllowed(context, granted)
-        L.i("root access request: ${if (granted) "granted" else "denied or unavailable"}")
-        return granted
+        for (candidate in suCandidates()) {
+            val output = runRoot(candidate, "id", ROOT_REQUEST_TIMEOUT_SECONDS)
+            if (looksRooted(output)) {
+                DuoPrefs.writeRootAllowed(context, true)
+                L.i("root access granted via $candidate")
+                return true
+            }
+            // A timeout means the root manager is prompting; do not fire a second prompt behind it.
+            if (output.contains("timed out")) break
+        }
+        DuoPrefs.writeRootAllowed(context, false)
+        L.w("root access not granted (tried ${suCandidates().joinToString(",")})")
+        return false
     }
 
     /** Shizuku's uid (0 root, 2000 shell), or -1 when it is not reachable. */
@@ -95,11 +119,8 @@ internal object RootLogs {
         -1
     }
 
-    /** Whether the module should attempt a root capture: the user granted it and an absolute `su` exists. */
-    private fun rootUsable(context: Context): Boolean {
-        val su = findSuBinary()
-        return DuoPrefs.rootAllowed(context) && su != "su" && File(su).exists()
-    }
+    /** Whether the module should attempt a root capture: only after the user granted it once. */
+    private fun rootUsable(context: Context): Boolean = DuoPrefs.rootAllowed(context)
 
     /**
      * Collects the whole capture as one text block. Every section is self-describing; a missing route
@@ -246,13 +267,19 @@ internal object RootLogs {
 
     private const val FAILURE_PREFIX = "root log collection failed"
 
+    private fun runRoot(script: String): String =
+        runRoot(findSuBinary(), script, ROOT_TIMEOUT_SECONDS)
+
     /**
-     * Runs [script] through the discovered root shell. stderr is merged into stdout and read in one pass
-     * (the old two-stream read could deadlock on a large log), and the process is bounded by a timeout so
-     * a stalled root prompt cannot hang the app. Never throws.
+     * Runs [script] through [su]. stderr is merged into stdout and read in one pass (the old two-stream
+     * read could deadlock on a large log), and the process is bounded by [timeoutSeconds] so a stalled
+     * root prompt cannot hang the app. Never throws.
      */
-    private fun runRoot(script: String): String {
-        val su = findSuBinary()
+    private fun runRoot(
+        su: String,
+        script: String,
+        timeoutSeconds: Long = ROOT_TIMEOUT_SECONDS
+    ): String {
         // The read itself can block forever if the root prompt never answers, so the whole
         // start-and-read runs on a worker that the caller abandons after the timeout.
         val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
@@ -265,9 +292,9 @@ internal object RootLogs {
                 process.waitFor()
                 out.ifBlank { "$FAILURE_PREFIX: root shell ($su) returned no output - root denied?" }
             }
-            future.get(ROOT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            future.get(timeoutSeconds, TimeUnit.SECONDS)
         } catch (_: java.util.concurrent.TimeoutException) {
-            "$FAILURE_PREFIX: root shell ($su) timed out after ${ROOT_TIMEOUT_SECONDS}s"
+            "$FAILURE_PREFIX: root shell ($su) timed out after ${timeoutSeconds}s"
         } catch (t: Throwable) {
             "$FAILURE_PREFIX: ${t.javaClass.simpleName}: ${t.message} (tried $su)"
         } finally {

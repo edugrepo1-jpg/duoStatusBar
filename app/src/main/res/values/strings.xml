@@ -102,6 +102,11 @@
     <string name="settings_root_granted">Root access granted. Reports include the full system log.</string>
     <string name="settings_root_shizuku">Root not granted. Shizuku is ready and will be used for the log instead.</string>
     <string name="settings_root_denied">Root not granted. Reports still include the module log and the device details.</string>
+    <string name="settings_root_checking">Checking root…</string>
+    <string name="settings_root_result_ok">Root access granted.</string>
+    <string name="settings_root_result_failed">Root not granted. If your root manager asked, choose Allow; otherwise use Shizuku below.</string>
+    <string name="settings_send_need_description">Please describe what went wrong first.</string>
+    <string name="settings_send_need_access">To send a report, allow root access or Shizuku first — or wait until the module has loaded.</string>
 
     <!-- Fallback alert -->
     <string name="fallback_title">Duo fell back to a simple drawing</string>

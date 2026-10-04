@@ -104,6 +104,12 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
     var overrideFailed by remember { mutableStateOf(false) }
     // Whether the module is working, running old code, or unable to report (see ModuleHealthCheck).
     var moduleHealth by remember { mutableStateOf(ModuleHealthCheck.of(context)) }
+    // Whether a report has an evidence source: root granted, or Shizuku granted. The module's own log
+    // (moduleLoadAt > 0) is the third source and needs no privilege. Re-read on the poll below so the
+    // Send button enables right after the user grants access.
+    var accessGranted by remember {
+        mutableStateOf(DuoPrefs.rootAllowed(context) || StockIconHider.isPermissionGranted())
+    }
     var checkUpdates by remember { mutableStateOf(DuoPrefs.checkUpdates(context)) }
     var checkingUpdate by remember { mutableStateOf(false) }
     var updateMessage by remember { mutableStateOf("") }
@@ -147,6 +153,7 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             fallback = DuoPrefs.fallback(context)
             stageOverride = StageOverride.read(context)
             moduleHealth = ModuleHealthCheck.of(context)
+            accessGranted = DuoPrefs.rootAllowed(context) || StockIconHider.isPermissionGranted()
         }
     }
 
@@ -394,6 +401,7 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             status = status,
             history = history,
             moduleLoadAt = moduleLoadAt,
+            accessGranted = accessGranted,
             problem = problem,
             onProblemChange = { problem = it; logSent = false },
             collecting = collecting,

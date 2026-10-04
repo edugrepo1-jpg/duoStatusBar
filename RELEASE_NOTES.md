@@ -1,3 +1,18 @@
+# Duo Status Bar 1.4.2-beta.2 — pre-release
+
+Feedback from testing beta.1.
+
+- **"Allow root access" now works and tells you what happened.** It was trying a single `su` path that
+  can exist but not run for the app. It now tries each known root shell that is actually runnable, and the
+  row reports the result — *Root access granted* or *Root not granted, choose Allow in your root manager
+  or use Shizuku* — instead of appearing to do nothing.
+- **The About screen no longer shows developer text.** The internal status line (`stage=… · renderer=… ·
+  attached=…`) and the status history are gone from the UI; they still travel inside the report.
+- **A report needs a description and evidence before it can be sent.** The Send and Export buttons stay
+  off until you type what went wrong, and until there is at least one source of evidence: root, Shizuku,
+  or the module's own log (the case where logs already share fine without root). The screen says which is
+  missing instead of sending an empty report.
+
 # Duo Status Bar 1.4.2-beta.1 — pre-release
 
 Fixes the "most reports arrive empty" problem and finishes the tap actions.
