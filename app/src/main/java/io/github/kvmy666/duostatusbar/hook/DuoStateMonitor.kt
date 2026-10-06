@@ -46,6 +46,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     /** The cellular generation shown when Wi-Fi is off: "5G"/"4G"/"3G"/"2G", or empty. */
     private var networkText = ""
     private var registered = false
+    private var bluetoothRegistered = false
     /** When the last arrival fired, for the AOD burst guard. */
     private var lastRevealAt = 0L
 
@@ -63,6 +64,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context?, intent: Intent?) {
+            if (!registered) return
             try {
                 if (intent != null) effects.broadcast(intent)
                 when (intent?.action) {
@@ -86,6 +88,12 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                 L.e("receiver ${intent?.action}: ${t.javaClass.simpleName}: ${t.message}")
             }
         }
+    }
+
+    // ReceiverDispatcher binds a receiver instance to one scheduler. Bluetooth uses an explicit
+    // scheduler/permission, so it must not reuse the core receiver registered with Android's default.
+    private val bluetoothReceiver = object : BroadcastReceiver() {
+        override fun onReceive(c: Context?, intent: Intent?) = receiver.onReceive(c, intent)
     }
 
     private fun onBatteryChanged(intent: Intent) {
@@ -175,7 +183,6 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
 
     fun start() {
         if (registered) return
-        registered = true
         try {
             val filter = IntentFilter().apply {
                 addAction(Intent.ACTION_BATTERY_CHANGED)
@@ -198,10 +205,17 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                 addAction("android.net.wifi.WIFI_AP_STATE_CHANGED")
             }
             context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            context.registerReceiver(receiver, IntentFilter().apply {
-                addAction(android.bluetooth.BluetoothAdapter.ACTION_STATE_CHANGED)
-                addAction("android.bluetooth.device.action.BATTERY_LEVEL_CHANGED")
-            }, android.Manifest.permission.BLUETOOTH_CONNECT, handler, Context.RECEIVER_EXPORTED)
+            registered = true
+            try {
+                context.registerReceiver(bluetoothReceiver, IntentFilter().apply {
+                    addAction(android.bluetooth.BluetoothAdapter.ACTION_STATE_CHANGED)
+                    addAction("android.bluetooth.device.action.BATTERY_LEVEL_CHANGED")
+                }, android.Manifest.permission.BLUETOOTH_CONNECT, handler, Context.RECEIVER_EXPORTED)
+                bluetoothRegistered = true
+            } catch (t: Throwable) {
+                // Optional radio events cannot prevent battery/unlock effects from starting.
+                L.w("Bluetooth receiver unavailable: ${t.javaClass.simpleName}: ${t.message}")
+            }
             effects.start()
             // The sticky battery broadcast is not guaranteed to be delivered to the receiver at
             // registration, so read it directly: without this the element shows its default 100 % (and
@@ -214,6 +228,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
             L.i("state monitor up: level=$level charging=$charging saver=$saver airplane=$airplane dnd=$dnd")
         } catch (t: Throwable) {
             L.e("monitor start failed: ${t.javaClass.simpleName}: ${t.message}")
+            stop()
         }
     }
 
@@ -228,13 +243,15 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     }
 
     fun stop() {
-        if (!registered) return
+        val hadCoreReceiver = registered
         registered = false
         effects.stop()
         runCatching { fill?.cancel() }
         runCatching { handler.removeCallbacks(hideRunnable) }
         runCatching { handler.removeCallbacks(refreshRunnable); refreshPending = false }
-        runCatching { context.unregisterReceiver(receiver) }
+        if (hadCoreReceiver) runCatching { context.unregisterReceiver(receiver) }
+        if (bluetoothRegistered) runCatching { context.unregisterReceiver(bluetoothReceiver) }
+        bluetoothRegistered = false
     }
 
     /**
