@@ -17,6 +17,31 @@ import java.util.concurrent.TimeUnit
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk=[35],manifest=Config.NONE)
 class EffectsControllerTest {
+    @Test fun `keyguard dismissal without user present still shows the full unlock check`() {
+        val (controller,view)=fixture()
+        val context=ApplicationProvider.getApplicationContext<Context>()
+        val keyguard=Shadows.shadowOf(context.getSystemService(android.app.KeyguardManager::class.java))
+        keyguard.setKeyguardLocked(true)
+        set(controller,"running",false)
+        controller.start()
+        try {
+            controller.broadcast(Intent(Intent.ACTION_SCREEN_OFF))
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(9000,TimeUnit.MILLISECONDS)
+            controller.broadcast(Intent(Intent.ACTION_SCREEN_ON))
+            assertEquals(-1L,view.effects.checkMs)
+            keyguard.setKeyguardLocked(false)
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(250,TimeUnit.MILLISECONDS)
+            assertTrue("actual dismissal must trigger without USER_PRESENT",view.effects.checkMs>=0)
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(1500,TimeUnit.MILLISECONDS)
+            assertEquals(1f,EffectTimeline.check(view.effects.checkMs),0f)
+            assertEquals(0f,EffectTimeline.checkNormal(view.effects.checkMs),0f)
+            controller.broadcast(Intent(Intent.ACTION_USER_PRESENT))
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(1350,TimeUnit.MILLISECONDS)
+            assertTrue("late broadcast must not restart the check",EffectTimeline.check(view.effects.checkMs)<1f)
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(500,TimeUnit.MILLISECONDS)
+            assertEquals(-1L,view.effects.checkMs)
+        } finally { controller.stop();view.teardown() }
+    }
     private fun set(owner:Any,name:String,value:Any) {
         owner.javaClass.getDeclaredField(name).apply { isAccessible=true }.set(owner,value)
     }

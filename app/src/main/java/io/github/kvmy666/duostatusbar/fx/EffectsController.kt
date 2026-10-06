@@ -1,6 +1,7 @@
 package io.github.kvmy666.duostatusbar.fx
 
 import android.app.ActivityManager
+import android.app.KeyguardManager
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.content.Context
@@ -30,6 +31,20 @@ import io.github.kvmy666.duostatusbar.hook.DuoIconHost
 /** All registrations and callbacks belong to the monitor lifecycle. OEM reads fail closed and log. */
 internal class EffectsController(private val context: Context, private val host: DuoIconHost, private val onPause: (Boolean) -> Unit) {
     private val handler = Handler(Looper.getMainLooper())
+    private var keyguardReadFailed = false
+    private val unlockObserver = UnlockObserver(handler, {
+        try {
+            context.getSystemService(KeyguardManager::class.java)?.isKeyguardLocked
+        } catch (t: Throwable) {
+            if (!keyguardReadFailed) {
+                keyguardReadFailed = true
+                L.w("Desbloqueio: estado indisponível: ${t.javaClass.simpleName}: ${t.message}")
+            }
+            null
+        }
+    }, { L.i(it) }) { source ->
+        guarded("confirmar desbloqueio") { unlock(source); draw() }
+    }
     private val cycle = SlotCycle()
     private val indicators = RuntimeIndicators(context, handler) { if(running) { updateCycle();draw() } }
     private var networkText=""
@@ -72,7 +87,6 @@ internal class EffectsController(private val context: Context, private val host:
     private var fastSeen = false
     private var screenOnAt = -100000L
     private var lastUnlock = -100000L
-    private var biometricAt = -100000L
     private var biometricHooks = 0
     private var wifi = false
     private var airplane = false
@@ -134,6 +148,7 @@ internal class EffectsController(private val context: Context, private val host:
     fun start() = guarded("iniciar efeitos") {
         if (running) return@guarded
         running = true
+        unlockObserver.start(screen)
         indicators.start()
         guarded("biometria") { installBiometrics() }
         guarded("monitor de áudio") {
@@ -150,6 +165,7 @@ internal class EffectsController(private val context: Context, private val host:
     }
     fun stop() = guarded("encerrar efeitos") {
         running = false
+        unlockObserver.stop()
         indicators.stop()
         handler.removeCallbacksAndMessages(null)
         guarded("encerrar sensores") { sensors?.unregisterListener(sensorListener) }
@@ -193,6 +209,7 @@ internal class EffectsController(private val context: Context, private val host:
             }
             Intent.ACTION_SCREEN_ON -> {
                 screen = true; screenOnAt = SystemClock.uptimeMillis()
+                unlockObserver.screenChanged(true)
                 val type = EffectTimeline.criticalWake(level, charging, enabled(512), now() - lastPulse)
                 if (type != 0) beginPulse(type)
                 settingsChanged(); host.continuum(true, enabled(128))
@@ -200,11 +217,15 @@ internal class EffectsController(private val context: Context, private val host:
             Intent.ACTION_SCREEN_OFF -> {
                 host.continuum(false, enabled(128))
                 screen = false; pulseAt = -100000L; checkAt = -100000L; chargeAt = -100000L
+                unlockObserver.screenChanged(false)
                 restoreClock(); camera = false; host.effectsHidden(false)
                 handler.removeCallbacks(tick); handler.removeCallbacks(cameraTick);handler.removeCallbacks(indicatorsTick)
                 updateSensors()
             }
-            Intent.ACTION_USER_PRESENT -> unlock()
+            Intent.ACTION_USER_PRESENT -> {
+                L.i("Desbloqueio: USER_PRESENT recebido")
+                unlockObserver.userPresent()
+            }
         }
         draw()
     }
@@ -322,27 +343,29 @@ internal class EffectsController(private val context: Context, private val host:
                 if (method.name.matches(Regex("^(handle|on)(Fingerprint|Face|Biometric)Authenticated$")) || method.name == "onAuthenticationSucceeded") {
                     guarded("gancho biométrico") {
                         hooks += XposedBridge.hookMethod(method, object : XC_MethodHook() {
-                            override fun afterHookedMethod(param: MethodHookParam) { handler.post { biometricAt = SystemClock.uptimeMillis() } }
+                            override fun afterHookedMethod(param: MethodHookParam) {
+                                handler.post { guarded("confirmação biométrica") { unlockObserver.authenticated() } }
+                            }
                         })
                         biometricHooks++
                     }
                 }
             }
         }
-        L.i("Check pronto: ganchos biométricos=$biometricHooks; Samsung não verificado em aparelho")
-        if (biometricHooks == 0) L.i("DECISÃO: sem gancho biométrico, check também pode aparecer após PIN (fallback solicitado)")
+        L.i("Check pronto: observador Keyguard + USER_PRESENT; ganchos biométricos=$biometricHooks")
     }
-    private fun unlock() {
+    private fun unlock(source: String) {
         val realNow = SystemClock.uptimeMillis()
-        // USER_PRESENT confirms unlocking by biometric OR PIN; Samsung need not call the probed hook.
-        if (!enabled(1) || realNow-lastUnlock < EffectTimeline.UNLOCK_MS) return
+        if (!running) return
+        if (!enabled(1)) { L.i("Check ignorado: efeito ou animações desativados; origem=$source"); return }
+        if (realNow-lastUnlock < EffectTimeline.UNLOCK_MS) return
         screen=true;lastUnlock=realNow
         if(pocket)setPocket(false)
         checkAt=now();audioAt=-100000L;checkWifiRestored=false
         cycle.pause(now());checkCyclePaused=true
         host.setElementsVisible(true);host.effectsHidden(false)
         restoreClock();clockView=host.effectClock();clockColors=clockView?.textColors
-        L.i("Check de desbloqueio: 3000 ms, prioridade exclusiva e saída com fade out")
+        L.i("Check de desbloqueio: 3000 ms, prioridade exclusiva e saída com fade out; origem=$source")
     }
     private fun restoreClock() { clockColors?.let { clockView?.setTextColor(it) }; clockColors = null; clockView = null }
     private fun draw() {
