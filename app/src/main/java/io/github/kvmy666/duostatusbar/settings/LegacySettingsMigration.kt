@@ -11,7 +11,7 @@ import io.github.kvmy666.duostatusbar.BuildConfig
 internal object LegacySettingsMigration {
     private const val LEGACY="io.github.kvmy666.duostatusbar"
     private const val CANVAS_SIGNER="e6aaa9c405ab2114e6aa59b1c6aec5e94bf942f98d09788180803d7e5acf2be8"
-    private val booleans=setOf("enabled","use_rive","show_percent","live_apply","clock_font","animations_enabled","arrival_enabled","departure_enabled","charging_enabled","hide_other_icons","network_only","split_indicators","wifi_dots","show_airplane","show_dnd")
+    private val booleans=setOf("enabled","use_rive","show_percent","live_apply","clock_font","animations_enabled","arrival_enabled","departure_enabled","charging_enabled","hide_other_icons","network_only","split_indicators","wifi_dots","show_airplane","show_dnd","show_notifications","show_quick_settings")
     private val strings=setOf("tap_action","double_tap_action","long_press_action","icon_color","sim_choice","dnd_mode","experience_v1")
     fun import(context:Context):Boolean {
         val p=context.getSharedPreferences("duo_settings",Context.MODE_PRIVATE)

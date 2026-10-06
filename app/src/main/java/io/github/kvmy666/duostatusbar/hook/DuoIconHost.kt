@@ -102,6 +102,8 @@ internal class DuoIconHost(private val context: Context) {
          * size mid-session and forces a live relayout (see [SlotGeometry]).
          */
         var basePx = 0
+        var panel: ShadePanels.Kind? = null
+        val stock = StockIconHider()
     }
 
     /**
@@ -119,7 +121,9 @@ internal class DuoIconHost(private val context: Context) {
             ) return
             var parent: View? = view.parent as? View
             while (parent != null) {
-                if (parent === host || extras.any { it.container === parent }) {
+                val extra=extras.firstOrNull {it.container===parent}
+                if(extra!=null&&!panelEnabled(extra))return
+                if (parent === host || extra!=null) {
                     val container = parent
                     logOnce.once("added:${view.javaClass.simpleName}") {
                         L.i("hiding a status icon as it arrives: ${view.javaClass.simpleName} in " +
@@ -128,7 +132,7 @@ internal class DuoIconHost(private val context: Context) {
                     // FR-08b: with "hide other icons" off, only the icons Duo replaces are hidden; the
                     // silent/vibrate/alarm ones are left for the user.
                     if (settings.hideOtherIcons || hider.isReplaced(view)) {
-                        hider.hide(view)
+                        (extra?.stock ?: hider).hide(view)
                     } else {
                         logOnce.once("kept:${view.javaClass.simpleName}") {
                             L.i("keeping a status icon: ${view.javaClass.simpleName} - FR-08b")
@@ -148,6 +152,38 @@ internal class DuoIconHost(private val context: Context) {
     }
 
     private val extras = ArrayList<ExtraBar>()
+    private var shadeExpanded = false
+    private var lastPanelScan = -1L
+    fun setShadeExpanded(expanded:Boolean) {
+        if(shadeExpanded==expanded)return
+        shadeExpanded=expanded
+        L.i("panel expansion: quickSettings=$expanded, notificationSize=${settings.notificationSize}%, qsSize=${settings.quickSettingsSize}%")
+        extras.filter {it.panel!=null}.forEach {applyExtraLayout(it);syncExtraIndicators(it)}
+        reapplyExtraHiding()
+    }
+    fun attachShadePanels(root:View,force:Boolean=false) {
+        if(element==null)return
+        val now=android.os.SystemClock.uptimeMillis()
+        if(!force&&lastPanelScan>=0&&now-lastPanelScan<750)return
+        lastPanelScan=now
+        // Reinflated headers must release their old stock-state records and Canvas instances.
+        extras.filter {it.panel!=null&&it.element?.ui?.parent!==it.container}.toList().forEach {slot ->
+            slot.stock.restore();drop(slot.indicators,slot.container);drop(slot.element,slot.container);extras.remove(slot)
+        }
+        ShadePanels.find(root).forEach {anchor ->
+            if(anchor.strip===host||extras.any {it.container===anchor.strip})return@forEach
+            attachExtraView("panel ${anchor.kind.name} ${System.identityHashCode(anchor.strip)}",anchor.strip,anchor.header,false,anchor.kind)
+        }
+    }
+    private fun panelEnabled(slot:ExtraBar)=slot.panel?.let {ShadePanels.enabled(settings,it,shadeExpanded)}?:settings.enabled
+    private fun panelSize(slot:ExtraBar)=slot.panel?.let {ShadePanels.size(settings,it,shadeExpanded)}?:geometry.appliedSize
+    private fun hideExtra(slot:ExtraBar) {
+        val container=slot.container?:return
+        if(!panelEnabled(slot)) {slot.stock.restore();return}
+        if(slot.element?.isReady!=true)return
+        if(settings.hideOtherIcons)slot.stock.hideAllExcept(container,slot.element?.ui,null,ourViews())
+        else slot.stock.hideReplaced(container,slot.element?.ui,null,ourViews())
+    }
     private val guard = DuoGuard(context)
     private val rom = RomDetection.forThisRom(
         Build.MANUFACTURER.orEmpty(),
@@ -241,7 +277,7 @@ internal class DuoIconHost(private val context: Context) {
 
     /** The ring and, when split, the icon cluster, on every bar. */
     private fun allElements(): List<DuoElement> =
-        listOfNotNull(element, indicators) + extras.flatMap { listOfNotNull(it.element, it.indicators) }
+        listOfNotNull(element, indicators) + extras.filter {panelEnabled(it)}.flatMap { listOfNotNull(it.element, it.indicators) }
 
     /** Views this module added, so a hiding pass never treats them as stock icons. */
     private fun ourViews(): List<View> = allElements().map { it.ui }
@@ -290,6 +326,7 @@ internal class DuoIconHost(private val context: Context) {
                 return false
             }
             val target = found as? ViewGroup ?: return false
+            if(name=="keyguard bar"&&ShadePanels.kind(target)!=null)return false
             if (target === host) return true // same strip as the main bar: nothing extra to do
             // Centre on the *bar*, not the window it lives in: the shade window is the whole screen, so
             // centring on it put the element 1300 px down the lock screen (measured).
@@ -309,7 +346,6 @@ internal class DuoIconHost(private val context: Context) {
      * found by walking up from the `statusIcons` container the controller itself binds to.
      */
     fun attachShadeHeader(header: View): Boolean {
-        if (extras.any { it.name == "shade header" }) return true
         val area = finder.findShadeIconsArea(header)
         if (area == null) {
             logOnce.once("missing:shade header") {
@@ -317,9 +353,13 @@ internal class DuoIconHost(private val context: Context) {
             }
             return false
         }
+        extras.firstOrNull {it.name=="shade header"}?.let {old ->
+            if(old.container===area)return true
+            old.stock.restore();drop(old.indicators,old.container);drop(old.element,old.container);extras.remove(old)
+        }
         // Centred on the header, not the icon area: the area is a 0x0 strip at the header's end
         // (measured - it is laid out later), and the header is what has a real height to cap against.
-        return attachExtraView("shade header", area, header, center = false)
+        return attachExtraView("shade header", area, area, center = false, panel=ShadePanels.Kind.SHARED)
     }
 
     /** Attaches into an already-known container (the shade header's icon area). */
@@ -327,7 +367,8 @@ internal class DuoIconHost(private val context: Context) {
         name: String,
         target: ViewGroup,
         cap: View? = null,
-        center: Boolean = true
+        center: Boolean = true,
+        panel: ShadePanels.Kind? = null
     ): Boolean {
         if (extras.any { it.name == name }) return true
         if (element == null) return false
@@ -335,7 +376,7 @@ internal class DuoIconHost(private val context: Context) {
             val stage = guard.stage()
             if (stage == DuoGuard.OFF) return false
             if (target === host) return true
-            attachInto(name, target, cap, center, elementRoot = target, stage = stage, logClass = target.javaClass.simpleName)
+            attachInto(name, target, cap, center, elementRoot = target, stage = stage, logClass = target.javaClass.simpleName, panel=panel)
         } catch (t: Throwable) {
             L.e("$name attach: ${t.javaClass.simpleName}: ${t.message}")
             false
@@ -357,13 +398,18 @@ internal class DuoIconHost(private val context: Context) {
         center: Boolean,
         elementRoot: View,
         stage: Int,
-        logClass: String
+        logClass: String,
+        panel: ShadePanels.Kind? = null
     ): Boolean {
-        val slot = ExtraBar(name, center)
+        extras.firstOrNull {it.container===target}?.let {existing ->
+            if(panel!=null) {existing.panel=panel;applyExtraLayout(existing);syncExtraIndicators(existing);hideExtra(existing)}
+            return true
+        }
+        val slot = ExtraBar(name, center).apply {this.panel=panel}
         val candidate = createElement(elementRoot, stage, ringPart())
         slot.container = target
         slot.bar = cap ?: target
-        slot.basePx = geometry.slotBasePx.takeIf { it>0 } ?: geometry.measuredWidth(target)
+        slot.basePx = if(panel!=null)geometry.measuredWidth(target) else geometry.slotBasePx.takeIf { it>0 } ?: geometry.measuredWidth(target)
         slot.element = candidate
         extras.add(slot)
         allowOverflow(target)
@@ -372,12 +418,20 @@ internal class DuoIconHost(private val context: Context) {
         candidate.ui.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
             if (slot.element === candidate) { applyExtraLayout(slot); syncExtraIndicators(slot) }
         }
+        candidate.ui.addOnAttachStateChangeListener(object:View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v:View)=Unit
+            override fun onViewDetachedFromWindow(v:View) {
+                // A rebuilt header owns a new slot; detached Canvas and stock records must not survive.
+                if(!extras.remove(slot))return
+                slot.stock.restore();drop(slot.indicators,slot.container);candidate.teardown()
+            }
+        })
         target.addView(candidate.ui)
         applyExtraLayout(slot)
         syncExtraIndicators(slot)
         candidate.onReady {
             if (slot.element !== candidate) return@onReady
-            hideStock(target, candidate.ui)
+            hideExtra(slot)
             candidate.reveal(settings.revealMs)
             L.i("Duo injected into $name ($logClass, ${side}px) - FR-03b")
         }
@@ -386,6 +440,7 @@ internal class DuoIconHost(private val context: Context) {
             L.w("$name element did not bind - leaving its stock icons")
             runCatching { target.removeView(candidate.ui) }
             runCatching { candidate.teardown() }
+            slot.stock.restore()
             extras.remove(slot)
         }
         return true
@@ -457,7 +512,11 @@ internal class DuoIconHost(private val context: Context) {
         val target = slot.container ?: return
         val view = slot.element?.ui ?: return
         try {
-            val side = geometry.sidePx(target, slot.bar, slot.basePx)
+            val active=panelEnabled(slot)
+            view.visibility=if(active)View.VISIBLE else View.GONE
+            slot.element?.setRenderActive(active&&!ghost&&!summaryOpen)
+            if(!active) {slot.stock.restore();slot.indicators?.ui?.visibility=View.GONE;return}
+            val side = geometry.sidePx(target, slot.bar, slot.basePx, panelSize(slot))
             assignBox(view, target, side, edgeInsetPx(side, settings.edgePadding))
             place(view, target, slot.bar, side, settings.offsetX, slot.center)
         } catch (t: Throwable) {
@@ -564,7 +623,7 @@ internal class DuoIconHost(private val context: Context) {
                     "percent=${fresh.showPercent}, percentHeight=${fresh.percentHeight}%, " +
                     "split=${fresh.splitIndicators}, icons=${fresh.indicatorsOffsetX}dp, " +
                     "edge=${fresh.edgePadding}%, " +
-                    "rive=${fresh.useRive}, live=${fresh.liveApply}"
+                    "rive=${fresh.useRive}, live=${fresh.liveApply}, notifications=${fresh.showNotifications}/${fresh.notificationSize}%, quickSettings=${fresh.showQuickSettings}/${fresh.quickSettingsSize}%"
             )
             // A drag must not resize the Rive view (that restart loop is why size is restart-only).
             // Rotation is one saved size for the orientation now on screen, so it is applied here.
@@ -584,6 +643,8 @@ internal class DuoIconHost(private val context: Context) {
             }
             clock.apply(root, settings.systemClockFont)
             if (hideModeChanged) applyHidingMode()
+            extras.forEach {applyExtraLayout(it);syncExtraIndicators(it)}
+            reapplyExtraHiding()
         }
         return fresh
     }
@@ -597,6 +658,7 @@ internal class DuoIconHost(private val context: Context) {
         if (!(element?.isReady ?: false)) return
         L.i("hiding mode changed (hideOtherIcons=${settings.hideOtherIcons}) - re-applying")
         hider.restore()
+        extras.forEach {it.stock.restore()}
         reapplyHiding()
     }
 
@@ -693,7 +755,7 @@ internal class DuoIconHost(private val context: Context) {
         val ring = slot.element ?: return
         val container = slot.container ?: return
         ring.part = ringPart()
-        if (!settings.splitIndicators) {
+        if (!settings.splitIndicators || !panelEnabled(slot)) {
             drop(slot.indicators, container)
             slot.indicators = null
             return
@@ -706,7 +768,8 @@ internal class DuoIconHost(private val context: Context) {
             slot.bar,
             stageRoot,
             slot.basePx,
-            slot.center
+            slot.center,
+            panelSize(slot)
         ) { slot.indicators = it }
     }
 
@@ -722,9 +785,10 @@ internal class DuoIconHost(private val context: Context) {
         stageRoot: View,
         basePx: Int,
         center: Boolean,
+        sizePercent: Int = geometry.appliedSize,
         assign: (DuoElement?) -> Unit
     ): DuoElement? {
-        val side = geometry.sidePx(container, windowRoot, basePx)
+        val side = geometry.sidePx(container, windowRoot, basePx,sizePercent)
         existing?.let { cluster ->
             assignBox(cluster.ui, container, side, edgeInsetPx(side, 0))
             place(cluster.ui, container, windowRoot, side, settings.indicatorsOffsetX, center)
@@ -1084,12 +1148,13 @@ internal class DuoIconHost(private val context: Context) {
             element?.teardown()
         } catch (_: Throwable) {
         }
-        for (slot in extras) {
+        for (slot in extras.toList()) {
             try {
                 drop(slot.indicators, slot.container)
                 slot.indicators = null
                 slot.element?.let { slot.container?.removeView(it.ui) }
                 slot.element?.teardown()
+                slot.stock.restore()
             } catch (_: Throwable) {
             }
         }
@@ -1115,12 +1180,12 @@ internal class DuoIconHost(private val context: Context) {
 
     /** FR-03b: the same hide pass for every extra bar, once its own element is drawing. */
     private fun reapplyExtraHiding() {
-        for (slot in extras) {
+        for (slot in extras.toList()) {
             val target = slot.container ?: continue
             val keep = slot.element?.ui ?: continue
             if (!(slot.element?.isReady ?: false)) continue
             try {
-                hideStock(target, keep)
+                hideExtra(slot)
             } catch (t: Throwable) {
                 L.w("${slot.name} hiding: ${t.javaClass.simpleName}: ${t.message}")
             }

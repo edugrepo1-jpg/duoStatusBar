@@ -74,6 +74,10 @@ internal data class ModuleSettings(
     val thickPercent: Int = 100,
     val featFlags: Int = 0x3FDF,
     val globalPercent: Int = 100,
+    val showNotifications: Boolean = true,
+    val notificationSize: Int = 100,
+    val showQuickSettings: Boolean = true,
+    val quickSettingsSize: Int = 100,
     val experienceJson: String = ""
 ) {
     /** Whether Do Not Disturb may take the middle of the ring. */
@@ -434,6 +438,10 @@ internal object DuoSettingsClient {
         featFlags = cursor.optionalInt(DuoPrefs.COL_FEAT_FLAGS, 0x3FDF),
         globalPercent = cursor.optionalInt(DuoPrefs.COL_GLOBAL_PERCENT, 100).coerceIn(0, 100)
             .coerceIn(DuoPrefs.MIN_EDGE_PADDING, DuoPrefs.MAX_EDGE_PADDING),
+        showNotifications = cursor.optionalBool(DuoPrefs.COL_SHOW_NOTIFICATIONS, true),
+        notificationSize = cursor.optionalInt(DuoPrefs.COL_NOTIFICATION_SIZE, 100).coerceIn(50, 200),
+        showQuickSettings = cursor.optionalBool(DuoPrefs.COL_SHOW_QS, true),
+        quickSettingsSize = cursor.optionalInt(DuoPrefs.COL_QS_SIZE, 100).coerceIn(50, 200),
         experienceJson = cursor.getColumnIndex(DuoPrefs.COL_EXPERIENCE).let { if(it<0) "" else cursor.getString(it) ?: "" }
         )
     }
@@ -496,6 +504,10 @@ internal object DuoSettingsClient {
             featFlags = int(DuoPrefs.COL_FEAT_FLAGS, portrait.featFlags),
             globalPercent = int(DuoPrefs.COL_GLOBAL_PERCENT, portrait.globalPercent).coerceIn(0, 100)
                 .coerceIn(DuoPrefs.MIN_EDGE_PADDING, DuoPrefs.MAX_EDGE_PADDING),
+            showNotifications = bool(DuoPrefs.COL_SHOW_NOTIFICATIONS, portrait.showNotifications),
+            notificationSize = int(DuoPrefs.COL_NOTIFICATION_SIZE, portrait.notificationSize).coerceIn(50, 200),
+            showQuickSettings = bool(DuoPrefs.COL_SHOW_QS, portrait.showQuickSettings),
+            quickSettingsSize = int(DuoPrefs.COL_QS_SIZE, portrait.quickSettingsSize).coerceIn(50, 200),
             experienceJson = str(DuoPrefs.COL_EXPERIENCE, portrait.experienceJson)
         )
     }

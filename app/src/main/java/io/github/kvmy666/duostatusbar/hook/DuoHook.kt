@@ -617,6 +617,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     private fun attachExtraBars(shade: View) {
         val host = host ?: return
         host.attachExtra("keyguard bar", shade, "system_icons")
+        host.attachShadePanels(shade)
         // The shade header is not in this window; it arrives through hookShadeHeader. It is built early,
         // often before the main bar has attached, so this is also where a failed attempt is retried.
         shadeHeader?.let { host.attachShadeHeader(it) }
@@ -702,7 +703,27 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         }
     }
 
-    private fun hookShadeHeader() {        // The controller that owns the header is the reliable hand-over: it is handed the header view
+    private fun hookShadeHeader() {
+        // OEM headers can be inflated without AOSP ShadeHeaderController or a ViewStub.
+        for(name in listOf("com.android.systemui.qs.QuickStatusBarHeader","com.android.systemui.qs.SecQuickStatusBarHeader","com.android.systemui.shade.NotificationShadeWindowView","com.android.systemui.statusbar.phone.NotificationPanelView")) {
+            val cls=XposedHelpers.findClassIfExists(name,lp.classLoader)?:continue
+            XposedBridge.hookAllMethods(cls,"onFinishInflate",object:XC_MethodHook() {
+                override fun afterHookedMethod(param:MethodHookParam) {
+                    val view=param.thisObject as? View?:return
+                    view.post {L.guard("OEM panel header") {host?.attachShadePanels(view,true)}}
+                }
+            })
+        }
+        for(name in listOf("com.android.systemui.shade.ShadeHeaderController","com.android.systemui.qs.QuickStatusBarHeader","com.android.systemui.qs.QSPanel")) {
+            val cls=XposedHelpers.findClassIfExists(name,lp.classLoader)?:continue
+            for(method in listOf("setQsExpanded","setExpanded"))XposedBridge.hookAllMethods(cls,method,object:XC_MethodHook() {
+                override fun afterHookedMethod(param:MethodHookParam) {
+                    val expanded=param.args.firstOrNull() as? Boolean?:return
+                    L.guard("panel expansion") {host?.setShadeExpanded(expanded)}
+                }
+            })
+        }
+        // The controller that owns the header is the reliable hand-over: it is handed the header view
         // directly, whatever inflated it.
         L.guard("DuoHook shade header controller") {
             val cls = XposedHelpers.findClass(

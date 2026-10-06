@@ -371,5 +371,20 @@
   "Código e histórico do fork": "Código e histórico do fork",
   "Expandir": "Expandir",
   "Recolher": "Recolher",
-  "Arraste para baixo": "Arraste para baixo"
+  "Arraste para baixo": "Arraste para baixo",
+  "Configurar": "Configurar",
+  "Ver explicação e controles": "Ver explicação e controles",
+  "Editando: {0}": "Editando: {0}",
+  "Abrir": "Abrir",
+  "Painéis do sistema": "Painéis do sistema",
+  "Mostrar nas notificações": "Mostrar nas notificações",
+  "Mostrar nos ajustes rápidos": "Mostrar nos ajustes rápidos",
+  "Inclui o anel no cabeçalho do painel de notificações.": "Inclui o anel no cabeçalho do painel de notificações.",
+  "Inclui o anel no cabeçalho dos ajustes rápidos.": "Inclui o anel no cabeçalho dos ajustes rápidos.",
+  "Tamanho nas notificações: {0}%": "Tamanho nas notificações: {0}%",
+  "Tamanho nos ajustes rápidos: {0}%": "Tamanho nos ajustes rápidos: {0}%",
+  "Cada painel tem seu próprio tamanho. O limite físico do cabeçalho evita recortes; o tamanho da barra normal não muda.": "Cada painel tem seu próprio tamanho. O limite físico do cabeçalho evita recortes; o tamanho da barra normal não muda.",
+  "Mostra o anel no cabeçalho de notificações, quando esse cabeçalho é reconhecido. Desligar restaura os indicadores originais apenas neste painel.": "Mostra o anel no cabeçalho de notificações, quando esse cabeçalho é reconhecido. Desligar restaura os indicadores originais apenas neste painel.",
+  "Mostra o anel no cabeçalho dos ajustes rápidos, quando esse cabeçalho é reconhecido. Em layouts que compartilham o cabeçalho, a expansão escolhe o ajuste correspondente.": "Mostra o anel no cabeçalho dos ajustes rápidos, quando esse cabeçalho é reconhecido. Em layouts que compartilham o cabeçalho, a expansão escolhe o ajuste correspondente.",
+  "Ative aqui e ajuste o tamanho abaixo. Se não aparecer, abra o painel e gere um diagnóstico para registrar o cabeçalho da sua ROM.": "Ative aqui e ajuste o tamanho abaixo. Se não aparecer, abra o painel e gere um diagnóstico para registrar o cabeçalho da sua ROM."
 }

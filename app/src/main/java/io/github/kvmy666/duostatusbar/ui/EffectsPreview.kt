@@ -48,7 +48,9 @@ import kotlinx.coroutines.isActive
     val cycle=remember { SlotCycle() }
     val foreground=remember { ForegroundEvents() }
     val clock=remember { SimulationClock() }
-    val island=remember { IslandSummary(context,interactive=false) {} }
+    var islandVisible by remember { mutableStateOf(false) }
+    val island=remember { IslandSummary(context,interactive=false) { islandVisible=it } }
+    OverlayBackdrop(menu || islandVisible)
     DisposableEffect(island) { onDispose { island.dismiss() } }
     val lifecycle=LocalLifecycleOwner.current.lifecycle
     Button(onClick={expanded=!expanded;if(!expanded)island.dismiss()}) { Text(if(expanded)UiText.t("Fechar prévia") else UiText.t("Abrir prévia interativa")) }

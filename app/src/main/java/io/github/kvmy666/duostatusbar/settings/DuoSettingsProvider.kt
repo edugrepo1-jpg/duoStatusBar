@@ -173,7 +173,11 @@ class DuoSettingsProvider : ContentProvider() {
             settings.thickPercent.coerceIn(1, 300),
             settings.featFlags,
             settings.globalPercent.coerceIn(0, 100),
-            settings.experienceJson.take(4096)
+            settings.experienceJson.take(4096),
+            if (settings.showNotifications) 1 else 0,
+            settings.notificationSize.coerceIn(50, 200),
+            if (settings.showQuickSettings) 1 else 0,
+            settings.quickSettingsSize.coerceIn(50, 200)
         )
     }
 }

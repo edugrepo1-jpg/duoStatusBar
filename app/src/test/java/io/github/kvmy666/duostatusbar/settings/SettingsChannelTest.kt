@@ -271,6 +271,13 @@ class SettingsChannelTest {
         }
         ShadowContentResolver.registerProviderInternal(DuoPrefs.AUTHORITY, dead)
 
+        // This case models a fresh process. Other host tests populate the singleton's last-good
+        // cache; retaining that cache on a transient outage is intentional, not an explicit off.
+        for (name in listOf("bridge", "bridgeLandscape")) {
+            DuoSettingsClient::class.java.getDeclaredField(name).apply { isAccessible=true }.set(null,null)
+        }
+        DuoSettingsClient::class.java.getDeclaredField("lastGood").apply { isAccessible=true }
+            .get(null).let { (it as MutableMap<*,*>).clear() }
         val result = DuoSettingsClient.read(context)
         assertFalse("an unreachable provider must not look like an explicit 'off'", result.enabled)
         assertTrue("the failure has to be distinguishable to the stage logic", DuoSettingsClient.providerUnreachable)

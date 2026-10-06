@@ -122,6 +122,10 @@ data class DuoSettings(
     val thickPercent: Int = 100,
     val featFlags: Int = 0x3FDF,
     val globalPercent: Int = 100,
+    val showNotifications: Boolean = true,
+    val notificationSize: Int = 100,
+    val showQuickSettings: Boolean = true,
+    val quickSettingsSize: Int = 100,
     val experienceJson: String = ""
 )
 
@@ -212,6 +216,10 @@ object DuoPrefs {
     const val COL_THICK_PERCENT = "thick_percent"
     const val COL_FEAT_FLAGS = "feat_flags"
     const val COL_GLOBAL_PERCENT = "global_percent"
+    const val COL_SHOW_NOTIFICATIONS = "show_notifications"
+    const val COL_NOTIFICATION_SIZE = "notification_size"
+    const val COL_SHOW_QS = "show_quick_settings"
+    const val COL_QS_SIZE = "quick_settings_size"
     const val COL_EXPERIENCE = "experience_v1"
 
     /** Prefixed onto every landscape column. Portrait keeps the original names, so old installs stay put. */
@@ -228,7 +236,7 @@ object DuoPrefs {
         COL_ANIMATIONS, COL_ARRIVAL, COL_DEPARTURE, COL_CHARGING,
         COL_ICON_COLOR, COL_HIDE_OTHER_ICONS, COL_NETWORK_ONLY, COL_SIM_CHOICE,
         COL_PERCENT_HEIGHT, COL_SPLIT_INDICATORS, COL_INDICATORS_OFFSET_X,
-        COL_WIFI_DOTS, COL_SHOW_AIRPLANE, COL_SHOW_DND, COL_EDGE_PADDING, COL_DND_MODE, COL_THICK_PERCENT, COL_FEAT_FLAGS, COL_GLOBAL_PERCENT, COL_EXPERIENCE
+        COL_WIFI_DOTS, COL_SHOW_AIRPLANE, COL_SHOW_DND, COL_EDGE_PADDING, COL_DND_MODE, COL_THICK_PERCENT, COL_FEAT_FLAGS, COL_GLOBAL_PERCENT, COL_EXPERIENCE, COL_SHOW_NOTIFICATIONS, COL_NOTIFICATION_SIZE, COL_SHOW_QS, COL_QS_SIZE
     )
 
     /** Landscape columns appended after [PORTRAIT_COLUMNS]. An older module ignores names it does not know. */
@@ -310,6 +318,10 @@ object DuoPrefs {
         thickPercent = p.getInt(prefix + COL_THICK_PERCENT, 100).coerceIn(1, 300),
         featFlags = p.getInt(prefix + COL_FEAT_FLAGS, 0x3FDF),
         globalPercent = p.getInt(prefix + COL_GLOBAL_PERCENT, 100).coerceIn(0, 100),
+        showNotifications = p.getBoolean(prefix + COL_SHOW_NOTIFICATIONS, true),
+        notificationSize = p.getInt(prefix + COL_NOTIFICATION_SIZE, 100).coerceIn(50, 200),
+        showQuickSettings = p.getBoolean(prefix + COL_SHOW_QS, true),
+        quickSettingsSize = p.getInt(prefix + COL_QS_SIZE, 100).coerceIn(50, 200),
         experienceJson = p.getString(prefix + COL_EXPERIENCE, "") ?: ""
     )
 
@@ -322,6 +334,8 @@ object DuoPrefs {
         val p = prefs(context)
         val next = revision(context) + 1
         val clamped = settings.copy(
+            notificationSize = settings.notificationSize.coerceIn(50, 200),
+            quickSettingsSize = settings.quickSettingsSize.coerceIn(50, 200),
             sizePercent = settings.sizePercent.coerceIn(MIN_SIZE, MAX_SIZE),
             thickPercent = settings.thickPercent.coerceIn(1, 300),
             globalPercent = settings.globalPercent.coerceIn(0, 100),
@@ -372,6 +386,10 @@ object DuoPrefs {
         putInt(prefix + COL_THICK_PERCENT, settings.thickPercent)
         putInt(prefix + COL_FEAT_FLAGS, settings.featFlags)
         putInt(prefix + COL_GLOBAL_PERCENT, settings.globalPercent)
+        putBoolean(prefix + COL_SHOW_NOTIFICATIONS, settings.showNotifications)
+        putInt(prefix + COL_NOTIFICATION_SIZE, settings.notificationSize)
+        putBoolean(prefix + COL_SHOW_QS, settings.showQuickSettings)
+        putInt(prefix + COL_QS_SIZE, settings.quickSettingsSize)
         putString(prefix + COL_EXPERIENCE, settings.experienceJson.take(4096))
     }
 

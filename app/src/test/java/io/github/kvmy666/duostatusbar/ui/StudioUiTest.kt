@@ -60,8 +60,10 @@ class StudioUiTest {
     private fun confirmFeature(enable:Boolean) {
         val dialog=org.robolectric.shadows.ShadowDialog.getLatestDialog()
         val root=dialog.window!!.decorView
-        val label=if(enable)"Ativar" else "Desativar"
-        nodes(root).first {text(it)==label&&it.config.getOrNull(SemanticsActions.OnClick)!=null}.config[SemanticsActions.OnClick].action!!.invoke();idle()
+        val switch=nodes(root).first {it.config.getOrNull(SemanticsProperties.TestTag)=="feature-toggle"}
+        assertEquals(if(enable)androidx.compose.ui.state.ToggleableState.Off else androidx.compose.ui.state.ToggleableState.On,switch.config[SemanticsProperties.ToggleableState])
+        switch.config[SemanticsActions.OnClick].action!!.invoke();idle()
+        nodes(root).first {text(it)=="Fechar"&&it.config.getOrNull(SemanticsActions.OnClick)!=null}.config[SemanticsActions.OnClick].action!!.invoke();idle()
     }
     private fun capture(root:View,name:String) {
         val metrics=root.resources.displayMetrics
@@ -175,7 +177,7 @@ class StudioUiTest {
             val dialog=org.robolectric.shadows.ShadowDialog.getLatestDialog()
             val dialogRoot=dialog.window!!.decorView;capture(dialogRoot,"feature-explanation")
             assertTrue(nodes(dialogRoot).any {text(it).contains("Como funciona")})
-            nodes(dialogRoot).first {text(it)=="Voltar"&&it.config.getOrNull(SemanticsActions.OnClick)!=null}.config[SemanticsActions.OnClick].action!!.invoke();idle()
+            nodes(dialogRoot).first {text(it)=="Fechar"&&it.config.getOrNull(SemanticsActions.OnClick)!=null}.config[SemanticsActions.OnClick].action!!.invoke();idle()
             assertEquals(0,changed)
         } finally {controller.pause().stop().destroy();idle()}
     }

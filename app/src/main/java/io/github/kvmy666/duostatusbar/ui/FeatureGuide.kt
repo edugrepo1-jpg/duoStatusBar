@@ -5,6 +5,8 @@ import io.github.kvmy666.duostatusbar.i18n.UiText
 internal data class FeatureGuide(val title:String,val explanation:String,val use:String) {
     companion object {
         private val entries=listOf(
+            FeatureGuide("Mostrar nas notificações","Mostra o anel no cabeçalho de notificações, quando esse cabeçalho é reconhecido. Desligar restaura os indicadores originais apenas neste painel.","Ative aqui e ajuste o tamanho abaixo. Se não aparecer, abra o painel e gere um diagnóstico para registrar o cabeçalho da sua ROM."),
+            FeatureGuide("Mostrar nos ajustes rápidos","Mostra o anel no cabeçalho dos ajustes rápidos, quando esse cabeçalho é reconhecido. Em layouts que compartilham o cabeçalho, a expansão escolhe o ajuste correspondente.","Ative aqui e ajuste o tamanho abaixo. Se não aparecer, abra o painel e gere um diagnóstico para registrar o cabeçalho da sua ROM."),
             FeatureGuide("Personalizar a barra","Liga o anel nesta orientação. O módulo precisa estar ativado no LSPosed e carregado no SystemUI. Desligar devolve os indicadores originais.","Comece aqui. Depois abra Visual para ajustar o desenho e Efeitos para escolher o comportamento."),
             FeatureGuide("Movimento suave","Permite animações no anel. Os sensores e desenhos são pausados quando não são necessários. Desligar mantém os estados visuais sem movimento.","Use para escolher entre movimento e uma barra mais discreta."),
             FeatureGuide("Check no desbloqueio","Depois do desbloqueio, o check ocupa o centro por 3 segundos. Sua saída termina antes da entrada do próximo ícone; nenhum Wi-Fi aparece atrás dele.","Use como confirmação rápida de que o telefone foi desbloqueado. O tempo único não altera estes 3 segundos."),

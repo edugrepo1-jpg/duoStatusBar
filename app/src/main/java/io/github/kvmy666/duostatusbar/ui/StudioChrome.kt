@@ -86,9 +86,8 @@ internal enum class StudioSymbol { HOME,VISUAL,EFFECTS,SETTINGS,SEARCH,ARROW,PLU
 @Composable internal fun StudioHeader(page: StudioPage, landscape: Boolean, searching: Boolean) {
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
         Text("DUO RECREATE",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,letterSpacing=1.sp)
-        Surface(shape=RoundedCornerShape(50),color=MaterialTheme.colorScheme.surface) {
-            Text(if(landscape)UiText.t("Horizontal") else UiText.t("Vertical"),Modifier.padding(horizontal=12.dp,vertical=7.dp),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        Text(UiText.format("Editando: {0}",if(landscape)UiText.t("Horizontal") else UiText.t("Vertical")),
+            style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
     }
     Text(if(searching)UiText.t("Encontre seu ajuste.") else page.heading,style=MaterialTheme.typography.headlineLarge)
     Text(if(searching)UiText.t("Resultados em todas as áreas do app.") else page.subtitle,style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -165,6 +164,11 @@ internal enum class StudioSymbol { HOME,VISUAL,EFFECTS,SETTINGS,SEARCH,ARROW,PLU
             StudioGlyph(page.glyph,tint,Modifier.size(28.dp))
             Text(title,style=MaterialTheme.typography.titleMedium)
             Text(detail,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.primaryContainer,RoundedCornerShape(12.dp)).padding(10.dp),
+                horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
+                Text(UiText.t("Abrir"),style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.onPrimaryContainer)
+                StudioGlyph(StudioSymbol.ARROW,MaterialTheme.colorScheme.onPrimaryContainer,Modifier.size(16.dp))
+            }
         }
     }
 }

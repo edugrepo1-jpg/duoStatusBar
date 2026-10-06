@@ -278,6 +278,7 @@ internal class ContainerFinder(
     fun findShadeIconsArea(header: View): ViewGroup? {
         val id = RomResources.id(context, rom, "shade_header_system_icons")
         (if (id != 0) header.findViewById<View>(id) as? ViewGroup else null)?.let { return it }
+        ShadePanels.find(header).firstOrNull()?.let {return it.strip}
         // Fall back to the parent of the icon container the controller binds to.
         val icons = RomResources.id(context, rom, "statusIcons")
         val container = if (icons != 0) header.findViewById<View>(icons) else null

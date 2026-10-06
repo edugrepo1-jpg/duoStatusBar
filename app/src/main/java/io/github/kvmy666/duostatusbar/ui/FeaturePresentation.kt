@@ -2,6 +2,8 @@ package io.github.kvmy666.duostatusbar.ui
 
 import android.content.Context
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -24,7 +26,39 @@ import io.github.kvmy666.duostatusbar.hook.*
 import io.github.kvmy666.duostatusbar.i18n.UiText
 
 /** Parent content alone is blurred; the modal remains sharp and no bitmap is captured. */
-internal val LocalFeatureBackdrop = compositionLocalOf<(Boolean)->Unit> { {} }
+@Stable internal class OverlayBackdropState {
+    private val owners = mutableStateMapOf<Any, Unit>()
+    val active: Boolean get() = owners.isNotEmpty()
+    fun open(owner: Any) { owners[owner] = Unit }
+    fun close(owner: Any) { owners.remove(owner) }
+}
+internal val LocalOverlayBackdrop = compositionLocalOf<OverlayBackdropState?> { null }
+internal val BackdropBlurred = SemanticsPropertyKey<Boolean>("BackdropBlurred")
+@Composable internal fun OverlayBackdrop(visible: Boolean = true) {
+    val state = LocalOverlayBackdrop.current
+    val owner = remember { Any() }
+    DisposableEffect(state, visible) {
+        if (visible) state?.open(owner)
+        onDispose { state?.close(owner) }
+    }
+}
+
+/** Reference-style control: blue/gray track, black thumb, real switch semantics and 48dp target. */
+@Composable internal fun RecreateSwitch(checked: Boolean, enabled: Boolean, label: String, onChange: (Boolean) -> Unit) {
+    val position by androidx.compose.animation.core.animateFloatAsState(if (checked) 1f else 0f,
+        androidx.compose.animation.core.tween(150), label="switch-thumb")
+    Box(Modifier.size(64.dp,48.dp).testTag("feature-toggle")
+        .toggleable(checked,enabled=enabled,role=Role.Switch,onValueChange=onChange)
+        .semantics { contentDescription=label;stateDescription=UiText.t(if(checked)"Ativo" else "Desativado") },contentAlignment=Alignment.Center) {
+        Canvas(Modifier.size(56.dp,32.dp)) {
+            val color=if(checked)Color(0xFF168DE2) else Color(0xFF606064)
+            drawRoundRect(color.copy(alpha=if(enabled)1f else .4f),cornerRadius=androidx.compose.ui.geometry.CornerRadius(size.height/2))
+            val radius=size.height*.36f
+            drawCircle(Color(0xFF101012).copy(alpha=if(enabled)1f else .6f),radius,
+                androidx.compose.ui.geometry.Offset(size.height/2+(size.width-size.height)*position,size.height/2))
+        }
+    }
+}
 
 internal fun featureIcon(label:String):SlotIcon = when(FeatureGuide.find(label)?.title ?: label) {
     "NFC"->SlotIcon.NFC;"Aviso de fones"->SlotIcon.AIRPODS
@@ -38,32 +72,18 @@ internal fun featureIcon(label:String):SlotIcon = when(FeatureGuide.find(label)?
 
 @Composable internal fun FeaturePresentation(label:String,detail:String?,checked:Boolean,enabled:Boolean,
     onDismiss:()->Unit,onChange:(Boolean)->Unit) {
-    val backdrop=LocalFeatureBackdrop.current
-    DisposableEffect(Unit) {backdrop(true);onDispose {backdrop(false)}}
+    OverlayBackdrop()
     val guide=FeatureGuide.find(label)
     Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
         Surface(color=StudioInk,contentColor=Color.White,shape=RoundedCornerShape(30.dp),
             modifier=Modifier.fillMaxWidth().padding(20.dp).widthIn(max=520.dp)) {
-            Column(Modifier.padding(20.dp).heightIn(max=360.dp).verticalScroll(rememberScrollState()),
+            Column(Modifier.padding(20.dp).heightIn(max=520.dp),
                 verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 Row(verticalAlignment=Alignment.CenterVertically) {
                     Text(label,style=MaterialTheme.typography.titleLarge,modifier=Modifier.weight(1f))
-                    Button(onClick={onChange(!checked);onDismiss()},enabled=enabled,
-                        contentPadding=PaddingValues(8.dp),colors=ButtonDefaults.buttonColors(containerColor=Color(0xFF29292D),contentColor=Color.White),
-                        modifier=Modifier.heightIn(min=48.dp).semantics {role=Role.Switch;stateDescription=UiText.t(if(checked)"Ativo" else "Desativado")}) {
-                        Column(horizontalAlignment=Alignment.CenterHorizontally) {
-                            Canvas(Modifier.size(42.dp,28.dp)) {
-                                val stroke=Stroke(4.dp.toPx())
-                                drawArc(if(checked)Color(0xFF79DFF1) else Color(0xFF77777C),95f,155f,false,style=stroke)
-                                drawArc(Color.White,275f,155f,false,style=stroke)
-                                drawLine(if(checked)Color(0xFF30D158) else Color(0xFFAAAAAE),
-                                    androidx.compose.ui.geometry.Offset(size.width*.34f,size.height*.5f),
-                                    androidx.compose.ui.geometry.Offset(size.width*.66f,size.height*.5f),4.dp.toPx())
-                            }
-                            Text(UiText.t(if(checked)"Desativar" else "Ativar"),style=MaterialTheme.typography.labelSmall)
-                        }
-                    }
+                    RecreateSwitch(checked,enabled,label,onChange)
                 }
+                Column(Modifier.heightIn(max=300.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(16.dp)) {
                     AndroidView(factory={context -> DuoCanvasView(context).apply {
                         animationsEnabled=false;arrivalEnabled=false
@@ -84,7 +104,9 @@ internal fun featureIcon(label:String):SlotIcon = when(FeatureGuide.find(label)?
                         modifier=Modifier.fillMaxWidth().background(Color(0xFF222225),RoundedCornerShape(14.dp)).padding(12.dp))
                 }
                 if(!enabled)Text(UiText.t("Este ajuste está indisponível agora. Ative a personalização ou a opção da qual ele depende."),color=Color(0xFFFF9CAA))
-                TextButton(onClick=onDismiss,modifier=Modifier.align(Alignment.End)) {Text(UiText.t("Voltar"),color=Color(0xFF79DFF1))}
+                }
+                OutlinedButton(onClick=onDismiss,modifier=Modifier.align(Alignment.End).heightIn(min=48.dp),
+                    colors=ButtonDefaults.outlinedButtonColors(contentColor=Color(0xFF79DFF1)),border=androidx.compose.foundation.BorderStroke(1.dp,Color(0xFF45454B))) {Text(UiText.t("Fechar"))}
             }
         }
     }

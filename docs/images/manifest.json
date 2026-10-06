@@ -1,0 +1,494 @@
+{
+  "version": "1.4.3-canvas-recreate",
+  "renderer": "Android native Canvas/Compose; Robolectric SDK 35",
+  "device_capture": false,
+  "includes_personal_device_content": false,
+  "count": 97,
+  "images": [
+    {
+      "file": "01-inicio-claro.png",
+      "sha256": "4f60717545a3a8dcea0224edbdba0675eea00eac9c7c3a0636be0e2aecec6803",
+      "bytes": 200158
+    },
+    {
+      "file": "02-personalizacao-desativada.png",
+      "sha256": "213b836bd5a15984ad07ddf8ea7b6109527301da37237d31e957a526fc7ea85e",
+      "bytes": 117791
+    },
+    {
+      "file": "03-personalizacao-ativada.png",
+      "sha256": "264e1c6ecc987c528969f3cb86fba7198653dd162f8989ee29d19e8aa85c55b1",
+      "bytes": 117413
+    },
+    {
+      "file": "04-inicio-apos-fechar.png",
+      "sha256": "4f60717545a3a8dcea0224edbdba0675eea00eac9c7c3a0636be0e2aecec6803",
+      "bytes": 200158
+    },
+    {
+      "file": "effects-en-claro-01.png",
+      "sha256": "9dc9ef92a94aadd1d89c445eba5c93b384602f77d8814e6effb94a72e04ef9ed",
+      "bytes": 199788
+    },
+    {
+      "file": "effects-es-claro-01.png",
+      "sha256": "416f89b1153eea6cc69ba8d1d8f2a0712d48f1d2656075ddfc3b9e5035dc92ee",
+      "bytes": 205651
+    },
+    {
+      "file": "effects-pt-BR-claro-01.png",
+      "sha256": "214869e521ec79b11871b72f3c28c2afa3472910f2d453b726a72ad1e30c2b7f",
+      "bytes": 210377
+    },
+    {
+      "file": "effects-pt-BR-claro-02.png",
+      "sha256": "c25d3ba159c9f136ebfebcd6e475e975d1dbc286a4829a232b275da5afc44d16",
+      "bytes": 253054
+    },
+    {
+      "file": "effects-pt-BR-claro-03.png",
+      "sha256": "9dfb9feff3a570dbb9e1378d398c578f26093253333ef0fc7b92409da8626d78",
+      "bytes": 273014
+    },
+    {
+      "file": "effects-pt-BR-claro-04.png",
+      "sha256": "af99b6a6671d017324bea08dc5c3a3dc9a1a818ba2a74183ca69c7ee724e54da",
+      "bytes": 243759
+    },
+    {
+      "file": "effects-pt-BR-claro-05.png",
+      "sha256": "63fb357c508c98ca1eda847468c4cd70ad4142aadd4f1a803028258ea80e7ccb",
+      "bytes": 248695
+    },
+    {
+      "file": "effects-pt-BR-claro-06.png",
+      "sha256": "7fbb8cd8336a132b36b609ce8af3032e82ace089f4f620c93288ada0a5e3ae21",
+      "bytes": 246733
+    },
+    {
+      "file": "effects-pt-BR-claro-07.png",
+      "sha256": "62385dce24369802e844a01e8f2901b1c521a28420e0bbb54aab5b71ed86b2f1",
+      "bytes": 214849
+    },
+    {
+      "file": "effects-pt-BR-claro-08.png",
+      "sha256": "e9fc32e6187b0cfe35be7e57531097e9b59fbd11337b3fd48d1934251b4af93d",
+      "bytes": 232460
+    },
+    {
+      "file": "effects-pt-BR-claro-09.png",
+      "sha256": "bbba325f10c63512c5f01b2ef87a12d62730bfcecd2d10e46e7d8eac22c68c84",
+      "bytes": 236006
+    },
+    {
+      "file": "effects-pt-BR-escuro-01.png",
+      "sha256": "4f93e513109725d97ecb4638da8d5f7824db41e5e026ce47b7971032395d4e2f",
+      "bytes": 217751
+    },
+    {
+      "file": "effects-pt-BR-escuro-02.png",
+      "sha256": "ae67b71c1502ff4d00e9e5b6d6cf6617c2477a5e8af1d5d47a9d6e72d9d58ec3",
+      "bytes": 257423
+    },
+    {
+      "file": "effects-pt-BR-escuro-03.png",
+      "sha256": "89c32e93bbb58e82530acbfd1dbfa71e482ac0aef71bbbaf35789c55e123f79d",
+      "bytes": 278452
+    },
+    {
+      "file": "effects-pt-BR-escuro-04.png",
+      "sha256": "341ea1011d206ae233076bf9e76ca769c9a0530b3ff45a794f485c512df2ad7c",
+      "bytes": 252823
+    },
+    {
+      "file": "effects-pt-BR-escuro-05.png",
+      "sha256": "49cfade7faf9f2c3666b109eb665b2bdf34562d66ec12949da36078d88a328bb",
+      "bytes": 254703
+    },
+    {
+      "file": "effects-pt-BR-escuro-06.png",
+      "sha256": "ff8b6feacd4208a6ec550c5ca2582cf030b2a16094cafe912be6b18bab5a6ee1",
+      "bytes": 249790
+    },
+    {
+      "file": "effects-pt-BR-escuro-07.png",
+      "sha256": "c53e095699c2387231a3b61d89ad0a1e5329eef2dc37c1c73821b1dca5a7295a",
+      "bytes": 220975
+    },
+    {
+      "file": "effects-pt-BR-escuro-08.png",
+      "sha256": "1ac4a9035f5362ada081c4d4bcad67a29956e45872b93895aa309bd6bde1ed0b",
+      "bytes": 237103
+    },
+    {
+      "file": "effects-pt-BR-escuro-09.png",
+      "sha256": "8b63911895f206d24817793f41b519e76dae1e036ed6cc1ed1151097fe8c92e5",
+      "bytes": 240593
+    },
+    {
+      "file": "funcao-01.png",
+      "sha256": "46a8a510592ca60071905775b6b0710b8565537cbe6aad969a7b3b29bae98ce8",
+      "bytes": 130567
+    },
+    {
+      "file": "funcao-02.png",
+      "sha256": "884b94e0761b3c96d97c024502e9ee12e60a39626e8af3c76bd9f35bccd4691f",
+      "bytes": 143917
+    },
+    {
+      "file": "funcao-03.png",
+      "sha256": "826e79121488bcf2ebf06857b38840d0729c6bd1a860e9d09865e31f7670e3b3",
+      "bytes": 120519
+    },
+    {
+      "file": "funcao-04.png",
+      "sha256": "46581b8101b349aa1a863bcd726870c2ad5e3b8a93ff4128360138d2eb23b61f",
+      "bytes": 112898
+    },
+    {
+      "file": "funcao-05.png",
+      "sha256": "9c78a657eef33d39fba99e34b45eb7bd931cff840c43233877261822a69632c5",
+      "bytes": 132087
+    },
+    {
+      "file": "funcao-06.png",
+      "sha256": "ca5440350902207f376442df808f628ef3ff90e514ead714553940505ee4cae5",
+      "bytes": 131546
+    },
+    {
+      "file": "funcao-07.png",
+      "sha256": "81a624dcb6153f534f1db041f4fa05060463ccba00cef1fb288eb88abfd68fff",
+      "bytes": 124364
+    },
+    {
+      "file": "funcao-08.png",
+      "sha256": "7f6c97b8c6fdde6ba05de913d5038277c25a46eadceda3d6c95644893cf19f57",
+      "bytes": 96800
+    },
+    {
+      "file": "funcao-09.png",
+      "sha256": "5f0797c7100163dbb6ac338bce17af976f180de6e183e1a470d99ee13f42383c",
+      "bytes": 114018
+    },
+    {
+      "file": "funcao-10.png",
+      "sha256": "d3e026c269d2b20452e888593a549da19f06f363e013659e82c540f1ce61b19e",
+      "bytes": 119554
+    },
+    {
+      "file": "funcao-11.png",
+      "sha256": "09d11d63735b629080caf48351b8e4626c266580d45e96b16db9a22cf180f5ea",
+      "bytes": 123580
+    },
+    {
+      "file": "funcao-12.png",
+      "sha256": "bc6c0ece23891e01f88831a58c1207644506b69a8ef00837f6ee0249a81c9951",
+      "bytes": 108778
+    },
+    {
+      "file": "funcao-13.png",
+      "sha256": "6cec9cf3b02671677e4e335a9dcd08309242ca8356692fe46393011b30bd6610",
+      "bytes": 130342
+    },
+    {
+      "file": "funcao-14.png",
+      "sha256": "70c76c8086b25a8e34af5db39f1fa0a5dd5511833a598226a116952c7c383fc3",
+      "bytes": 120002
+    },
+    {
+      "file": "funcao-15.png",
+      "sha256": "596838ec6b8c599b9d8ac61b42d09f8fb1f722e6bb9ef01773bf8e41b1a9ba80",
+      "bytes": 105772
+    },
+    {
+      "file": "funcao-16.png",
+      "sha256": "8a0b986f6b786d5aa98460cad6fde7b9737a978708e12f0c0b0bc9be3cd188dc",
+      "bytes": 122838
+    },
+    {
+      "file": "funcao-17.png",
+      "sha256": "0e9726e1b7ede9187cc72c0ba47941a6e7721c7a037ced23dffd189925b1772a",
+      "bytes": 119954
+    },
+    {
+      "file": "funcao-18.png",
+      "sha256": "4a3aa3eb9e58c58735d0a3d450f676658eb12c718b6fb9db3a14765645c7e65a",
+      "bytes": 122322
+    },
+    {
+      "file": "funcao-19.png",
+      "sha256": "b2ade2f0e70ddf239221d228b44db68baa892238630b62eb44811fef94f24a16",
+      "bytes": 105584
+    },
+    {
+      "file": "funcao-20.png",
+      "sha256": "f52850802d7794a599f7506543059e37b242ae612124102d5fbcaae3f8271a65",
+      "bytes": 129912
+    },
+    {
+      "file": "funcao-21.png",
+      "sha256": "0c66e39b12e632fe90ddbc89d11d86cf98f8c37c22562c31d2e2b32c6344b141",
+      "bytes": 111600
+    },
+    {
+      "file": "funcao-22.png",
+      "sha256": "171d9d9c802288a980afdae800a19097758c3b07e55f9f5bd6484486ff8a2dc6",
+      "bytes": 124456
+    },
+    {
+      "file": "funcao-23.png",
+      "sha256": "f961e93876a11b5e0116dc65e9ee8fb1605e1f683da0e1732b5a7e66811381a2",
+      "bytes": 117641
+    },
+    {
+      "file": "funcao-24.png",
+      "sha256": "3826eba43edde651229854c3dbe65ad46d9255aa02313da5017fc0156d10a9e2",
+      "bytes": 110085
+    },
+    {
+      "file": "funcao-25.png",
+      "sha256": "4aa160a09151284da7f4297f5ef6a752077543f6d14c6dba2723ac9d035de74d",
+      "bytes": 102118
+    },
+    {
+      "file": "funcao-26.png",
+      "sha256": "c08ff8995a10e953363ee47b5312a5187be06d45c8b17e76f1ae900094ab89ee",
+      "bytes": 118305
+    },
+    {
+      "file": "funcao-27.png",
+      "sha256": "4f9ad1288ba12af04ee67a652f22f93ea9cddaa988040b32bc5f69ea1d13cfe4",
+      "bytes": 102899
+    },
+    {
+      "file": "funcao-28.png",
+      "sha256": "dd5044b8b053250ccd6942169f1c48d4349e3e0bcadae8f9e74a1d7601494133",
+      "bytes": 112497
+    },
+    {
+      "file": "funcao-29.png",
+      "sha256": "325f635dc529c4f51ac461fefdee695ece57be62acf4c0b8d62d1b09a092062c",
+      "bytes": 106882
+    },
+    {
+      "file": "funcao-30.png",
+      "sha256": "ef6ed8eeb3828e0e83d4737b29e2129abf8c98d1cc2dca1606f19b512eedef8f",
+      "bytes": 111735
+    },
+    {
+      "file": "home-en-claro-01.png",
+      "sha256": "acc8c9f577a1f5c9e63c773177acf56d08ab6141f8a508149923616a34decd03",
+      "bytes": 201888
+    },
+    {
+      "file": "home-es-claro-01.png",
+      "sha256": "eaf7aaec35eb2ceba42d454a4fe1ffb72fb1ed1eeaed1f318794ebe2289fdc05",
+      "bytes": 202963
+    },
+    {
+      "file": "home-pt-BR-claro-01.png",
+      "sha256": "4f60717545a3a8dcea0224edbdba0675eea00eac9c7c3a0636be0e2aecec6803",
+      "bytes": 200158
+    },
+    {
+      "file": "home-pt-BR-claro-02.png",
+      "sha256": "278a5c25bb20679585a344e3188eecaa2c56c48ab8ec97af27cbe642889daddc",
+      "bytes": 194984
+    },
+    {
+      "file": "home-pt-BR-escuro-01.png",
+      "sha256": "10663b7e1cc8298acfd7d1a8791e0e783cd348219436d18a98a8fac21c82f48f",
+      "bytes": 203919
+    },
+    {
+      "file": "home-pt-BR-escuro-02.png",
+      "sha256": "8f53b9a3e5e394b7969ededfd3055d86e244b3fc7b835b4c2887810863065dde",
+      "bytes": 200970
+    },
+    {
+      "file": "more-en-claro-01.png",
+      "sha256": "5688107d0e381e5bd92aee8f413bbd578eb6760135e2c2ab31d0272fa5f380ec",
+      "bytes": 200126
+    },
+    {
+      "file": "more-es-claro-01.png",
+      "sha256": "e4736b083b01f2ca88062eac50a8e014e8192b197ddcf350a575780f72f1317c",
+      "bytes": 219207
+    },
+    {
+      "file": "more-pt-BR-claro-01.png",
+      "sha256": "47fb29f17ca0357d70545e342330d69e1a44725da17942a49403bc3c425b8ac0",
+      "bytes": 230825
+    },
+    {
+      "file": "more-pt-BR-claro-02.png",
+      "sha256": "41162cc1234b01721ecbcf7f4723c053548b40b27e6cc4ee9e899b1252130e75",
+      "bytes": 212302
+    },
+    {
+      "file": "more-pt-BR-claro-03.png",
+      "sha256": "0e178f7a8ead7b208a246b1d90358e6a5694f62881175c2710d203c529be2a3b",
+      "bytes": 175952
+    },
+    {
+      "file": "more-pt-BR-claro-04.png",
+      "sha256": "63379953fbc46ae341d4d08f619efe04fe72e507d3f05c8ecfd7bcf388a9b8f1",
+      "bytes": 214769
+    },
+    {
+      "file": "more-pt-BR-claro-05.png",
+      "sha256": "8c9c78d0de1efc59586a7e83d34da0ce2bab7a52f2b6eb3451b6871dccf3336c",
+      "bytes": 210583
+    },
+    {
+      "file": "more-pt-BR-escuro-01.png",
+      "sha256": "a4cd7ce4554d4820c119aceddf324b1cda1e95d38b16ac8f9221681eb6cf5c93",
+      "bytes": 237018
+    },
+    {
+      "file": "more-pt-BR-escuro-02.png",
+      "sha256": "912d10e470fb14147e970fcacf4ca0c072d3381f5fdc2d91616edac09a039afe",
+      "bytes": 218727
+    },
+    {
+      "file": "more-pt-BR-escuro-03.png",
+      "sha256": "74a4921c26f02b1292e369239d81ec44373e7558d33c86297ed9956afbb56272",
+      "bytes": 186263
+    },
+    {
+      "file": "more-pt-BR-escuro-04.png",
+      "sha256": "4e674ae6caf83f3765a82148d452aec6d852df09da58e46f6b64588913c0163c",
+      "bytes": 223693
+    },
+    {
+      "file": "more-pt-BR-escuro-05.png",
+      "sha256": "1a0461674775a93b0d122ead9bcb1654d182b3a8ebdc63fdce9bcb5a48558068",
+      "bytes": 218609
+    },
+    {
+      "file": "nfc-ativado.png",
+      "sha256": "c85cb280de947f2f19e43fc118cbc8b37f473bdcc8403da10b37153422869a25",
+      "bytes": 96356
+    },
+    {
+      "file": "nfc-en.png",
+      "sha256": "d57a4a110c96534dde639d0b607a94dad829d3a9ee103b48bf7171cf1a7a3154",
+      "bytes": 86003
+    },
+    {
+      "file": "nfc-es.png",
+      "sha256": "27f488583d0720e26b3f9cb10c786c4260a079f368a3cf017fb0dbe8cc8f6c14",
+      "bytes": 91610
+    },
+    {
+      "file": "nfc-indisponivel.png",
+      "sha256": "3be218da2b8a9972220c20379812af1d27641352fa4bdf2dc891165035469aba",
+      "bytes": 119726
+    },
+    {
+      "file": "previa-fechada.png",
+      "sha256": "ce9ae6fb681dc26d4cced18f9fe9cea2214dc027599d1b5ab3362410ded0ade7",
+      "bytes": 24888
+    },
+    {
+      "file": "previa-interativa-01.png",
+      "sha256": "9147d6fd88a96abe6edccf26235436175600cbf2ddf670ce4eedea749ef90c6b",
+      "bytes": 218038
+    },
+    {
+      "file": "previa-interativa-02.png",
+      "sha256": "4ea47930748fc53987ddc9209e6f90b4072584444ef53396a86dd28909610907",
+      "bytes": 233025
+    },
+    {
+      "file": "previa-interativa-03.png",
+      "sha256": "d89c6e1d071775c48d500b3b4e02d6a2a46894abb6fdbf92990a560019ae0112",
+      "bytes": 252586
+    },
+    {
+      "file": "previa-interativa-04.png",
+      "sha256": "ca22f4913e80b48149c11a9f1310837d8f272c3f4c51a9da09f15685b096e261",
+      "bytes": 249726
+    },
+    {
+      "file": "visual-en-claro-01.png",
+      "sha256": "b63b5769cbfa230d14689bca358aa74b8ee8fbe9dcc53e67ad2f652af57d6dae",
+      "bytes": 184993
+    },
+    {
+      "file": "visual-es-claro-01.png",
+      "sha256": "bdc70af534978b6ea54f6b344a775ba1f97086ea7a5d561c72800b12915b20d4",
+      "bytes": 182624
+    },
+    {
+      "file": "visual-pt-BR-claro-01.png",
+      "sha256": "a1b98a3f512b152e290b1b6ab8178a467e3f9a734bdf3c4b72682c70248a893f",
+      "bytes": 183710
+    },
+    {
+      "file": "visual-pt-BR-claro-02.png",
+      "sha256": "b3a57ee55eeb15097124613cba7d4e552d98921e9c7a9626bf9cce403ea38cbd",
+      "bytes": 217398
+    },
+    {
+      "file": "visual-pt-BR-claro-03.png",
+      "sha256": "2d36cca8f52626d0e9a7c579e7250d3a7c05d73c19d7ddc59512f22708e2ad80",
+      "bytes": 223586
+    },
+    {
+      "file": "visual-pt-BR-claro-04.png",
+      "sha256": "b1600a102cdbfabff2c39bdf421da5b9d2513e15108079b7a162483d52fe182b",
+      "bytes": 224725
+    },
+    {
+      "file": "visual-pt-BR-claro-05.png",
+      "sha256": "0a05714eb334e21d6add9ea63c8d7d8aa109b2db39c28c72f39d706061c3401e",
+      "bytes": 243856
+    },
+    {
+      "file": "visual-pt-BR-escuro-01.png",
+      "sha256": "09614bb10cd2aeb7fbcef7be1ffb1bc073fd97e31a6b211949a2361482bd1b13",
+      "bytes": 190110
+    },
+    {
+      "file": "visual-pt-BR-escuro-02.png",
+      "sha256": "b2a44eeabe7892a6931912d6f58f647f60561b26719aae31ac68e130999f54e0",
+      "bytes": 223992
+    },
+    {
+      "file": "visual-pt-BR-escuro-03.png",
+      "sha256": "2cb716236903551148368d01c78585c56536b593ae427159375dfccdbea5aeda",
+      "bytes": 228581
+    },
+    {
+      "file": "visual-pt-BR-escuro-04.png",
+      "sha256": "5e3db26cf8f28f89a35f7f63f35eae339f8a7d89dbc2d301a9cde682fcf0705e",
+      "bytes": 229157
+    },
+    {
+      "file": "visual-pt-BR-escuro-05.png",
+      "sha256": "4f55707bc6d73e0c9b4e562757c016d38deb63546b1341a4e925652230f5d4fb",
+      "bytes": 247500
+    },
+    {
+      "file": "language-picker.png",
+      "sha256": "c24eb9df2d246c3544b3bbd3c137fd7720c7efa9a4e249163315650a3c50bcdd",
+      "bytes": 113119
+    },
+    {
+      "file": "launcher.png",
+      "sha256": "866afdb161270d071ea408af7b8daa94e19fd9f5e00c7b4f64f246c38c9e1d21",
+      "bytes": 46197
+    },
+    {
+      "file": "island-pill.png",
+      "sha256": "6a1a11c9343cc1ddfc1f35dacb1389ad15136cd337cb8726c375c4244d8d16f0",
+      "bytes": 19685
+    },
+    {
+      "file": "island-expanded.png",
+      "sha256": "9b9bd399ae78a33eb57acf2b9d161a69ad52178562df220114ffc946fec9ab9e",
+      "bytes": 135872
+    }
+  ]
+}

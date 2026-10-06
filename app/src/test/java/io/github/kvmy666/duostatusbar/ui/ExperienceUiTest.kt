@@ -58,7 +58,8 @@ class ExperienceUiTest {
             toggle.config[SemanticsActions.OnClick].action!!.invoke();idle()
             assertTrue("opening the explanation must not commit",ExperienceOptions.decode(current.experienceJson).compass)
             val dialog=org.robolectric.shadows.ShadowDialog.getLatestDialog()
-            click(dialog.window!!.decorView,"Desativar")
+            nodes(dialog.window!!.decorView).first {it.config.getOrNull(SemanticsProperties.TestTag)=="feature-toggle"}.config[SemanticsActions.OnClick].action!!.invoke();idle()
+            click(dialog.window!!.decorView,"Fechar")
             assertFalse(ExperienceOptions.decode(current.experienceJson).compass)
             assertTrue(ExperienceOptions.decode(current.experienceJson).music)
         } finally {c.pause().stop().destroy();idle()}

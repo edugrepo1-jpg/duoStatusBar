@@ -53,3 +53,7 @@ Os SHAs locais de reconstrução ficam em snapshots.json; o mapeamento das mesma
 - [DuoStatusBar-fx5-validacao](historico/DuoStatusBar-fx5-validacao.md)
 - [DuoStatusBar-Studio-FX1-validacao](historico/DuoStatusBar-Studio-FX1-validacao.md)
 - [DuoStatusBar-Studio-validacao](historico/DuoStatusBar-Studio-validacao.md)
+
+## Entrega 1.4.3 / código 29
+
+Atualização cumulativa: mantém integralmente o contrato acima. Acrescenta controles independentes de notificações e QS, responsável separado por restauração dos originais, anexação em cabeçalhos reconhecidos, limites físicos e limpeza de slots re-inflados. Troca o controle do cartão pelo switch pedido, explicita ações clicáveis, mantém blur durante sobreposição e remove ao fechar, mantém Fechar acessível. São 329 testes executados e 97 capturas nativas documentadas. Corrigida classificação booleana das novas chaves na migração; isolado cache no teste de boot para não confundir fallback válido com desligamento. Shizuku mantém os mesmos três slots e a remoção local passa a cobrir os cabeçalhos. Consulte [validação](VALIDACAO.md) e [UI/painéis](UI-E-PAINEIS.md).

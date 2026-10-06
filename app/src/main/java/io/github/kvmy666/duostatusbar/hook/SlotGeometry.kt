@@ -56,13 +56,13 @@ internal class SlotGeometry(private val context: Context, private val rom: RomAd
      *
      * [base] is the per-slot value for the extra bars; the main bar relies on the captured [slotBasePx].
      */
-    fun sidePx(container: ViewGroup, windowRoot: View?, base: Int = 0): Int {
+    fun sidePx(container: ViewGroup, windowRoot: View?, base: Int = 0, sizePercent: Int = appliedSize): Int {
         val measured = when {
             base > 0 -> base
             slotBasePx > 0 -> slotBasePx
             else -> measuredWidth(container)
         }
-        val scaled = measured * appliedSize / 100
+        val scaled = measured * sizePercent / 100
         val maxBarHeight = context.resources.displayMetrics.heightPixels / 3
         val height = (windowRoot?.height ?: 0).takeIf { it in 1..maxBarHeight }
             ?: container.height.takeIf { it in 1..maxBarHeight }

@@ -371,5 +371,20 @@
   "Código e histórico do fork": "Fork source and history",
   "Expandir": "Expand",
   "Recolher": "Collapse",
-  "Arraste para baixo": "Drag down"
+  "Arraste para baixo": "Drag down",
+  "Configurar": "Configure",
+  "Ver explicação e controles": "View explanation and controls",
+  "Editando: {0}": "Editing: {0}",
+  "Abrir": "Open",
+  "Painéis do sistema": "System panels",
+  "Mostrar nas notificações": "Show in notifications",
+  "Mostrar nos ajustes rápidos": "Show in quick settings",
+  "Inclui o anel no cabeçalho do painel de notificações.": "Include the ring in the notification panel header.",
+  "Inclui o anel no cabeçalho dos ajustes rápidos.": "Include the ring in the quick settings header.",
+  "Tamanho nas notificações: {0}%": "Notification size: {0}%",
+  "Tamanho nos ajustes rápidos: {0}%": "Quick settings size: {0}%",
+  "Cada painel tem seu próprio tamanho. O limite físico do cabeçalho evita recortes; o tamanho da barra normal não muda.": "Each panel has its own size. The physical header limit prevents clipping; the normal status bar size is unchanged.",
+  "Mostra o anel no cabeçalho de notificações, quando esse cabeçalho é reconhecido. Desligar restaura os indicadores originais apenas neste painel.": "Show the ring in the notification header when that header is recognized. Switching off restores the original indicators only in this panel.",
+  "Mostra o anel no cabeçalho dos ajustes rápidos, quando esse cabeçalho é reconhecido. Em layouts que compartilham o cabeçalho, a expansão escolhe o ajuste correspondente.": "Show the ring in the quick settings header when it is recognized. In layouts with a shared header, expansion selects the corresponding setting.",
+  "Ative aqui e ajuste o tamanho abaixo. Se não aparecer, abra o painel e gere um diagnóstico para registrar o cabeçalho da sua ROM.": "Enable here and adjust the size below. If it does not appear, open the panel and generate diagnostics to record your ROM header."
 }

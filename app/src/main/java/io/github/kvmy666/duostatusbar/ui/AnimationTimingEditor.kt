@@ -10,6 +10,7 @@ import io.github.kvmy666.duostatusbar.fx.*
 @Composable internal fun AnimationTimingEditor(options:ExperienceOptions,enabled:Boolean,onChange:(ExperienceOptions)->Unit) {
     var selected by remember { mutableStateOf(SlotIcon.WIFI) }
     var choosing by remember { mutableStateOf(false) }
+    OverlayBackdrop(choosing)
     SettingSwitch(UiText.t("Somente Wi-Fi ou dados"),UiText.t("Exibe apenas a conexão de rede, sem carrossel nem efeitos."),options.networkOnly,enabled) { onChange(options.copy(networkOnly=it)) }
     SettingSwitch(UiText.t("Transições com fade"),UiText.t("Termina a saída antes de iniciar a entrada do próximo ícone."),options.fadeEnabled,enabled&&!options.networkOnly) { onChange(options.copy(fadeEnabled=it)) }
     SettingSwitch(UiText.t("Tempo único para todos"),UiText.t("Usa a mesma duração para os ícones de todos os aplicativos. Seus tempos individuais ficam guardados."),options.universalTiming,enabled&&!options.networkOnly) {onChange(options.copy(universalTiming=it))}

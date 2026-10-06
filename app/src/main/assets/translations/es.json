@@ -371,5 +371,20 @@
   "Código e histórico do fork": "Código e historial del fork",
   "Expandir": "Expandir",
   "Recolher": "Contraer",
-  "Arraste para baixo": "Arrastra hacia abajo"
+  "Arraste para baixo": "Arrastra hacia abajo",
+  "Configurar": "Configurar",
+  "Ver explicação e controles": "Ver explicación y controles",
+  "Editando: {0}": "Editando: {0}",
+  "Abrir": "Abrir",
+  "Painéis do sistema": "Paneles del sistema",
+  "Mostrar nas notificações": "Mostrar en notificaciones",
+  "Mostrar nos ajustes rápidos": "Mostrar en ajustes rápidos",
+  "Inclui o anel no cabeçalho do painel de notificações.": "Incluye el anillo en la cabecera del panel de notificaciones.",
+  "Inclui o anel no cabeçalho dos ajustes rápidos.": "Incluye el anillo en la cabecera de los ajustes rápidos.",
+  "Tamanho nas notificações: {0}%": "Tamaño en notificaciones: {0}%",
+  "Tamanho nos ajustes rápidos: {0}%": "Tamaño en ajustes rápidos: {0}%",
+  "Cada painel tem seu próprio tamanho. O limite físico do cabeçalho evita recortes; o tamanho da barra normal não muda.": "Cada panel tiene su propio tamaño. El límite físico de la cabecera evita recortes; el tamaño de la barra normal no cambia.",
+  "Mostra o anel no cabeçalho de notificações, quando esse cabeçalho é reconhecido. Desligar restaura os indicadores originais apenas neste painel.": "Muestra el anillo en la cabecera de notificaciones cuando se reconoce. Al desactivarlo, restaura los indicadores originales solo en este panel.",
+  "Mostra o anel no cabeçalho dos ajustes rápidos, quando esse cabeçalho é reconhecido. Em layouts que compartilham o cabeçalho, a expansão escolhe o ajuste correspondente.": "Muestra el anillo en la cabecera de ajustes rápidos cuando se reconoce. En diseños con cabecera compartida, la expansión selecciona el ajuste correspondiente.",
+  "Ative aqui e ajuste o tamanho abaixo. Se não aparecer, abra o painel e gere um diagnóstico para registrar o cabeçalho da sua ROM.": "Activa aquí y ajusta el tamaño abajo. Si no aparece, abre el panel y genera un diagnóstico para registrar la cabecera de tu ROM."
 }

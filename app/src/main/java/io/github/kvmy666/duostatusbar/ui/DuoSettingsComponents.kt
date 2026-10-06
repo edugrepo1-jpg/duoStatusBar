@@ -2,6 +2,7 @@ package io.github.kvmy666.duostatusbar.ui
 
 import io.github.kvmy666.duostatusbar.i18n.UiText
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.selection.toggleable
@@ -317,8 +318,10 @@ internal fun SettingSwitch(
     var explaining by remember(label) { mutableStateOf(false) }
     Row(
         modifier=Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
-            .clickable(role=Role.Button) { explaining=true }
-            .heightIn(min=60.dp).padding(vertical=10.dp),
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=.32f))
+            .border(1.dp,MaterialTheme.colorScheme.outlineVariant.copy(alpha=.45f),RoundedCornerShape(14.dp))
+            .clickable(role=Role.Button,onClickLabel=UiText.t("Ver explicação e controles")) { explaining=true }
+            .heightIn(min=76.dp).padding(horizontal=12.dp,vertical=12.dp),
         horizontalArrangement=Arrangement.SpaceBetween,
         verticalAlignment=Alignment.CenterVertically
     ) {
@@ -327,10 +330,16 @@ internal fun SettingSwitch(
             verticalArrangement=Arrangement.spacedBy(3.dp)) {
             Text(label,style=MaterialTheme.typography.bodyLarge,
                 color=MaterialTheme.colorScheme.onSurface)
-            Text(UiText.t(if(checked)"Ativo" else "Desativado"),style=MaterialTheme.typography.bodySmall,
+            if(!detail.isNullOrBlank()) Text(detail,style=MaterialTheme.typography.bodySmall,
+                color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            Text(UiText.t(if(checked)"Ativo" else "Desativado"),style=MaterialTheme.typography.labelSmall,
                 color=if(checked)MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        StudioGlyph(StudioSymbol.ARROW,MaterialTheme.colorScheme.onSurfaceVariant,Modifier.size(17.dp))
+        Row(Modifier.clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.primaryContainer)
+            .padding(horizontal=9.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
+            Text(UiText.t("Configurar"),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onPrimaryContainer)
+            StudioGlyph(StudioSymbol.ARROW,MaterialTheme.colorScheme.onPrimaryContainer,Modifier.size(14.dp))
+        }
     }
     if(explaining) FeaturePresentation(label,detail,checked,enabled,
         onDismiss={explaining=false},onChange=onChange)
@@ -446,7 +455,7 @@ internal fun LabelledSlider(
         }
         Row(verticalAlignment=Alignment.CenterVertically) {
             IconButton(onClick={commit(draft.value-increment)},enabled=enabled&&draft.value>range.start,
-                modifier=Modifier.semantics { contentDescription=UiText.format("Diminuir {0}", title) }) {
+                modifier=Modifier.background(MaterialTheme.colorScheme.surfaceVariant,RoundedCornerShape(14.dp)).semantics { contentDescription=UiText.format("Diminuir {0}", title) }) {
                 StudioGlyph(StudioSymbol.MINUS,MaterialTheme.colorScheme.onSurfaceVariant,Modifier.size(17.dp))
             }
             Slider(
@@ -456,7 +465,7 @@ internal fun LabelledSlider(
                 colors=SliderDefaults.colors(inactiveTrackColor=MaterialTheme.colorScheme.surfaceVariant)
             )
             IconButton(onClick={commit(draft.value+increment)},enabled=enabled&&draft.value<range.endInclusive,
-                modifier=Modifier.semantics { contentDescription=UiText.format("Aumentar {0}", title) }) {
+                modifier=Modifier.background(MaterialTheme.colorScheme.surfaceVariant,RoundedCornerShape(14.dp)).semantics { contentDescription=UiText.format("Aumentar {0}", title) }) {
                 StudioGlyph(StudioSymbol.PLUS,MaterialTheme.colorScheme.onSurfaceVariant,Modifier.size(17.dp))
             }
         }
@@ -484,11 +493,13 @@ internal fun OptionPicker(
     onSelect: (String) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    OverlayBackdrop(expanded)
     Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
         Text(label,style=MaterialTheme.typography.bodyLarge)
         Box {
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=.7f))
+                .border(1.dp,MaterialTheme.colorScheme.outlineVariant,RoundedCornerShape(14.dp))
                 .clickable(enabled=enabled,role=Role.Button){expanded=true}
                 .heightIn(min=50.dp).padding(horizontal=14.dp,vertical=12.dp),
                 verticalAlignment=Alignment.CenterVertically) {
