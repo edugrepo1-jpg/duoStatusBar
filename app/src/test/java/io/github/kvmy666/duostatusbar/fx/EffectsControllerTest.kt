@@ -1,0 +1,90 @@
+package io.github.kvmy666.duostatusbar.fx
+
+import android.content.Context
+import android.content.Intent
+import android.os.BatteryManager
+import android.os.Looper
+import androidx.test.core.app.ApplicationProvider
+import io.github.kvmy666.duostatusbar.hook.*
+import org.junit.Assert.*
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows
+import org.robolectric.annotation.Config
+import java.util.concurrent.TimeUnit
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk=[35],manifest=Config.NONE)
+class EffectsControllerTest {
+    private fun set(owner:Any,name:String,value:Any) {
+        owner.javaClass.getDeclaredField(name).apply { isAccessible=true }.set(owner,value)
+    }
+    private fun get(owner:Any,name:String):Any = owner.javaClass.getDeclaredField(name).apply { isAccessible=true }.get(owner)
+    private fun call(owner:Any,name:String) = owner.javaClass.getDeclaredMethod(name).apply { isAccessible=true }.invoke(owner)
+    private fun fixture():Pair<EffectsController,DuoCanvasView> {
+        val context=ApplicationProvider.getApplicationContext<Context>()
+        val host=DuoIconHost(context)
+        val view=DuoCanvasView(context).apply {
+            layout(0,0,120,136);animationsEnabled=false
+            render(DuoMapping.visual(72,false,false,true,3,4,false))
+        }
+        set(host,"element",view)
+        val controller=EffectsController(context,host) { }
+        set(controller,"running",true)
+        return controller to view
+    }
+    @Test fun `unknown charger power still animates and never monopolizes the carousel`() {
+        val (controller,view)=fixture()
+        set(controller,"airplane",true);set(controller,"bluetooth",true)
+        val indicators=get(controller,"indicators")
+        set(indicators,"torch",true);set(indicators,"locationEnabled",true)
+        controller.battery(Intent(Intent.ACTION_BATTERY_CHANGED).putExtra(BatteryManager.EXTRA_PLUGGED,1),72,true)
+        assertTrue(view.effects.charging)
+        assertTrue(view.effects.chargeMs>=0)
+        val seen=mutableSetOf<SlotIcon>()
+        for(i in 0..20) {
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(3200,TimeUnit.MILLISECONDS)
+            view.effects.slot.icon?.let(seen::add)
+        }
+        assertTrue(seen.containsAll(listOf(SlotIcon.AIRPLANE,SlotIcon.BLUETOOTH,SlotIcon.LOCATION,SlotIcon.TORCH,SlotIcon.BOLT)))
+        controller.stop();view.teardown()
+    }
+    @Test fun `unlock after a long lock screen has exclusive check despite camera charge audio and pocket`() {
+        val (controller,view)=fixture()
+        set(controller,"camera",true);set(controller,"charging",true)
+        set(controller,"bluetooth",true);set(controller,"audioAt",android.os.SystemClock.uptimeMillis())
+        set(controller,"screenOnAt",-100000L);set(controller,"screen",false)
+        set(controller,"pocket",true);set(controller,"stoppedAt",android.os.SystemClock.uptimeMillis())
+        call(controller,"updateCycle")
+        controller.broadcast(Intent(Intent.ACTION_USER_PRESENT))
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(1500,TimeUnit.MILLISECONDS)
+        assertTrue(view.effects.checkMs in 1450..1550)
+        assertEquals(-1L,view.effects.audioMs)
+        assertEquals(1f,EffectTimeline.check(view.effects.checkMs),0f)
+        assertEquals(0f,EffectTimeline.checkNormal(view.effects.checkMs),0f)
+        assertEquals(1f,view.alpha,0f)
+        assertTrue(view.effects.charging)
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(1350,TimeUnit.MILLISECONDS)
+        assertTrue(EffectTimeline.check(view.effects.checkMs) in .1f.. .9f)
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(400,TimeUnit.MILLISECONDS)
+        assertEquals(-1L,view.effects.checkMs)
+        controller.stop();view.teardown()
+    }
+    @Test fun `brief proximity noise does not repeatedly freeze the carousel`() {
+        val (controller,view)=fixture()
+        val request=controller.javaClass.getDeclaredMethod("requestPocket",Boolean::class.javaPrimitiveType).apply { isAccessible=true }
+        repeat(5) {
+            request.invoke(controller,true)
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(250,TimeUnit.MILLISECONDS)
+            assertFalse(get(controller,"pocket") as Boolean)
+            request.invoke(controller,false)
+        }
+        request.invoke(controller,true)
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(500,TimeUnit.MILLISECONDS)
+        assertTrue(get(controller,"pocket") as Boolean)
+        request.invoke(controller,false)
+        assertFalse(get(controller,"pocket") as Boolean)
+        controller.stop();view.teardown()
+    }
+}

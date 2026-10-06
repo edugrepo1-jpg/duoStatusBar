@@ -5,7 +5,9 @@ import kotlin.math.PI
 
 /** Pure timing rules: all input times are monotonic milliseconds, never wall-clock time. */
 internal object EffectTimeline {
-    const val UNLOCK_MS = 980L
+    const val CHECK_MS = 3000L
+    const val UNLOCK_MS = CHECK_MS + 160L
+    const val CHECK_FADE_OUT_AT = CHECK_MS - 280L
     const val AUDIO_MS = 4000L
     const val CHARGE_MS = 3000L
     const val PULSE_MS = 1800L
@@ -13,12 +15,12 @@ internal object EffectTimeline {
         (now - began).takeIf { allowed && it in 0 until duration } ?: -1L
     fun smooth(t: Float): Float = t.coerceIn(0f, 1f).let { it * it * (3f - 2f * it) }
     fun check(t: Long): Float = if (t !in 0 until UNLOCK_MS) 0f else
-        smooth((t - 120) / 160f) * (1f - smooth((t - 700) / 120f))
+        smooth((t - 120) / 160f) * (1f - smooth((t - CHECK_FADE_OUT_AT) / 280f))
     fun checkNormal(t: Long): Float = when {
         t !in 0 until UNLOCK_MS -> 1f
         t < 120 -> 1f - smooth(t / 120f)
-        t < 820 -> 0f
-        else -> smooth((t - 820) / 160f)
+        t < CHECK_MS -> 0f
+        else -> smooth((t - CHECK_MS) / 160f)
     }
     fun audio(t: Long): Float = if (t !in 0 until AUDIO_MS) 0f else
         smooth((t - 120) / 160f) * (1f - smooth((t - 3720) / 120f))
@@ -69,18 +71,20 @@ internal class SlotCycle {
         if(items==unique)return
         if(!initialized){initialized=true;items=unique;began=now;swap.update(items.firstOrNull()?.ordinal ?: -1,now,false);return}
         val before=frame(now).icon
+        val phase=((pausedAt ?: now)-began).coerceAtLeast(0)%3000L
         val urgent=unique.firstOrNull { it !in items && it in listOf(SlotIcon.CAMERA,SlotIcon.MICROPHONE,SlotIcon.RECORD) }
         items=unique
         val chosen=urgent ?: before?.takeIf { it in items } ?: items.firstOrNull()
         val index=items.indexOf(chosen).coerceAtLeast(0)
-        began=now-index*3000L;pausedAt=null
+        // Retain elapsed dwell time when the active set changes; polling must not starve later icons.
+        began=(pausedAt ?: now)-index*3000L-if(urgent!=null)0L else phase
         swap.update(chosen?.ordinal ?: -1,now,true)
     }
     fun pause(now:Long){if(pausedAt==null)pausedAt=now}
     fun resume(now:Long){pausedAt?.let { began+=now-it;swap.shiftTime(now-it) };pausedAt=null}
     fun preferWifi(now:Long){
         val preferred=items.firstOrNull { it==SlotIcon.WIFI || it==SlotIcon.WIFI_OFFLINE } ?: return
-        items=listOf(preferred)+items.filter { it!=preferred };began=now;swap.update(preferred.ordinal,now,false)
+        began=now-items.indexOf(preferred)*3000L;swap.update(preferred.ordinal,now,false)
     }
     fun frame(now:Long):SlotFrame {
         val time=pausedAt ?: now

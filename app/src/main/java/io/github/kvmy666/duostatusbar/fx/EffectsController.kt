@@ -46,6 +46,12 @@ internal class EffectsController(private val context: Context, private val host:
     private var running = false
     private var screen = true
     private var pocket = false
+    private var pocketCandidate = false
+    private val pocketTick = Runnable { setPocket(pocketCandidate) }
+    private fun requestPocket(value:Boolean) {
+        if (!value) { pocketCandidate=false;handler.removeCallbacks(pocketTick);setPocket(false) }
+        else if(!pocketCandidate) { pocketCandidate=true;handler.postDelayed(pocketTick,500L) }
+    }
     private var near = false
     private var faceDown = false
     private var stoppedAt = 0L
@@ -53,6 +59,9 @@ internal class EffectsController(private val context: Context, private val host:
     private fun now() = (if (pocket) stoppedAt else SystemClock.uptimeMillis()) - clockOffset
     private var checkAt = -100000L
     private var checkWifiRestored=true
+    private var checkCyclePaused=false
+    private var activeIcons=emptyList<SlotIcon>()
+    private var loggedSlot:SlotIcon?=null
     private var pulseAt = -100000L
     private var chargeAt = -100000L
     private var audioAt = -100000L
@@ -90,7 +99,7 @@ internal class EffectsController(private val context: Context, private val host:
                 if (!cameraReadFailed) { cameraReadFailed = true; L.w("Câmera: tarefa atual indisponível nesta ROM (não verificado)") }
             } else {
                 val next = isCamera(task.topActivity?.packageName.orEmpty())
-                if (next != camera) { camera = next; host.effectsHidden(camera); L.i("Câmera: invisível=$camera"); draw() }
+                if (next != camera) { camera = next; L.i("Câmera: invisível=$camera"); draw() }
             }
             handler.postDelayed(this, 500)
         }
@@ -114,7 +123,7 @@ internal class EffectsController(private val context: Context, private val host:
                 Sensor.TYPE_PROXIMITY -> near = event.values[0] < minOf(event.sensor.maximumRange, 5f)
                 Sensor.TYPE_ACCELEROMETER -> faceDown = event.values[2] < -7f
             }
-            setPocket(near || faceDown)
+            requestPocket(near || faceDown)
         }
     }
     private inline fun guarded(name: String, block: () -> Unit) {
@@ -220,8 +229,12 @@ internal class EffectsController(private val context: Context, private val host:
                 L.i("Carga rápida: ${if (systemFast == true) "BatteryStatus do sistema" else "estimativa corrente × tensão >= 15 W"}; brilho 3000 ms")
             } else if (justPlugged) L.i("Carga rápida: potência não confirmada; brilho não disparado")
         }
+        // The connection effect exists for every charger, independently of fast-charge telemetry.
+        if (charging && justPlugged && enabled(256)) {
+            chargeAt=now();L.i("Carregamento: brilho no arco 3000 ms; rotação de ícones mantida")
+        }
         if (!charging) chargeAt = -100000L
-        draw()
+        updateCycle();draw()
     }
     private fun beginPulse(type: Int) { pulseRed = type == 2; pulseAt = now(); lastPulse = pulseAt; L.i("Pulso crítico: ${if (pulseRed) "vermelho" else "âmbar"}, 3 ciclos") }
     private var batterySpeedClass: Class<*>? = null
@@ -274,10 +287,15 @@ internal class EffectsController(private val context: Context, private val host:
                 if(indicators.recording)add(SlotIcon.RECORD)
             }
         }
+        if(items!=activeIcons) {
+            activeIcons=items
+            L.i("Ícones ativos (${items.size}): ${items.joinToString()}; BT=$bluetooth GPS=${indicators.location} carga=$charging")
+        }
         cycle.update(items, now())
     }
     private fun setPocket(value: Boolean) {
-        val next = value && Fx.enabled(64) && screen
+        val checkPriority = SystemClock.uptimeMillis()-lastUnlock in 0 until EffectTimeline.UNLOCK_MS
+        val next = value && Fx.enabled(64) && screen && !checkPriority
         if (next == pocket) return
         if (next) { stoppedAt = SystemClock.uptimeMillis(); pocket = true; handler.removeCallbacks(tick); handler.removeCallbacks(cameraTick);handler.removeCallbacks(indicatorsTick) }
         else { clockOffset += SystemClock.uptimeMillis() - stoppedAt; pocket = false; if (screen) { if(Fx.enabled(32))handler.post(cameraTick);handler.post(indicatorsTick) } }
@@ -290,7 +308,7 @@ internal class EffectsController(private val context: Context, private val host:
         val wanted = screen && Fx.enabled(64)
         if (wanted == sensorsRegistered) return
         sensorsRegistered = wanted
-        if (!wanted) { sensors?.unregisterListener(sensorListener); near = false; faceDown = false; setPocket(false) }
+        if (!wanted) { sensors?.unregisterListener(sensorListener); near = false; faceDown = false; requestPocket(false) }
         else for (type in intArrayOf(Sensor.TYPE_PROXIMITY, Sensor.TYPE_ACCELEROMETER)) {
             sensors?.getDefaultSensor(type)?.let { sensors?.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_NORMAL, handler) }
         }
@@ -316,11 +334,15 @@ internal class EffectsController(private val context: Context, private val host:
     }
     private fun unlock() {
         val realNow = SystemClock.uptimeMillis()
-        if (!enabled(1) || !screen || realNow - screenOnAt > 3500 || realNow - lastUnlock < 2500) return
-        if (biometricHooks > 0 && realNow - biometricAt >= 6000) { L.i("Check ignorado: sem autenticação biométrica recente"); return }
-        lastUnlock = realNow; checkAt = now();checkWifiRestored=false
-        restoreClock(); clockView = host.effectClock(); clockColors = clockView?.textColors
-        L.i("Check de desbloqueio: início")
+        // USER_PRESENT confirms unlocking by biometric OR PIN; Samsung need not call the probed hook.
+        if (!enabled(1) || realNow-lastUnlock < EffectTimeline.UNLOCK_MS) return
+        screen=true;lastUnlock=realNow
+        if(pocket)setPocket(false)
+        checkAt=now();audioAt=-100000L;checkWifiRestored=false
+        cycle.pause(now());checkCyclePaused=true
+        host.setElementsVisible(true);host.effectsHidden(false)
+        restoreClock();clockView=host.effectClock();clockColors=clockView?.textColors
+        L.i("Check de desbloqueio: 3000 ms, prioridade exclusiva e saída com fade out")
     }
     private fun restoreClock() { clockColors?.let { clockView?.setTextColor(it) }; clockColors = null; clockView = null }
     private fun draw() {
@@ -329,18 +351,25 @@ internal class EffectsController(private val context: Context, private val host:
         val time = now()
         fun age(at: Long, duration: Long, bit: Int): Long = EffectTimeline.age(time, at, duration, screen && enabled(bit))
         val check = age(checkAt, EffectTimeline.UNLOCK_MS, 1)
-        if(check>=120&&!checkWifiRestored){cycle.preferWifi(time);checkWifiRestored=true}
+        if(check<0&&checkCyclePaused) {
+            cycle.resume(time);checkCyclePaused=false
+            cycle.preferWifi(time);checkWifiRestored=true
+            pocketCandidate=false;requestPocket(near||faceDown)
+        }
         val pulse = age(pulseAt, EffectTimeline.PULSE_MS, 512)
         val charge = age(chargeAt, EffectTimeline.CHARGE_MS, 256)
-        val audioAge = age(audioAt, EffectTimeline.AUDIO_MS, 16)
+        val audioAge = if(check>=0)-1L else age(audioAt, EffectTimeline.AUDIO_MS, 16)
+        host.effectsHidden(camera && check<0)
+        val slot=cycle.frame(time).let { if(host.animationsEnabled)it else it.copy(opacity=1f,scale=1f) }
+        if(slot.icon!=loggedSlot) { loggedSlot=slot.icon;L.i("Ícone exibido: ${slot.icon}; check=${check>=0} carga=$charging") }
         if (check >= 0) clockColors?.let { clockView?.setTextColor(CanvasMotion.blend(it.defaultColor, 0xFF3DDC84.toInt(), EffectTimeline.unlockColor(check))) }
         else restoreClock()
         host.applyEffects(EffectFrame(check, pulse, pulseRed, charge, audioAge,
-            cycle.frame(time).let { if (host.animationsEnabled) it else it.copy(opacity = 1f, scale = 1f) }, (Fx.enabled(8) && hotspot) || (Fx.enabled(4) && airplane),
+            slot, (Fx.enabled(8) && hotspot) || (Fx.enabled(4) && airplane),
             Fx.enabled(512) && !charging && level in 0..9,
             Fx.enabled(1024), enabled(2048), time,
             indicators.headphoneBattery, networkText, Fx.enabled(4)||Fx.enabled(8192)||Fx.enabled(4096), charging&&enabled(256)), camera)
-        if (!screen || camera || !host.animationsEnabled) return
+        if (!screen || (camera&&check<0) || !host.animationsEnabled) return
         val selected=cycle.frame(time).icon
         val active = check >= 0 || pulse >= 0 || charge >= 0 || audioAge >= 0 || charging || selected==SlotIcon.RECORD || selected==SlotIcon.MEDIA
         val delay = if (active || (Fx.enabled(8) && hotspot)) 16L else cycle.nextDelay(time)

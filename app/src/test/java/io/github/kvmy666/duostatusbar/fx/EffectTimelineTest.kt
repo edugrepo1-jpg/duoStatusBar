@@ -31,11 +31,13 @@ class EffectTimelineTest {
         assertEquals(-1L, EffectTimeline.age(3100,100,EffectTimeline.CHARGE_MS,true))
         assertEquals(-1L, EffectTimeline.age(200,100,EffectTimeline.AUDIO_MS,false))
     }
-    @Test fun `check color lasts 400ms and sequential handover ends at 980ms`() {
+    @Test fun `check lasts three seconds and gives way only after fade out`() {
         assertTrue(EffectTimeline.unlockColor(200)>0f)
         assertEquals(0f,EffectTimeline.unlockColor(400),0f)
         assertTrue(EffectTimeline.check(650)>0f)
-        assertEquals(0f,EffectTimeline.check(980),0f)
+        assertEquals(1f,EffectTimeline.check(2720),0f)
+        assertTrue(EffectTimeline.check(2860) in .49f.. .51f)
+        assertEquals(0f,EffectTimeline.check(3000),0f)
     }
     @Test fun `power threshold excludes invalid readings and discharging current`() {
         assertTrue(EffectTimeline.fastCharge(3_000_000,5000))
@@ -70,10 +72,11 @@ class EffectTimelineTest {
         assertEquals(SlotIcon.SHARE,cycle.frame(3000).icon)
     }
     @Test fun `check and underlying icon never overlap at any millisecond`() {
-        for(t in -1L..1100L)assertEquals("time=$t",0f,EffectTimeline.check(t)*EffectTimeline.checkNormal(t),0f)
+        for(t in -1L..3300L)assertEquals("time=$t",0f,EffectTimeline.check(t)*EffectTimeline.checkNormal(t),0f)
         assertEquals(1f,EffectTimeline.checkNormal(0),0f)
         assertEquals(0f,EffectTimeline.checkNormal(700),0f)
-        assertEquals(1f,EffectTimeline.checkNormal(980),0f)
+        assertEquals(0f,EffectTimeline.checkNormal(3000),0f)
+        assertEquals(1f,EffectTimeline.checkNormal(3160),0f)
     }
     @Test fun `audio and underlying icon never overlap at any millisecond`() {
         for(t in -1L..4100L)assertEquals("time=$t",0f,EffectTimeline.audio(t)*EffectTimeline.audioNormal(t),0f)
@@ -108,5 +111,33 @@ class EffectTimelineTest {
         assertEquals(SlotIcon.MICROPHONE,c.frame(1120).icon)
         assertEquals(0f,c.frame(1120).opacity,0f)
         assertEquals(1f,c.frame(1280).opacity,0f)
+    }
+    @Test fun `all active icons rotate for several minutes including charge and privacy`() {
+        val icons=SlotIcon.entries
+        val c=SlotCycle();c.update(icons,0)
+        val seen=mutableSetOf<SlotIcon>()
+        for(time in 0L..(icons.size*6000L) step 16) {
+            if(time%2000L==0L)c.update(icons,time)
+            val frame=c.frame(time)
+            if(frame.opacity>.99f)frame.icon?.let(seen::add)
+        }
+        assertEquals(icons.toSet(),seen)
+    }
+    @Test fun `changing GPS state does not restart dwell and starve Bluetooth and torch`() {
+        val fixed=listOf(SlotIcon.AIRPLANE,SlotIcon.BLUETOOTH,SlotIcon.BOLT,SlotIcon.TORCH)
+        val c=SlotCycle();c.update(fixed,0)
+        val seen=mutableSetOf<SlotIcon>()
+        for(time in 0L..90000L step 16) {
+            if(time%2000L==0L)c.update(fixed+if((time/2000)%2L==0L)listOf(SlotIcon.LOCATION) else emptyList(),time)
+            val frame=c.frame(time)
+            if(frame.opacity>.99f)frame.icon?.let(seen::add)
+        }
+        assertTrue("missing=${fixed.toSet()-seen}",seen.containsAll(fixed))
+    }
+    @Test fun `return to WiFi does not reorder the active list and restart later polls`() {
+        val icons=listOf(SlotIcon.AIRPLANE,SlotIcon.WIFI,SlotIcon.BLUETOOTH,SlotIcon.BOLT)
+        val c=SlotCycle();c.update(icons,0);c.preferWifi(1000)
+        c.update(icons,2800)
+        assertEquals(SlotIcon.BLUETOOTH,c.frame(4160).icon)
     }
 }

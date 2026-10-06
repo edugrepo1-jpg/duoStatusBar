@@ -12,7 +12,7 @@ import kotlinx.coroutines.delay
 
 private data class EffectOption(val bit: Int, val label: String, val detail: String)
 private val effectOptions = listOf(
-    EffectOption(1, "Check no desbloqueio", "Confirma o desbloqueio com um check verde no anel."),
+    EffectOption(1, "Check no desbloqueio", "Check exclusivo por 3 segundos, após biometria ou PIN, com saída em fade out."),
     EffectOption(2, "Alinhamento automático", "Alinha a altura aos dígitos do relógio, mantendo a posição horizontal escolhida."),
     EffectOption(4, "Rotação de ícones", "Alterna os estados ativos a cada 3 segundos, com saída antes da entrada."),
     EffectOption(8, "Indicador de roteador Wi-Fi", "Mostra o compartilhamento quando o hotspot tá ligado."),
@@ -20,7 +20,7 @@ private val effectOptions = listOf(
     EffectOption(32, "Ocultar na câmera", "Deixa o anel invisível e sem toques enquanto a câmera tá aberta."),
     EffectOption(64, "Pausar no bolso", "Pausa os efeitos no bolso ou com a tela virada pra baixo."),
     EffectOption(128, "Expansão ao acender", "O anel sai do relógio ao acender a tela e volta ao apagar."),
-    EffectOption(256, "Brilho de carga rápida", "Mostra um brilho verde por 3 segundos ao conectar carga rápida."),
+    EffectOption(256, "Brilho de carga rápida", "Brilho por 3 segundos ao conectar qualquer carregador e feixe contínuo durante a carga."),
     EffectOption(512, "Alerta de bateria fraca", "Pulsa três vezes abaixo de 10% e deixa um ponto discreto."),
     EffectOption(1024, "Vidro no anel", "Borda fina e fundo translúcido, com desfoque quando disponível."),
     EffectOption(2048, "Movimento com molas", "Suaviza as expansões, retrações e trocas de ícones."),

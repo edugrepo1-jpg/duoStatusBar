@@ -191,14 +191,17 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                 addAction(WifiManager.WIFI_STATE_CHANGED_ACTION)
                 addAction(ConnectivityManager.CONNECTIVITY_ACTION)
                 addAction(ACTION_SERVICE_STATE_CHANGED)
-                addAction(android.bluetooth.BluetoothAdapter.ACTION_STATE_CHANGED)
                 addAction(android.nfc.NfcAdapter.ACTION_ADAPTER_STATE_CHANGED)
-                addAction("android.bluetooth.device.action.BATTERY_LEVEL_CHANGED")
                 addAction(android.app.AlarmManager.ACTION_NEXT_ALARM_CLOCK_CHANGED)
                 addAction(android.location.LocationManager.PROVIDERS_CHANGED_ACTION)
+                addAction(android.location.LocationManager.MODE_CHANGED_ACTION)
                 addAction("android.net.wifi.WIFI_AP_STATE_CHANGED")
             }
             context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            context.registerReceiver(receiver, IntentFilter().apply {
+                addAction(android.bluetooth.BluetoothAdapter.ACTION_STATE_CHANGED)
+                addAction("android.bluetooth.device.action.BATTERY_LEVEL_CHANGED")
+            }, android.Manifest.permission.BLUETOOTH_CONNECT, handler, Context.RECEIVER_EXPORTED)
             effects.start()
             // The sticky battery broadcast is not guaranteed to be delivered to the receiver at
             // registration, so read it directly: without this the element shows its default 100 % (and

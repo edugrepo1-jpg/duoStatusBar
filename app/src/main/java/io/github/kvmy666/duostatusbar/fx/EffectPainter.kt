@@ -37,9 +37,9 @@ internal class EffectPainter {
         try {
             if (ring && (frame.chargeMs >= 0 || frame.charging)) {
                 val thick = 8f * thickPercent.coerceIn(1,300) / 100f
-                paint.style = Paint.Style.STROKE; paint.strokeWidth = minOf(3f, thick * .6f)
+                paint.style = Paint.Style.STROKE; paint.strokeWidth = minOf(4f, thick * .85f)
                 rotation.setRotate(frame.motionMs * .18f); gradient.setLocalMatrix(rotation); paint.shader = gradient
-                paint.alpha = ((if (frame.chargeMs >= 0) 220f * minOf(1f, frame.chargeMs / 180f, (3000 - frame.chargeMs) / 300f) else 100f) * opacity).toInt().coerceIn(0, 255)
+                paint.alpha = ((if (frame.chargeMs >= 0) 220f * minOf(1f, frame.chargeMs / 180f, (3000 - frame.chargeMs) / 300f) else 210f) * opacity).toInt().coerceIn(0, 255)
                 val radius = (111f - thick) / 2f
                 bounds.set(-radius,-radius,radius,radius)
                 val geometry = io.github.kvmy666.duostatusbar.hook.RingGeometry
@@ -62,7 +62,7 @@ internal class EffectPainter {
         val inner = 55.5f - 8f * thick.coerceIn(1, 300) / 100f
         val k = minOf(1f, inner * 1.25f / 55.2f)
         val size = 55.2f * k
-        val scale = (.8f + .2f * EffectTimeline.smooth((age - 120) / 160f)) * (1 - .15f * EffectTimeline.smooth((age - 700) / 120f))
+        val scale = (.8f + .2f * EffectTimeline.smooth((age - 120) / 160f)) * (1 - .15f * EffectTimeline.smooth((age - EffectTimeline.CHECK_FADE_OUT_AT) / 280f))
         val save = canvas.save(); canvas.translate(0f, 1.5f); canvas.scale(scale, scale)
         path.reset(); path.moveTo(-.42f * size, .04f * size); path.lineTo(-.12f * size, .34f * size); path.lineTo(.44f * size, -.34f * size)
         measure.setPath(path, false); trace.reset()

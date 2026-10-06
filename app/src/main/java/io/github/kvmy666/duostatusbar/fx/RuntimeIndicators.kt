@@ -17,7 +17,9 @@ import io.github.kvmy666.duostatusbar.L
 internal class RuntimeIndicators(private val context: Context, private val handler: Handler, private val changed: () -> Unit) {
     var camera = false; private set
     var microphone = false; private set
-    var location = false; private set
+    private var locationInUse = false
+    var locationEnabled = false; private set
+    val location get() = locationEnabled || locationInUse
     var torch = false; private set
     var recording = false; private set
     var alarm = false; private set
@@ -45,7 +47,7 @@ internal class RuntimeIndicators(private val context: Context, private val handl
             if (active) operations.add(key) else operations.remove(key)
             camera=operations.any { it.startsWith(AppOpsManager.OPSTR_CAMERA+"|") }
             microphone=operations.any { it.startsWith(AppOpsManager.OPSTR_RECORD_AUDIO+"|") }
-            location=operations.any { it.startsWith(AppOpsManager.OPSTR_FINE_LOCATION+"|") || it.startsWith(AppOpsManager.OPSTR_COARSE_LOCATION+"|") }
+            locationInUse=operations.any { it.startsWith(AppOpsManager.OPSTR_FINE_LOCATION+"|") || it.startsWith(AppOpsManager.OPSTR_COARSE_LOCATION+"|") }
             changed()
         }
     }
@@ -94,6 +96,9 @@ internal class RuntimeIndicators(private val context: Context, private val handl
         }
     }
     fun refresh() {
+        read("localização habilitada") {
+            locationEnabled=context.getSystemService(android.location.LocationManager::class.java)?.isLocationEnabled==true
+        }
         read("Bluetooth") { bluetooth=context.getSystemService(BluetoothManager::class.java)?.adapter?.isEnabled==true }
         read("NFC") { nfc=android.nfc.NfcAdapter.getDefaultAdapter(context)?.isEnabled==true }
         read("hotspot") { val manager=context.getSystemService(android.net.wifi.WifiManager::class.java);hotspot=manager?.javaClass?.getMethod("isWifiApEnabled")?.invoke(manager)==true }
