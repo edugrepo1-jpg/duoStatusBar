@@ -1,0 +1,1 @@
+Compilar com SDK 36, Java 17 ou 21. Execute ./gradlew :app:testDebugUnitTest :app:assembleDebug. No host local foi usado o equivalente build-canvas.gradle e ECJ. Use sua própria chave para assinar. O diretório rive é somente referência histórica; renderer do APK é Canvas.

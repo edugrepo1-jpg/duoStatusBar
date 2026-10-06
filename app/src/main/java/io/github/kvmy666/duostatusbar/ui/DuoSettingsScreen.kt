@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -24,6 +25,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.platform.testTag
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -89,7 +99,13 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
     var status by remember { mutableStateOf(DuoPrefs.status(context)) }
     var history by remember { mutableStateOf(DuoPrefs.statusHistory(context)) }
     var dump by remember { mutableStateOf(DuoPrefs.dump(context)) }
-    var query by remember { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf("") }
+    var page by rememberSaveable { mutableStateOf(StudioPage.HOME) }
+    val scroll = rememberScrollState()
+    LaunchedEffect(page) { scroll.scrollTo(0) }
+    BackHandler(enabled = page != StudioPage.HOME || query.isNotEmpty()) {
+        if (query.isNotEmpty()) query = "" else page = StudioPage.HOME
+    }
     val scope = rememberCoroutineScope()
     var collecting by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf("") }
@@ -208,64 +224,39 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
         }
     }
 
+    Scaffold(
+        modifier = modifier.fillMaxSize().safeDrawingPadding().imePadding(),
+        contentWindowInsets = WindowInsets(0,0,0,0),
+        containerColor = MaterialTheme.colorScheme.background,
+        bottomBar = { StudioNavigation(page) { page = it; query = "" } }
+    ) { insets ->
     Column(
-        modifier = modifier
-            .fillMaxSize()
-            // Issue #3: edge-to-edge draws under the system bars, so the content is inset away from the
-            // status bar and navigation bar instead of being clipped by them.
-            .safeDrawingPadding()
-            .verticalScroll(rememberScrollState())
-            .padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        modifier = Modifier.fillMaxSize().padding(insets)
+            .verticalScroll(scroll).padding(horizontal=20.dp,vertical=20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(52.dp)
-                    .clip(CircleShape)
-                    .background(BRAND_WINE),
-                contentAlignment = Alignment.Center
-            ) {
-                Image(
-                    painter = painterResource(R.mipmap.ic_launcher_foreground),
-                    contentDescription = null,
-                    modifier = Modifier.size(38.dp)
-                )
-            }
-            Column(Modifier.padding(start = 14.dp)) {
-                Text(
-                    stringResource(R.string.app_name),
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = stringResource(R.string.app_tagline),
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
+        StudioHeader(page,orientation==DuoOrientation.LANDSCAPE,query.isNotBlank())
+        TextField(
+            value=query,onValueChange={query=it},singleLine=true,
+            placeholder={Text("Buscar um ajuste…",style=MaterialTheme.typography.bodyMedium)},
+            leadingIcon={StudioGlyph(StudioSymbol.SEARCH,MaterialTheme.colorScheme.onSurfaceVariant,Modifier.size(20.dp))},
+            trailingIcon=if(query.isNotEmpty()){{TextButton(onClick={query=""}){Text("Limpar")}}}else null,
+            shape=RoundedCornerShape(18.dp),
+            colors=TextFieldDefaults.colors(
+                focusedContainerColor=MaterialTheme.colorScheme.surface,
+                unfocusedContainerColor=MaterialTheme.colorScheme.surface,
+                focusedIndicatorColor=Color.Transparent,unfocusedIndicatorColor=Color.Transparent
+            ),modifier=Modifier.fillMaxWidth().testTag("studio-search")
+        )
+        if(page==StudioPage.HOME && query.isBlank()) {
+            StudioHome(settings,moduleHealth.state,onUpdate) { page=it }
+        } else if(query.isNotBlank() && search("Personalizar a barra","Ativar","Usar o Duo Status Bar")) {
+            StudioCard { SettingSwitch("Personalizar a barra","Ative o Duo na orientação atual.",settings.enabled,onChange={onUpdate(settings.copy(enabled=it))}) }
         }
-
-        Text(
-            text = stringResource(
-                if (orientation == DuoOrientation.LANDSCAPE) R.string.settings_orientation_landscape
-                else R.string.settings_orientation_portrait
-            ),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.Medium
-        )
-
-        OutlinedTextField(
-            value = query,
-            onValueChange = { query = it },
-            label = { Text(stringResource(R.string.settings_search)) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
 
         // Red health card: not loaded, running old code after an update, or loaded but unable to report
         // (the One UI 8 "Unknown authority" case). Recovery buttons plus a one-tap report.
-        if (moduleHealth.state != ModuleState.OK && query.isBlank()) {
+        if (moduleHealth.state != ModuleState.OK && query.isBlank() && page == StudioPage.MORE) {
             ModuleHealthCard(
                 state = moduleHealth.state,
                 busy = collecting,
@@ -277,7 +268,7 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
 
         // Fallback alert (see DuoPrefs.fallback): the module could not draw the animated element and is
         // using the simple drawing. Ask for the log where the developer watches — Telegram or GitHub.
-        if (fallback.isNotEmpty() && query.isBlank()) {
+        if (fallback.isNotEmpty() && query.isBlank() && page == StudioPage.MORE) {
             FallbackAlert(
                 detail = fallback,
                 busy = collecting,
@@ -307,7 +298,7 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
         // A leftover adb override is the other reason the simple drawing shows with no warning: the app's
         // own settings ask for Rive, but `Settings.Global` outranks them. Explain it and offer the clear.
         val override = stageOverride
-        if (override != null && query.isBlank()) {
+        if (override != null && query.isBlank() && page == StudioPage.MORE) {
             StageOverrideAlert(
                 value = override,
                 busy = clearingOverride,
@@ -341,32 +332,22 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             )
         }
 
-        EffectsSection(settings, onUpdate, search)
-        EffectsPreview(settings,search)
-        CustomizeSection(
-            settings = settings,
-            onUpdate = onUpdate,
-            matches = search,
-            onRestart = { restartSystemUi(context) }
-        )
-
-        AnimationsSection(
-            settings = settings,
-            onUpdate = onUpdate,
-            matches = search
-        )
-
-        AppearanceSection(
-            settings = settings,
-            onUpdate = onUpdate,
-            matches = search
-        )
-
-        IconsSection(
-            settings = settings,
-            onUpdate = onUpdate,
-            matches = search
-        )
+        if(StudioPage.VISUAL.visible(page,query)) {
+            GeometrySection(settings,onUpdate,search)
+            CustomizeSection(settings,onUpdate,search,onRestart={restartSystemUi(context)})
+            AppearanceSection(settings,onUpdate,search)
+        }
+        if(StudioPage.EFFECTS.visible(page,query)) {
+            if(search("Experimente o movimento","Demonstração","Ícones","Efeitos")) StudioCard {
+                SectionTitle("Experimente o movimento")
+                Text("Veja os ícones e os efeitos com estados simulados.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                EffectsPreview(settings,search)
+            }
+            AnimationsSection(settings,onUpdate,search)
+            EffectsSection(settings,onUpdate,search)
+        }
+        if(StudioPage.MORE.visible(page,query)) {
+        IconsSection(settings,onUpdate,search)
 
         val autoExpand = remember { DuoActions.isAutoExpandInstalled(context) }
         ActionsSection(
@@ -440,6 +421,8 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                 }
             }
         )
+        }
+    }
     }
 }
 

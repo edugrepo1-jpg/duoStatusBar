@@ -1,6 +1,16 @@
 package io.github.kvmy666.duostatusbar.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.draw.rotate
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -64,7 +74,7 @@ internal fun interface SearchGate {
 
 @Composable
 internal fun SectionTitle(text: String) {
-    Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+    Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
 }
 
 /**
@@ -294,16 +304,23 @@ internal fun SettingSwitch(
     onChange: (Boolean) -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(enabled = enabled) { onChange(!checked) },
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        modifier=Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+            .toggleable(checked,enabled=enabled,role=Role.Switch,onValueChange=onChange)
+            .heightIn(min=58.dp).padding(vertical=7.dp),
+        horizontalArrangement=Arrangement.SpaceBetween,
+        verticalAlignment=Alignment.CenterVertically
     ) {
         preview?.invoke()
-        Column(Modifier.weight(1f).padding(start = if (preview == null) 0.dp else 12.dp)) {
-            Text(label, style = MaterialTheme.typography.bodyLarge)
-            detail?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        Column(Modifier.weight(1f).padding(start=if(preview==null)0.dp else 12.dp,end=10.dp),
+            verticalArrangement=Arrangement.spacedBy(3.dp)) {
+            Text(label,style=MaterialTheme.typography.bodyLarge,
+                color=MaterialTheme.colorScheme.onSurface.copy(alpha=if(enabled)1f else .45f))
+            detail?.let { Text(it,style=MaterialTheme.typography.bodySmall,
+                color=MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha=if(enabled)1f else .45f)) }
         }
-        Switch(checked = checked, enabled = enabled, onCheckedChange = onChange)
+        Switch(checked=checked,enabled=enabled,onCheckedChange=null,
+            colors=SwitchDefaults.colors(checkedTrackColor=MaterialTheme.colorScheme.primary,checkedThumbColor=Color.White,
+                uncheckedTrackColor=MaterialTheme.colorScheme.surfaceVariant,uncheckedBorderColor=Color.Transparent))
     }
 }
 
@@ -383,34 +400,49 @@ internal fun LabelledSlider(
     steps: Int = 0,
     enabled: Boolean = true,
     preview: (@Composable () -> Unit)? = null,
+    formatValue: ((Float) -> String)? = null,
     onChange: (Float) -> Unit
 ) {
-    var draft by remember { mutableStateOf(ControlDraft(value.coerceIn(range.start, range.endInclusive))) }
+    var draft by remember { mutableStateOf(ControlDraft(value.coerceIn(range.start,range.endInclusive))) }
     val latestChange by rememberUpdatedState(onChange)
-    LaunchedEffect(value, range, enabled) {
-        draft = if (enabled) draft.external(value.coerceIn(range.start, range.endInclusive))
-            else ControlDraft(value.coerceIn(range.start, range.endInclusive))
+    LaunchedEffect(value,range,enabled) {
+        draft=if(enabled)draft.external(value.coerceIn(range.start,range.endInclusive))
+            else ControlDraft(value.coerceIn(range.start,range.endInclusive))
     }
-    val suffix = "${value.toInt()}%"
-    val shownLabel = if (label.endsWith(suffix)) label.removeSuffix(suffix) + "${draft.value.roundToInt()}%" else label
-    Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+    val percent=label.endsWith("%")
+    val title=if(percent)label.removeSuffix("${value.toInt()}%").trimEnd(' ',':') else label
+    val badge=formatValue?.invoke(draft.value) ?: "${draft.value.roundToInt()}${if(percent)"%" else ""}"
+    val increment=if(steps>0)(range.endInclusive-range.start)/(steps+1) else 1f
+    fun commit(result: Float) {
+        val next=result.coerceIn(range.start,range.endInclusive).roundToInt().toFloat()
+        draft=ControlDraft(next)
+        if(next!=value)latestChange(next)
+    }
+    Column(verticalArrangement=Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
             preview?.invoke()
-            Text(
-                text = shownLabel,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(start = if (preview == null) 0.dp else 12.dp)
-            )
+            Text(title,style=MaterialTheme.typography.bodyLarge,modifier=Modifier.weight(1f))
+            Surface(shape=RoundedCornerShape(10.dp),color=MaterialTheme.colorScheme.primaryContainer) {
+                Text(badge,Modifier.padding(horizontal=10.dp,vertical=6.dp),
+                    style=MaterialTheme.typography.labelLarge,color=MaterialTheme.colorScheme.onPrimaryContainer)
+            }
         }
-        Slider(
-            modifier = Modifier.fillMaxWidth(),
-            value = draft.value, onValueChange = { draft = draft.move(it, range) },
-            onValueChangeFinished = {
-                val result = draft.value.roundToInt().toFloat()
-                draft = draft.finish().copy(value = result)
-                if (result != value) latestChange(result)
-            }, valueRange = range, steps = steps, enabled = enabled
-        )
+        Row(verticalAlignment=Alignment.CenterVertically) {
+            IconButton(onClick={commit(draft.value-increment)},enabled=enabled&&draft.value>range.start,
+                modifier=Modifier.semantics { contentDescription="Diminuir $title" }) {
+                StudioGlyph(StudioSymbol.MINUS,MaterialTheme.colorScheme.onSurfaceVariant,Modifier.size(17.dp))
+            }
+            Slider(
+                modifier=Modifier.weight(1f),value=draft.value,
+                onValueChange={draft=draft.move(it,range)},
+                onValueChangeFinished={commit(draft.value)},valueRange=range,steps=steps,enabled=enabled,
+                colors=SliderDefaults.colors(inactiveTrackColor=MaterialTheme.colorScheme.surfaceVariant)
+            )
+            IconButton(onClick={commit(draft.value+increment)},enabled=enabled&&draft.value<range.endInclusive,
+                modifier=Modifier.semantics { contentDescription="Aumentar $title" }) {
+                StudioGlyph(StudioSymbol.PLUS,MaterialTheme.colorScheme.onSurfaceVariant,Modifier.size(17.dp))
+            }
+        }
     }
 }
 
@@ -435,25 +467,25 @@ internal fun OptionPicker(
     onSelect: (String) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
-    Column {
-        Text(label, style = MaterialTheme.typography.bodyMedium)
+    Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+        Text(label,style=MaterialTheme.typography.bodyLarge)
         Box {
-            OutlinedButton(
-                onClick = { expanded = true },
-                enabled = enabled,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(options.firstOrNull { it.first == selectedKey }?.second ?: selectedKey)
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=.7f))
+                .clickable(enabled=enabled,role=Role.Button){expanded=true}
+                .heightIn(min=50.dp).padding(horizontal=14.dp,vertical=12.dp),
+                verticalAlignment=Alignment.CenterVertically) {
+                Text(options.firstOrNull{it.first==selectedKey}?.second ?: selectedKey,
+                    style=MaterialTheme.typography.bodyMedium,
+                    color=MaterialTheme.colorScheme.primary.copy(alpha=if(enabled)1f else .4f),
+                    modifier=Modifier.weight(1f))
+                StudioGlyph(StudioSymbol.ARROW,MaterialTheme.colorScheme.onSurfaceVariant,Modifier.size(16.dp).rotate(90f))
             }
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                options.forEach { (key, name) ->
-                    DropdownMenuItem(
-                        text = { Text(name) },
-                        onClick = {
-                            expanded = false
-                            onSelect(key)
-                        }
-                    )
+            DropdownMenu(expanded=expanded,onDismissRequest={expanded=false}) {
+                options.forEach { (key,name) ->
+                    DropdownMenuItem(text={Text(name)},
+                        trailingIcon=if(key==selectedKey){{StudioGlyph(StudioSymbol.CHECK,MaterialTheme.colorScheme.primary,Modifier.size(18.dp))}}else null,
+                        onClick={expanded=false;onSelect(key)})
                 }
             }
         }

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.DuoStatusBar" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Red Wine (FR-11): the full tonal set lives in colors.xml; Compose mirrors it in ui/DuoTheme.kt. -->
+        <item name="colorPrimary">@color/wine_primary_dark</item>
+        <item name="colorOnPrimary">@color/wine_on_primary_dark</item>
+        <item name="colorPrimaryContainer">@color/wine_primary_container_dark</item>
+        <item name="colorOnPrimaryContainer">@color/wine_on_primary_container_dark</item>
+        <item name="colorSecondary">@color/wine_secondary_dark</item>
+        <item name="colorOnSecondary">@color/wine_on_secondary_dark</item>
+        <item name="colorTertiary">@color/wine_tertiary_dark</item>
+        <item name="colorError">@color/wine_error_dark</item>
+        <item name="colorSurface">@color/wine_surface_dark</item>
+        <item name="colorOnSurface">@color/wine_on_surface_dark</item>
+        <item name="colorSurfaceVariant">@color/wine_surface_variant_dark</item>
+        <item name="colorOnSurfaceVariant">@color/wine_on_surface_variant_dark</item>
+        <item name="colorOutline">@color/wine_outline_dark</item>
+    </style>
+</resources>

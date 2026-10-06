@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -22,7 +23,7 @@ import kotlinx.coroutines.delay
 /** Demonstrates the APK's actual Canvas painter; simulated inputs are labelled explicitly. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable internal fun EffectsPreview(settings:DuoSettings,search:SearchGate) {
-    if(!search("Prévia dos ícones e efeitos","Demonstração"))return
+    if(!search("Prévia dos ícones e efeitos","Demonstração","Experimente o movimento"))return
     var expanded by remember { mutableStateOf(false) }
     var view by remember { mutableStateOf<DuoCanvasView?>(null) }
     var selected by remember { mutableStateOf<SlotIcon?>(null) }
@@ -38,7 +39,7 @@ import kotlinx.coroutines.delay
     Button(onClick={expanded=!expanded}) { Text(if(expanded)"Fechar demonstração" else "Ver ícones e efeitos") }
     if(!expanded)return
     Text("Demonstração com estados simulados",style=MaterialTheme.typography.bodySmall)
-    Box(Modifier.fillMaxWidth().height(200.dp).background(Color(0xFF101014)),contentAlignment=Alignment.Center) {
+    Box(Modifier.fillMaxWidth().height(200.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)).background(StudioInk),contentAlignment=Alignment.Center) {
         AndroidView(modifier=Modifier.size(168.dp,190.dp),factory={ctx->DuoCanvasView(ctx).also { view=it }},onRelease={it.teardown();view=null},update={it.thickPercent=settings.thickPercent;it.globalPercent=settings.globalPercent;it.alpha=if(ghost)0f else 1f})
     }
     LaunchedEffect(view,selected,paused,level,settings) {
