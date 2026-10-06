@@ -34,8 +34,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.kvmy666.duostatusbar.BuildConfig
-import io.github.kvmy666.duostatusbar.DuoRivePreview
-import io.github.kvmy666.duostatusbar.DuoRiveStill
+import io.github.kvmy666.duostatusbar.DuoCanvasPreview
+import io.github.kvmy666.duostatusbar.DuoCanvasStill
 import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.hook.DuoMapping
 import io.github.kvmy666.duostatusbar.hook.DuoPart
@@ -245,7 +245,7 @@ internal fun AnimationsSection(
                 checked = settings.arrivalEnabled,
                 enabled = settings.enabled && settings.animationsEnabled,
                 preview = {
-                    DuoRivePreview(fireReveal = true) { demo() }
+                    DuoCanvasPreview(fireReveal = true) { demo() }
                 }
             ) { onUpdate(settings.copy(arrivalEnabled = it)) }
             SettingSwitch(
@@ -254,7 +254,7 @@ internal fun AnimationsSection(
                 checked = settings.departureEnabled,
                 enabled = settings.enabled && settings.animationsEnabled,
                 preview = {
-                    DuoRivePreview(fireReveal = true) { phase ->
+                    DuoCanvasPreview(fireReveal = true) { phase ->
                         if (phase < 0.5f) demo() else demo().copy(visible = false)
                     }
                 }
@@ -265,7 +265,7 @@ internal fun AnimationsSection(
                 checked = settings.chargingEnabled,
                 enabled = settings.enabled && settings.animationsEnabled,
                 preview = {
-                    DuoRivePreview { phase -> demo(charging = phase >= 0.5f) }
+                    DuoCanvasPreview { phase -> demo(charging = phase >= 0.5f) }
                 }
             ) { onUpdate(settings.copy(chargingEnabled = it)) }
         }
@@ -279,8 +279,8 @@ internal fun AppearanceSection(
     onUpdate: (DuoSettings) -> Unit,
     matches: SearchGate
 ) {
-    if (matches(stringResource(R.string.section_look), stringResource(R.string.settings_renderer),
-            stringResource(R.string.settings_renderer_detail), stringResource(R.string.settings_clock_font),
+    if (matches(stringResource(R.string.section_look), 
+             stringResource(R.string.settings_clock_font),
             stringResource(R.string.settings_icon_color),
             stringResource(R.string.settings_middle_slot),
             stringResource(R.string.settings_show_airplane),
@@ -301,12 +301,7 @@ internal fun AppearanceSection(
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SectionTitle(stringResource(R.string.section_look))
-            SettingSwitch(
-                label = stringResource(R.string.settings_renderer),
-                detail = stringResource(R.string.settings_renderer_detail),
-                checked = settings.useRive,
-                enabled = settings.enabled
-            ) { onUpdate(settings.copy(useRive = it)) }
+
             SettingSwitch(
                 label = stringResource(R.string.settings_clock_font),
                 detail = stringResource(R.string.settings_clock_font_detail),
@@ -351,7 +346,7 @@ internal fun AppearanceSection(
                         .background(Color(0xFF101014)),
                     contentAlignment = Alignment.Center
                 ) {
-                    DuoRiveStill(
+                    DuoCanvasStill(
                         visual = dndPreview(settings.dndMode),
                         modifier = Modifier.fillMaxSize()
                     )
@@ -493,7 +488,6 @@ internal fun AboutSection(
     status: String,
     history: List<String>,
     moduleLoadAt: Long,
-    accessGranted: Boolean,
     problem: String,
     onProblemChange: (String) -> Unit,
     collecting: Boolean,
@@ -510,12 +504,7 @@ internal fun AboutSection(
     onDownload: () -> Unit
 ) {
     val context = LocalContext.current
-    // Sending is only allowed when the report will actually be useful: the user described the problem
-    // AND there is at least one source of evidence — root, Shizuku, or the module's own pushed log
-    // (the "my log shares fine" case, which needs no root).
-    val described = problem.trim().isNotEmpty()
-    val hasModuleLog = moduleLoadAt > 0L
-    val canSend = described && (accessGranted || hasModuleLog)
+    val emptyStatus = stringResource(R.string.settings_no_status)
     if (matches(stringResource(R.string.section_about), stringResource(R.string.settings_status),
             stringResource(R.string.settings_collect_log),
             stringResource(R.string.settings_contact_developer),
@@ -529,16 +518,28 @@ internal fun AboutSection(
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SectionTitle(stringResource(R.string.section_about))
-            // The raw module status (stage/renderer/attached/…) travels in the report, never on screen —
-            // it is developer jargon, not something a user should have to read.
+            Text(
+                text = status.ifEmpty { emptyStatus },
+                style = MaterialTheme.typography.bodyMedium
+            )
             Text(
                 text = when {
                     moduleLoadAt > 0L ->
                         stringResource(R.string.settings_module_loaded, formatTimestamp(moduleLoadAt))
+                    status.isNotEmpty() -> stringResource(R.string.settings_module_loaded_recent)
                     else -> stringResource(R.string.settings_module_never)
                 },
                 style = MaterialTheme.typography.bodySmall
             )
+            if (history.isNotEmpty()) {
+                Text(stringResource(R.string.settings_history), style = MaterialTheme.typography.labelLarge)
+                history.takeLast(3).forEach { entry ->
+                    Text(
+                        text = entry.substringAfter(' '),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
             // Let the user say what went wrong; it travels with the log so a fix can start from the
             // description rather than from a guess. Then one button packs status + logs and sends them.
             OutlinedTextField(
@@ -549,19 +550,9 @@ internal fun AboutSection(
                 minLines = 2,
                 modifier = Modifier.fillMaxWidth()
             )
-            if (!canSend) {
-                Text(
-                    text = stringResource(
-                        if (!described) R.string.settings_send_need_description
-                        else R.string.settings_send_need_access
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
-                )
-            }
             Button(
                 onClick = onCollect,
-                enabled = !collecting && canSend,
+                enabled = !collecting,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
@@ -589,14 +580,15 @@ internal fun AboutSection(
                     fontWeight = FontWeight.SemiBold
                 )
             }
-            // Optional elevated capture for the log: root (asked for explicitly) or Shizuku. With
-            // neither, the report still carries the module's own log and the device facts.
-            RootAccessSetting()
+            Text(
+                text = stringResource(R.string.settings_collect_log_detail),
+                style = MaterialTheme.typography.bodySmall
+            )
             // Export: save the same report anywhere with the system file picker, independent of
             // Telegram or a network. The escape hatch when the upload path is not available.
             OutlinedButton(
                 onClick = onExport,
-                enabled = !exporting && !collecting && canSend,
+                enabled = !exporting && !collecting,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(

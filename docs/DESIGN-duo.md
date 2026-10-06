@@ -69,7 +69,7 @@ battery level — this reproduces the mapping above without the dash-offset tric
 | Wi-Fi level 0..3 | — | — | arcs appear bottom→up, layer 3→1 | — |
 | Cellular level 0..4 | — | — | — | spheres light 1..N |
 | Airplane on | — | — | arcs merge to the dot, then the plane scales 0→1 from inside and settles in the slot | unchanged |
-| DND on | — | — | configurable: badge or middle-slot occupancy | — |
+| DND / silent | — | — | configurable: badge or middle-slot occupancy | — |
 | Wi-Fi + cellular + airplane all active | — | — | **app setting decides which one owns the middle slot** | — |
 
 ## 5. Animation timeline (FR-25) — trigger: screen-on, unlock, or keyguard appearance

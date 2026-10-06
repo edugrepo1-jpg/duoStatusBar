@@ -50,6 +50,13 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     private var lastRevealAt = 0L
 
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var effectsPaused = false
+    private val effects = io.github.kvmy666.duostatusbar.fx.EffectsController(context, host) { paused ->
+        effectsPaused = paused
+        if (paused) fill?.pause() else { fill?.resume(); render() }
+    }
+    private var refreshPending = false
+    private val refreshRunnable = Runnable { refreshPending = false; refreshNow() }
 
     /** Removes the pending hide when the screen comes back before the departure has finished. */
     private val hideRunnable = Runnable { host.setElementsVisible(false) }
@@ -57,6 +64,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context?, intent: Intent?) {
             try {
+                if (intent != null) effects.broadcast(intent)
                 when (intent?.action) {
                     Intent.ACTION_BATTERY_CHANGED -> onBatteryChanged(intent)
                     PowerManager.ACTION_POWER_SAVE_MODE_CHANGED -> onPowerSaveChanged()
@@ -89,6 +97,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
         charging = plugged || status == BatteryManager.BATTERY_STATUS_CHARGING
         if (charging != wasCharging) L.i("charging -> $charging")
         setLevel(target)
+        effects.battery(intent, level, charging)
     }
 
     private fun onPowerSaveChanged() {
@@ -182,8 +191,15 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                 addAction(WifiManager.WIFI_STATE_CHANGED_ACTION)
                 addAction(ConnectivityManager.CONNECTIVITY_ACTION)
                 addAction(ACTION_SERVICE_STATE_CHANGED)
+                addAction(android.bluetooth.BluetoothAdapter.ACTION_STATE_CHANGED)
+                addAction(android.nfc.NfcAdapter.ACTION_ADAPTER_STATE_CHANGED)
+                addAction("android.bluetooth.device.action.BATTERY_LEVEL_CHANGED")
+                addAction(android.app.AlarmManager.ACTION_NEXT_ALARM_CLOCK_CHANGED)
+                addAction(android.location.LocationManager.PROVIDERS_CHANGED_ACTION)
+                addAction("android.net.wifi.WIFI_AP_STATE_CHANGED")
             }
             context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            effects.start()
             // The sticky battery broadcast is not guaranteed to be delivered to the receiver at
             // registration, so read it directly: without this the element shows its default 100 % (and
             // fills the ring to match) until the next battery change, which on some devices is minutes.
@@ -211,8 +227,10 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     fun stop() {
         if (!registered) return
         registered = false
+        effects.stop()
         runCatching { fill?.cancel() }
         runCatching { handler.removeCallbacks(hideRunnable) }
+        runCatching { handler.removeCallbacks(refreshRunnable); refreshPending = false }
         runCatching { context.unregisterReceiver(receiver) }
     }
 
@@ -266,7 +284,14 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     }
 
     /** Re-reads Wi-Fi, cellular and the network generation, then redraws. Never throws. */
-    fun refresh() {        try {
+    fun refresh() {
+        if (refreshPending) return
+        refreshPending = true
+        handler.postDelayed(refreshRunnable, 200L)
+    }
+
+    private fun refreshNow() {        try {
+            effects.settingsChanged()
             wifiOn = SystemReaders.isWifiEnabled(context, wifiOn)
             wifiActive = SystemReaders.isWifiActive(context, wifiActive)
             wifiValidated = SystemReaders.isWifiValidated(context)
@@ -281,6 +306,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                 else -> SystemReaders.cellLevel(context, airplane, cellLevel)
             }
             networkText = SystemReaders.networkGeneration(context, airplane, networkText)
+            effects.network(wifiOn, airplane, networkText, dnd)
             render()
         } catch (t: Throwable) {
             L.w("refresh: ${t.message}")
@@ -292,7 +318,8 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
      * should be animated). Runs from 0 on first attach, so the element fills up on the reveal.
      */
     private fun setLevel(target: Int) {
-        level = target
+        level = target.coerceIn(0, 100)
+        io.github.kvmy666.duostatusbar.fx.Fx.level = level
         // The master animation switch also owns the ring fill: off means the level snaps.
         if (!host.animationsEnabled) {
             fill?.cancel()
@@ -307,12 +334,15 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
         fill?.cancel()
         fill = ValueAnimator.ofInt(displayedLevel, target).apply {
             // The fill follows the arrival speed, so "faster animations" means a faster fill too.
-            duration = FILL_MS * host.revealMs / 1000L
+            duration = CanvasMotion.fillDuration(target - displayedLevel, host.revealMs)
             addUpdateListener {
-                displayedLevel = it.animatedValue as Int
-                render()
+                try {
+                    val next = it.animatedValue as Int
+                    if (next != displayedLevel) { displayedLevel = next; render() }
+                } catch (t: Throwable) { L.w("Preenchimento: ${t.message}") }
             }
             start()
+            if (effectsPaused) pause()
         }
     }
 
@@ -349,12 +379,14 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     /** The last colour handed to the drawing, so the log line above fires only on a change. */
     private var lastFg = Int.MIN_VALUE
     private fun render() {
+        if (effectsPaused) return
         // Every element the host owns - the main bar's and, on the lock screen, the keyguard bar's.
         if (host.duo == null) return
         try {
             val visual = DuoMapping.visual(
                     level = displayedLevel,
-                    charging = charging,
+                    // In the complete carousel the single bolt occupies the centre; the number keeps its seat.
+                    charging = charging && !io.github.kvmy666.duostatusbar.fx.Fx.enabled(8192),
                     saver = saver,
                     showPercent = host.showPercent,
                     fgColor = fgColor(),
@@ -373,7 +405,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
                     percentHeight = host.percentHeight,
                     wifiDots = host.wifiDots
                 )
-            host.render(visual)
+            host.render(visual.copy(tint = Colors.tint(level, charging, saver, visual.fgColor)))
         } catch (t: Throwable) {
             L.e("render: ${t.javaClass.simpleName}: ${t.message}")
         }

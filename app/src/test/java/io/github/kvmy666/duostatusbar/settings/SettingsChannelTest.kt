@@ -34,6 +34,22 @@ class SettingsChannelTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
 
     @Test
+    fun `effects thickness global scale and large size round trip through provider in both orientations`() {
+        val portrait = DuoSettings(enabled=true, thickPercent=300, globalPercent=37, featFlags=0xA55, sizePercent=999, showPercent=false)
+        val landscape = portrait.copy(thickPercent=1, globalPercent=0, featFlags=0x3FF, sizePercent=60)
+        val row = DuoSettingsProvider.rowFor(portrait, 77L, landscape)
+        val cursor = MatrixCursor(DuoPrefs.COLUMNS).apply { addRow(row); moveToFirst() }
+        val first = DuoSettingsClient.fromCursor(cursor, Configuration.ORIENTATION_PORTRAIT)
+        val second = DuoSettingsClient.fromCursor(cursor, Configuration.ORIENTATION_LANDSCAPE)
+        assertEquals(300, first.thickPercent); assertEquals(37, first.globalPercent); assertEquals(0xA55, first.featFlags)
+        assertEquals(999, first.sizePercent); assertFalse(first.showPercent)
+        assertEquals(1, second.thickPercent); assertEquals(0, second.globalPercent); assertEquals(0x3FF, second.featFlags)
+        assertEquals(60, second.sizePercent)
+        DuoPrefs.write(context,portrait)
+        assertEquals(portrait,DuoPrefs.read(context))
+    }
+
+    @Test
     fun `settings survive a write and a read`() {
         val written = DuoSettings(
             enabled = true,

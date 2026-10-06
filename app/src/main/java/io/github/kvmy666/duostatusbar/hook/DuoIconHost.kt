@@ -175,6 +175,45 @@ internal class DuoIconHost(private val context: Context) {
     private val gestures = ElementGestures(context)
 
     val duo: DuoElement? get() = element
+    private var ghost = false
+    private var continuumAnimator: android.animation.ValueAnimator? = null
+    fun effectClock() = io.github.kvmy666.duostatusbar.fx.Align.clock(root)
+    fun effectsHidden(hidden: Boolean) {
+        ghost = hidden
+        for (target in allElements()) {
+            target.ui.alpha = if (hidden) 0f else 1f
+            target.ui.isEnabled = !hidden
+            target.setRenderActive(!hidden)
+        }
+    }
+    fun pauseEffects(paused: Boolean) {
+        if (paused) continuumAnimator?.cancel()
+        for (target in allElements()) target.setRenderActive(!paused && !ghost)
+    }
+    fun applyEffects(frame: io.github.kvmy666.duostatusbar.fx.EffectFrame, hidden: Boolean) {
+        for (target in allElements()) (target as? DuoCanvasView)?.effects = frame
+    }
+    fun continuum(enter: Boolean, enabled: Boolean) {
+        continuumAnimator?.cancel()
+        val targets = allElements().mapNotNull { it as? DuoCanvasView }
+        if (!enabled) { targets.forEach { it.continuumX = 0f; it.continuumY = 0f; it.invalidate() }; return }
+        val clock = effectClock() ?: return
+        val cp = IntArray(2); clock.getLocationInWindow(cp)
+        val offsets = targets.map { v ->
+            val rp = IntArray(2); v.getLocationInWindow(rp)
+            (cp[0] + clock.width / 2f - rp[0] - v.width / 2f) to (cp[1] + clock.height / 2f - rp[1] - v.height * 77.5f / 136f)
+        }
+        continuumAnimator = android.animation.ValueAnimator.ofFloat(if (enter) 1f else 0f, if (enter) 0f else 1f).apply {
+            duration = if (enter) revealMs.toLong() else 450L
+            addUpdateListener {
+                try { targets.forEachIndexed { index, v ->
+                    val f = it.animatedValue as Float
+                    v.continuumX = offsets[index].first * f; v.continuumY = offsets[index].second * f; v.invalidate()
+                } } catch (t: Throwable) { L.w("Continuum: ${t.message}") }
+            }
+            start()
+        }
+    }
 
     /** The ring and, when split, the icon cluster, on every bar. */
     private fun allElements(): List<DuoElement> =
@@ -187,6 +226,12 @@ internal class DuoIconHost(private val context: Context) {
     fun render(v: DuoVisual) {
         for (target in allElements()) {
             try {
+                (target as? DuoCanvasView)?.apply {
+                    animationsEnabled = settings.animationsEnabled
+                    arrivalEnabled = settings.arrivalEnabled
+                    thickPercent = settings.thickPercent
+                    globalPercent = settings.globalPercent
+                }
                 target.render(v)
             } catch (t: Throwable) {
                 L.w("render: ${t.javaClass.simpleName}: ${t.message}")
@@ -481,6 +526,7 @@ internal class DuoIconHost(private val context: Context) {
         val changed = fresh != settings
         val hideModeChanged = changed && fresh.hideOtherIcons != settings.hideOtherIcons
         settings = fresh
+        io.github.kvmy666.duostatusbar.fx.Fx.sync(fresh, context)
         if (changed) {
             L.i("settings rev ${fresh.revision}: size ${fresh.sizePercent}%, offset ${fresh.offsetX}dp, " +
                     "percent=${fresh.showPercent}, percentHeight=${fresh.percentHeight}%, " +
@@ -490,7 +536,7 @@ internal class DuoIconHost(private val context: Context) {
             )
             // A drag must not resize the Rive view (that restart loop is why size is restart-only).
             // Rotation is one saved size for the orientation now on screen, so it is applied here.
-            if (applySavedSize) geometry.applySize(fresh.sizePercent)
+            if (fresh.liveApply || applySavedSize) geometry.applySize(fresh.sizePercent)
             if (fresh.liveApply || applySavedSize) {
                 applyLayout()
                 syncIndicators()
@@ -558,19 +604,17 @@ internal class DuoIconHost(private val context: Context) {
             // strip, so this is what actually removes the stock cluster.
             hideOverlayAnchor()
             anchorOnBattery(view, container, side, offsetDp)
+            io.github.kvmy666.duostatusbar.fx.Align.adjust(view, windowRoot, offsetDp)
             return
         }
-        // A LinearLayout strip applies the edge-spacing setting as a start margin (see assignBox); a
-        // FrameLayout parent (the shade header's icon area) ignores margins, so it is applied as
-        // translation instead. Default 100 % is zero, so an existing user sees no change.
-        val flowInset = if (container is LinearLayout) 0 else edgeInsetPx(side, settings.edgePadding)
-        view.translationX = offsetDp * context.resources.displayMetrics.density + flowInset
+        view.translationX = offsetDp * context.resources.displayMetrics.density
         // The strip sits low in the window, so centring on it wastes the space above. Centre the
         // ring in the whole status bar instead, which is what lets it grow to the window height.
         // The view is taller than the ring; the extra shift keeps the ring put and leaves the
         // raised percentage in the space above it.
         view.translationY = (if (center) geometry.windowCenterShiftY(container, windowRoot) else 0f) +
             RingGeometry.ringAnchorShiftY(side)
+        if (center) io.github.kvmy666.duostatusbar.fx.Align.adjust(view, windowRoot, offsetDp)
     }
 
     private fun installGestures(view: View) {
@@ -727,7 +771,7 @@ internal class DuoIconHost(private val context: Context) {
      * touches, because the injected view never receives them. See [ElementGestures.handle].
      */
     fun handleElementTouch(event: MotionEvent): Boolean =
-        gestures.handle(event, listOfNotNull(element?.ui, indicators?.ui))
+        !ghost && settings.globalPercent > 0 && gestures.handle(event, listOfNotNull(element?.ui, indicators?.ui))
 
     /**
      * Finds `system_icons`, injects the Duo element, hides what it replaces. True on success.
@@ -889,56 +933,15 @@ internal class DuoIconHost(private val context: Context) {
     }
 
     private fun createElement(root: View, stage: Int, part: DuoPart = DuoPart.ALL): DuoElement {
-        if (stage >= DuoGuard.RIVE) {
-            riveElement(root, part)?.let { rive ->
-                L.i("element: Rive (stage $stage, $part)")
-                return rive
-            }
-        }
         val canvas = DuoCanvasView(context, part)
+        canvas.animationsEnabled = settings.animationsEnabled
         canvas.start()
-        L.i("element: Canvas (stage $stage, $part)")
+        L.i("Desenho: Canvas (estágio $stage, $part)")
         return canvas
     }
 
-    /**
-     * Rive, with everything that can fail checked *before* the native call.
-     *
-     * `RiveAnimationView` draws into a Surface taken from a TextureView, so it needs a hardware
-     * accelerated window — without one there is no surface, and no reason to try. The attempt is recorded
-     * *before* the view is constructed, because a native fault kills the process before anything can be
-     * caught: that record is what stops a crash loop from repeating itself on the next boot.
-     */
-    private fun riveElement(root: View, part: DuoPart): DuoElement? {
-        if (!root.isHardwareAccelerated) {
-            L.w("status bar window is not hardware accelerated - Rive needs a Surface, using Canvas")
-            DuoSettingsClient.reportFallback(context, "no hardware acceleration on ${android.os.Build.MODEL}; using the simple drawing")
-            return null
-        }
-        if (!guard.riveAllowed()) {
-            DuoSettingsClient.reportFallback(context, "Rive disabled after earlier failures; using the simple drawing")
-            return null
-        }
-        guard.noteRiveAttempt()
-        val rive = DuoRiveView(context, part)
-        if (!rive.start()) {
-            // A clean failure, not a death: hand the attempt back so the breaker only counts crashes.
-            guard.clearRiveAttempts()
-            rive.teardown()
-            DuoSettingsClient.reportFallback(context, "Rive could not start on ${android.os.Build.MODEL}; using the simple drawing")
-            return null
-        }
-        return rive
-    }
-
-    /** Once the drawing has survived a few seconds, clear the counter: the breaker tracks deaths only. */
-    private fun forgetAttemptsAfterSurvival(element: DuoElement) {
-        if (element !is DuoRiveView) return
-        try {
-            element.ui.postDelayed({ guard.clearRiveAttempts() }, SURVIVAL_MS)
-        } catch (_: Throwable) {
-        }
-    }
+    // Kept as a no-op for existing readiness call sites; Canvas has no native Rive breaker.
+    private fun forgetAttemptsAfterSurvival(element: DuoElement) = Unit
 
     /**
      * Re-applies the hiding pass: the ROM re-shows its icon views whenever the icon set changes, so
@@ -1027,6 +1030,7 @@ internal class DuoIconHost(private val context: Context) {
 
     /** Removes the element and puts the stock icons back exactly as they were. */
     fun teardown() {
+        continuumAnimator?.cancel()
         try {
             drop(indicators, host)
             indicators = null
@@ -1092,14 +1096,6 @@ internal class DuoIconHost(private val context: Context) {
         val anchor = anchorBattery ?: return
         try {
             if (anchorOriginalVisibility == null) anchorOriginalVisibility = anchor.visibility
-            // The ROM can re-show the stock battery/cluster on its own - an OEM charging animation
-            // re-inflates the bar when the charger is plugged in - and this is the only moment we see it.
-            // The line is the evidence for "the battery appears over Duo while charging".
-            if (anchor.visibility == View.VISIBLE) {
-                logOnce.once("anchorReshown") {
-                    L.i("stock anchor ${anchor.javaClass.simpleName} was re-shown by the ROM - hiding it again")
-                }
-            }
             anchor.visibility = View.INVISIBLE
         } catch (t: Throwable) {
             L.w("anchor hide: ${t.javaClass.simpleName}: ${t.message}")
@@ -1120,12 +1116,8 @@ internal class DuoIconHost(private val context: Context) {
             battery.getLocationInWindow(batteryLocation)
             val density = context.resources.displayMetrics.density
             val height = RingGeometry.elementHeightPx(side)
-            // The overlay parent is a FrameLayout, so a start margin is ignored: the edge-spacing
-            // setting is applied as translation here instead. Default 100 % is a zero inset, so an
-            // untouched device does not move; on HyperOS 3 a lower value now actually pulls the element
-            // left off the battery (reported: "icon is all the way to the right", with no effect).
             view.translationX = batteryLocation[0] + battery.width / 2f - parentLocation[0] -
-                    side / 2f + offsetDp * density + edgeInsetPx(side, settings.edgePadding)
+                    side / 2f + offsetDp * density
             // height/2 is the view centre; the ring sits below that, so the anchor shift brings the
             // ring (not the empty space above it) onto the battery.
             view.translationY = batteryLocation[1] + battery.height / 2f - parentLocation[1] -

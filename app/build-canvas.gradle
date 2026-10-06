@@ -1,0 +1,51 @@
+// Equivalent local build entry point, avoiding Gradle version-catalog javac on this host.
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose'
+}
+android {
+    namespace 'io.github.kvmy666.duostatusbar'
+    compileSdk 36
+    buildToolsVersion '36.0.0'
+    defaultConfig {
+        applicationId 'io.github.kvmy666.duostatusbar'
+        minSdk 33
+        targetSdk 36
+        versionCode 19
+        buildConfigField 'int', 'FEATURE_MASK', (project.findProperty('duoFeatureMask') ?: '16383').toString().toInteger().toString()
+        versionName '1.4.0-canvas-fx2'
+        buildConfigField 'String', 'TELEGRAM_RELAY_URL', '"https://duo-log-relay.kvmy-duo-logs.workers.dev"'
+        buildConfigField 'String', 'TELEGRAM_BOT_TOKEN', '""'
+        buildConfigField 'String', 'TELEGRAM_CHAT_ID', '""'
+        ndk { abiFilters 'arm64-v8a' }
+    }
+    signingConfigs { debug { storeFile rootProject.file('../android-home/debug.keystore') } }
+    buildTypes {
+        debug { minifyEnabled false; signingConfig null }
+        release { minifyEnabled true; shrinkResources true; proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro' }
+    }
+    packaging { jniLibs { useLegacyPackaging true } }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    kotlinOptions { jvmTarget = '17' }
+    buildFeatures { compose true; buildConfig true; aidl true }
+    testOptions { unitTests { includeAndroidResources true; returnDefaultValues true } }
+}
+dependencies {
+    compileOnly 'de.robv.android.xposed:api:82'
+    implementation 'dev.rikka.shizuku:api:13.1.5'
+    implementation 'dev.rikka.shizuku:provider:13.1.5'
+    implementation 'androidx.work:work-runtime-ktx:2.10.0'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation platform('androidx.compose:compose-bom:2024.12.01')
+    implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.ui:ui-tooling-preview'
+    implementation 'androidx.activity:activity-compose:1.9.3'
+    implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.8.7'
+    debugImplementation 'androidx.compose.ui:ui-tooling'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
+    testImplementation 'androidx.test:core:1.6.1'
+}

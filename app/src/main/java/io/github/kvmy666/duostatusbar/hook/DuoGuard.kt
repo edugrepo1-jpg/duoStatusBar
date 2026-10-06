@@ -59,12 +59,12 @@ internal class DuoGuard(private val context: Context) {
     fun stage(): Int {
         globalStage()?.let { override ->
             L.i("stage $override (adb override)")
-            return override
+            return if (override == OFF) OFF else ICONS_ONLY
         }
         val app = DuoSettingsClient.read(context)
         val resolved = when {
             !app.enabled -> OFF
-            app.useRive -> RIVE
+            app.useRive -> ICONS_ONLY
             else -> ICONS_ONLY
         }
         L.i("stage $resolved (app settings rev ${app.revision}, enabled=${app.enabled}, rive=${app.useRive})")

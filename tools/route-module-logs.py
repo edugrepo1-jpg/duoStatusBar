@@ -29,7 +29,7 @@ PACKAGE = re.compile(r"^package\s+(\S+)", re.MULTILINE)
 # Any remaining android.util.Log use: calls outside the TAG shape, or other Log helpers.
 LEFT = re.compile(r"\bLog\.\w")
 # A file only wants the L import if it actually logs through L.
-USES_L = re.compile(r"\bL\.\w+\(")
+USES_L = re.compile(r"\bL\.(i|w|d|v|e)\(")
 
 
 def add_import(text: str, line: str) -> str:

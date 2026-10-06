@@ -41,15 +41,12 @@ internal object StockIconHider {
     private var waitingCommand: String? = null
     private var waitingCommandDone: ((String) -> Unit)? = null
 
-    private val permissionCallbacks =
-        java.util.Collections.synchronizedSet(mutableSetOf<(Boolean) -> Unit>())
+    private var permissionCallback: ((Boolean) -> Unit)? = null
     private var listening = false
 
     private val permissionListener = Shizuku.OnRequestPermissionResultListener { code, result ->
         if (code == REQUEST_CODE) {
-            val granted = result == PackageManager.PERMISSION_GRANTED
-            // Several rows (icon hiding, diagnostics capture) may listen at once; notify them all.
-            permissionCallbacks.toList().forEach { it(granted) }
+            permissionCallback?.invoke(result == PackageManager.PERMISSION_GRANTED)
         }
     }
 
@@ -91,7 +88,7 @@ internal object StockIconHider {
 
     /** Called by the UI to be told when the user answers the Shizuku permission dialog. */
     fun observePermissionResult(callback: (Boolean) -> Unit) {
-        permissionCallbacks.add(callback)
+        permissionCallback = callback
         if (listening) return
         try {
             Shizuku.addRequestPermissionResultListener(permissionListener)
@@ -101,10 +98,9 @@ internal object StockIconHider {
         }
     }
 
-    /** Stops [callback] from being told; the shared listener is removed once nothing is listening. */
-    fun stopObservingPermissionResult(callback: (Boolean) -> Unit) {
-        permissionCallbacks.remove(callback)
-        if (permissionCallbacks.isNotEmpty() || !listening) return
+    fun stopObservingPermissionResult() {
+        permissionCallback = null
+        if (!listening) return
         listening = false
         try {
             Shizuku.removeRequestPermissionResultListener(permissionListener)

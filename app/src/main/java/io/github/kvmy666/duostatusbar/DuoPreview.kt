@@ -34,12 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import app.rive.runtime.kotlin.RiveAnimationView
-import app.rive.runtime.kotlin.core.Fit
-import app.rive.runtime.kotlin.core.RendererType
-import app.rive.runtime.kotlin.core.ViewModelInstance
-import io.github.kvmy666.duostatusbar.hook.DuoBinder
-import io.github.kvmy666.duostatusbar.hook.DuoBinding
+import io.github.kvmy666.duostatusbar.hook.DuoCanvasView
 import io.github.kvmy666.duostatusbar.hook.DuoMapping
 import io.github.kvmy666.duostatusbar.hook.DuoVisual
 import io.github.kvmy666.duostatusbar.ui.demoPhase
@@ -78,7 +73,7 @@ fun DuoPreview(
     var wifiDots by remember { mutableStateOf(false) }
     var generation by remember { mutableIntStateOf(0) }
     var revealTick by remember { mutableIntStateOf(0) }
-    val instance = remember { mutableStateOf<DuoBinding?>(null) }
+    val instance = remember { mutableStateOf<DuoCanvasView?>(null) }
 
     // The one picture, from the same mapping the status bar uses.
     val visual = DuoMapping.visual(
@@ -101,10 +96,10 @@ fun DuoPreview(
     LaunchedEffect(revealTick) {
         val binding = instance.value ?: return@LaunchedEffect
         try {
-            binding.requestReveal(revealMs)
+            binding.reveal(revealMs)
             delay(revealMs + 60L)
         } finally {
-            binding.requestReveal(0)
+            binding.reveal(0)
         }
     }
 
@@ -114,10 +109,10 @@ fun DuoPreview(
         while (true) {
             val binding = instance.value ?: break
             try {
-                binding.requestReveal(revealMs)
+                binding.reveal(revealMs)
                 delay(revealMs + 60L)
             } finally {
-                binding.requestReveal(0)
+                binding.reveal(0)
             }
             delay(LOOP_GAP_MS)
         }
@@ -135,28 +130,29 @@ fun DuoPreview(
                 modifier = Modifier
                     .height(pixelSize.dp)
                     .padding(8.dp),
-                factory = { context -> createRiveView(context, instance) },
+                factory = { context -> createCanvasView(context, instance) },
+                onRelease = { it.teardown(); instance.value = null },
                 update = { pushVisual(instance.value, visual) }
             )
         }
 
-        LabelledSlider("Battery ${level.toInt()}%", level, 0f..100f, steps = 0) { level = it }
-        Toggle("Charging (bolt, green)", charging) { charging = it }
-        Toggle("Battery saver (yellow)", saver) { saver = it }
-        Toggle("Airplane mode (morph)", airplane) { airplane = it }
-        Toggle("Do Not Disturb (moon)", dnd) { dnd = it }
-        Toggle("DND moons on the signal dots", dndDots) { dndDots = it }
-        LabelledSlider("Wi-Fi ${wifi.toInt()} of 3", wifi, 0f..3f, steps = 2) { wifi = it }
-        LabelledSlider("Cellular ${cell.toInt()} of 4", cell, 0f..4f, steps = 3) { cell = it }
-        Toggle("Wi-Fi off (cellular label in the slot)", wifiOn) { wifiOn = it }
-        Toggle("Signal dots follow Wi-Fi", wifiDots) { wifiDots = it }
+        LabelledSlider("Bateria ${level.toInt()}%", level, 0f..100f, steps = 0) { level = it }
+        Toggle("Carregando (raio verde)", charging) { charging = it }
+        Toggle("Economia de bateria (amarelo)", saver) { saver = it }
+        Toggle("Modo Avião (transição)", airplane) { airplane = it }
+        Toggle("Não Perturbe (lua)", dnd) { dnd = it }
+        Toggle("Luas nas bolinhas de sinal", dndDots) { dndDots = it }
+        LabelledSlider("Wi-Fi ${wifi.toInt()} de 3", wifi, 0f..3f, steps = 2) { wifi = it }
+        LabelledSlider("Sinal ${cell.toInt()} de 4", cell, 0f..4f, steps = 3) { cell = it }
+        Toggle("Wi-Fi ligado (desligue pra ver a rede móvel)", wifiOn) { wifiOn = it }
+        Toggle("Bolinhas acompanham o Wi-Fi", wifiDots) { wifiDots = it }
         LabelledSlider(
-            "Generation ${GENERATIONS[generation]}",
+            "Rede ${GENERATIONS[generation]}",
             generation.toFloat(), 0f..3f, steps = 2
         ) { generation = it.toInt() }
-        Button(onClick = { revealTick++ }) { Text("Replay reveal ($revealMs ms)") }
+        Button(onClick = { revealTick++ }) { Text("Repetir entrada ($revealMs ms)") }
         Text(
-            text = "tint #${"%08X".format(visual.tint)} · ${DuoBinder.PROPERTY_COUNT} properties bound per snapshot",
+            text = "cor #${"%08X".format(visual.tint)} · Canvas Android",
             style = MaterialTheme.typography.bodySmall
         )
     }
@@ -170,7 +166,7 @@ fun DuoPreview(
  * them, which is what makes the arrival, the departure and the charging journey visible here.
  */
 @Composable
-fun DuoRivePreview(
+fun DuoCanvasPreview(
     modifier: Modifier = Modifier,
     size: Dp = 56.dp,
     periodMs: Long = RIVE_DEMO_PERIOD_MS,
@@ -180,7 +176,7 @@ fun DuoRivePreview(
     slideDp: Float = 0f,
     visualAt: (Float) -> DuoVisual
 ) {
-    val instance = remember { mutableStateOf<DuoBinding?>(null) }
+    val instance = remember { mutableStateOf<DuoCanvasView?>(null) }
     val lastVisual = remember { mutableStateOf<DuoVisual?>(null) }
     var phase by remember { mutableFloatStateOf(0f) }
 
@@ -198,9 +194,9 @@ fun DuoRivePreview(
             delay(periodMs)
             val binding = instance.value ?: continue
             try {
-                binding.requestReveal(1000)
+                binding.reveal(1000)
                 delay(160)
-                binding.requestReveal(0)
+                binding.reveal(0)
             } catch (_: Throwable) {
             }
         }
@@ -215,7 +211,8 @@ fun DuoRivePreview(
     ) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
-            factory = { ctx -> createRiveView(ctx, instance) },
+            factory = { ctx -> createCanvasView(ctx, instance) },
+            onRelease = { it.teardown(); instance.value = null },
             update = { view ->
                 val visual = visualAt(phase)
                 // Only push when the snapshot actually changes, and only once the view model has bound:
@@ -239,16 +236,17 @@ fun DuoRivePreview(
  * editor, whose translation is the user's drag rather than a looping phase.
  */
 @Composable
-fun DuoRiveStill(
+fun DuoCanvasStill(
     visual: DuoVisual,
     modifier: Modifier = Modifier,
     translationXDp: Float = 0f
 ) {
-    val instance = remember { mutableStateOf<DuoBinding?>(null) }
+    val instance = remember { mutableStateOf<DuoCanvasView?>(null) }
     val lastVisual = remember { mutableStateOf<DuoVisual?>(null) }
     AndroidView(
         modifier = modifier,
-        factory = { ctx -> createRiveView(ctx, instance) },
+        factory = { ctx -> createCanvasView(ctx, instance) },
+            onRelease = { it.teardown(); instance.value = null },
         update = { view ->
             val binding = instance.value
             if (binding != null && visual != lastVisual.value) {
@@ -260,66 +258,11 @@ fun DuoRiveStill(
     )
 }
 
-/** Builds the Rive view with the same renderer and layout the status bar uses. */
-private fun createRiveView(
-    context: Context,
-    instance: MutableState<DuoBinding?>
-): RiveAnimationView {
-    val view = try {
-        RiveInit.ensure(context)
-        val builder = RiveAnimationView.Builder(context)
-            .setRendererType(RendererType.Canvas)
-            .setResource(R.raw.duo)
-            .setArtboardName(ARTBOARD)
-            .setStateMachineName(STATE_MACHINE)
-            .setFit(Fit.CONTAIN)
-            .setAutoplay(true)
-            .setAutoBind(true)
-        RiveAnimationView(builder)
-    } catch (t: Throwable) {
-        // An empty preview box beats a crash in the app that exists to diagnose the module.
-        L.e("Rive preview setup failed: ${t.javaClass.simpleName}: ${t.message}")
-        return RiveAnimationView(context)
-    }
-    watchForViewModelInstance(view, onFound = { vm -> instance.value = DuoBinder.bind(vm, view.file?.lock) })
-    return view
-}
+/** Same Canvas drawing in the preview, position editor and SystemUI. */
+private fun createCanvasView(context: Context, instance: MutableState<DuoCanvasView?>): DuoCanvasView =
+    DuoCanvasView(context).also { it.start(); instance.value = it }
 
-private fun pushVisual(binding: DuoBinding?, visual: DuoVisual) {
-    if (binding == null) return
-    try {
-        val failures = binding.apply(visual)
-        if (failures > 0) {
-            L.w("preview: $failures of ${DuoBinder.PROPERTY_COUNT} properties did not bind")
-        }
-    } catch (t: Throwable) {
-        L.w("preview push: ${t.javaClass.simpleName}: ${t.message}")
-    }
-}
-
-/** The state machine appears some time after the bytes are handed over: watch for it, don't assume. */
-private fun watchForViewModelInstance(
-    view: RiveAnimationView,
-    onFound: (ViewModelInstance) -> Unit,
-    attempt: Int = 0
-) {
-    view.postDelayed({
-        try {
-            val machine = view.stateMachines.firstOrNull()
-            val found = machine?.viewModelInstance
-            if (found != null) {
-                onFound(found)
-                L.i("preview ready (machines=${view.stateMachines.size}, inputs=${machine?.inputNames})")
-            } else if (attempt < MAX_POLLS) {
-                watchForViewModelInstance(view, onFound, attempt + 1)
-            } else {
-                L.w("preview: no view model instance after $MAX_POLLS polls")
-            }
-        } catch (t: Throwable) {
-            L.w("preview poll: ${t.javaClass.simpleName}: ${t.message}")
-        }
-    }, if (attempt == 0) 60L else POLL_MS)
-}
+private fun pushVisual(view: DuoCanvasView?, visual: DuoVisual) { view?.render(visual) }
 
 private const val TAG = "DuoSB"
 private const val ARTBOARD = "Duo"

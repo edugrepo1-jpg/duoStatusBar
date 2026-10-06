@@ -82,18 +82,18 @@ internal fun buildDiagnostics(
     moduleLoadAt: Long
 ): String =
     buildString {
-        appendLine("Duo Status Bar diagnostics")
-        appendLine("settings: $settings")
+        appendLine("Diagnóstico do Duo Status Bar")
+        appendLine("configurações: $settings")
         appendLine(
-            "module load: " + if (moduleLoadAt <= 0L) {
-                "never (LSPosed has not injected the module into System UI)"
+            "módulo carregado: " + if (moduleLoadAt <= 0L) {
+                "nunca (o LSPosed ainda não injetou o módulo no System UI)"
             } else {
                 formatTimestamp(moduleLoadAt)
             }
         )
-        appendLine("module: ").append(status.ifEmpty { "no report yet" })
+        appendLine("módulo: ${status.ifEmpty { "nenhum relatório ainda" }}")
         if (history.isNotEmpty()) {
-            appendLine("history:")
+            appendLine("histórico:")
             history.forEach { appendLine("  $it") }
         }
         // The debug build's full dump (build identity, id probes, view tree, readers). Empty in release.
@@ -103,7 +103,7 @@ internal fun buildDiagnostics(
         }
     }
 
-/** The complete bug report: the user's description, the diagnostics, then the device capture. */
+/** The complete bug report: the user's description, the diagnostics, then the root log capture. */
 internal fun buildFullReport(
     problem: String,
     settings: DuoSettings,
@@ -115,12 +115,12 @@ internal fun buildFullReport(
 ): String = buildString {
     val message = problem.trim()
     if (message.isNotEmpty()) {
-        appendLine("user message:")
+        appendLine("mensagem do usuário:")
         appendLine(message)
         appendLine()
     }
     append(buildDiagnostics(settings, status, history, dump, moduleLoadAt))
-    append("\n\n===== device capture =====\n")
+    append("\n\n===== root log capture =====\n")
     append(logs)
 }
 
@@ -132,7 +132,7 @@ internal fun shareText(context: Context, report: String) {
         type = "text/plain"
         putExtra(Intent.EXTRA_TEXT, report)
     }
-    context.startActivity(Intent.createChooser(send, "Share diagnostics"))
+    context.startActivity(Intent.createChooser(send, "Compartilhar diagnóstico"))
 }
 
 /**

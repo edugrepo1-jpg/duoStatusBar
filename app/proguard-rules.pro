@@ -4,8 +4,6 @@
 -keep class io.github.kvmy666.duostatusbar.hook.** { *; }
 
 # Rive runtime is reached through JNI: keep everything it reflects on.
--keep class app.rive.** { *; }
--dontwarn app.rive.**
 
 # Xposed bridge
 -keep class de.robv.android.xposed.** { *; }

@@ -4,7 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import io.github.kvmy666.duostatusbar.DuoRivePreview
+import io.github.kvmy666.duostatusbar.DuoCanvasPreview
 import io.github.kvmy666.duostatusbar.hook.DuoVisual
 
 /**
@@ -28,7 +28,7 @@ fun DuoSettingPreview(
     /** For the position setting: how far the element slides, in dp, at the on end. */
     slideDp: Float = 0f
 ) {
-    DuoRivePreview(
+    DuoCanvasPreview(
         modifier = modifier,
         size = size,
         periodMs = periodMs,

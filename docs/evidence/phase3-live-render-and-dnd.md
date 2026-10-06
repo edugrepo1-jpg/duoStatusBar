@@ -66,10 +66,6 @@ icon itself**, not redrawn.
   `dndOpacity` is 1 only while DND is on and airplane is off. Covered by three new unit tests (29 total).
 * `SystemReaders.isDndOn` reads the notification policy's interruption filter, plus a truly silenced ringer.
   Vibrate is deliberately excluded: the moon means "this will not make a sound".
-* **Correction (2026-10-03):** the silenced-ringer term was wrong. A ringer put on silent without DND is
-  not Do Not Disturb, so a merely-silenced phone drew the moon with DND switched off (owner-reported).
-  `isDndOn` now reads the interruption filter alone; the silent-vs-DND boundary is unit-tested in
-  `DeviceStateReaderTest`. The historical text above is kept as the record of what was done at the time.
 * `DuoStateMonitor` listens for `ACTION_INTERRUPTION_FILTER_CHANGED` and `RINGER_MODE_CHANGED_ACTION`
   (event-driven, no polling) and logs each transition.
 

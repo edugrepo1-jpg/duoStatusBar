@@ -74,8 +74,6 @@ If a change cannot be reconciled with this file, stop and ask; do not "just make
 | M9 | Root capture only tried `su` | Locked-bootloader root has no `su` on the app's PATH; every report came back empty. | Discover root at known paths; always emit non-root device facts. |
 | M10 | Reading two process streams in sequence, no timeout | A large log could deadlock; a stalled root prompt could hang the app. | Merge stderr, read once, bound the wait. |
 | M11 | Registering the restart receiver after the enable gate | The button was dead on any ROM where the module read itself as off. | Register before the gate; then fall back to root / Shizuku. |
-| M12 | A silenced ringer counted as Do Not Disturb | `isDndOn` OR-ed `RINGER_MODE_SILENT` in, so a phone merely put on silent drew the DND crescent with DND off (owner-reported). | DND is the interruption filter only; silent is separate. Unit-test the boundary (`DeviceStateReaderTest`). |
-| M13 | Canvas fallback drew the ring track as a full circle | Rive's track reads the bound `leftArc`/`rightArc` (so it gaps or closes), but the fallback hard-coded `drawCircle`, putting a closed track under the digits (reported). | The fallback draws from the same bound geometry as Rive — extends C9 to the track. |
 
 ### Minor — noise, duplication, cosmetic, docs
 

@@ -31,7 +31,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,20 +42,14 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import android.widget.ImageView
-import io.github.kvmy666.duostatusbar.DuoRiveStill
+import io.github.kvmy666.duostatusbar.DuoCanvasStill
 import io.github.kvmy666.duostatusbar.R
-import io.github.kvmy666.duostatusbar.RootLogs
 import io.github.kvmy666.duostatusbar.hook.DuoMapping
 import io.github.kvmy666.duostatusbar.hook.DuoVisual
 import io.github.kvmy666.duostatusbar.settings.DuoActions
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.ModuleState
 import io.github.kvmy666.duostatusbar.settings.StockIconHider
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * The settings search gate shared by the section cards: a row is shown when the query appears in its
@@ -246,7 +239,7 @@ internal fun PositionEditor(
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.padding(start = 14.dp)
             )
-            DuoRiveStill(
+            DuoCanvasStill(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(end = 16.dp)
@@ -332,8 +325,8 @@ internal fun IconHidingSetting(enabled: Boolean) {
         }
     }
 
-    val onPermission: (Boolean) -> Unit = remember {
-        { grantedNow ->
+    DisposableEffect(Unit) {
+        StockIconHider.observePermissionResult { grantedNow ->
             granted = grantedNow
             if (grantedNow && DuoPrefs.hideStockIcons(context)) {
                 StockIconHider.apply(context, true) { ok ->
@@ -341,14 +334,10 @@ internal fun IconHidingSetting(enabled: Boolean) {
                 }
             }
         }
-    }
-
-    DisposableEffect(Unit) {
-        StockIconHider.observePermissionResult(onPermission)
         // Shizuku may have been started after the screen opened, so check once when the row appears.
         running = StockIconHider.isShizukuRunning()
         granted = StockIconHider.isPermissionGranted()
-        onDispose { StockIconHider.stopObservingPermissionResult(onPermission) }
+        onDispose { StockIconHider.stopObservingPermissionResult() }
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -445,157 +434,3 @@ internal fun OptionPicker(
         }
     }
 }
-
-/**
- * The diagnostics privilege control (root / Shizuku).
- *
- * Root is optional and is only used to **read** the system log into a bug report the user explicitly
- * sends, so it is never requested until the user asks — no root prompt appears uninvited. Shizuku is the
- * alternative that also works with a non-rooted phone started over adb. Both are best-effort: with
- * neither, a report still carries the module's own log and the device facts.
- */
-@Composable
-internal fun RootAccessSetting() {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var allowed by remember { mutableStateOf(DuoPrefs.rootAllowed(context)) }
-    var running by remember { mutableStateOf(StockIconHider.isShizukuRunning()) }
-    var granted by remember { mutableStateOf(StockIconHider.isPermissionGranted()) }
-    var busy by remember { mutableStateOf(false) }
-    var result by remember { mutableStateOf<String?>(null) }
-
-    val onPermission: (Boolean) -> Unit = remember {
-        { grantedNow -> granted = grantedNow }
-    }
-
-    DisposableEffect(Unit) {
-        StockIconHider.observePermissionResult(onPermission)
-        // Re-read when the row appears: Shizuku may have been started after the screen opened.
-        running = StockIconHider.isShizukuRunning()
-        granted = StockIconHider.isPermissionGranted()
-        onDispose { StockIconHider.stopObservingPermissionResult(onPermission) }
-    }
-
-    // If root was granted before, verify it still is. Revoking it in the root manager (KernelSU Next /
-    // SukiSU) otherwise leaves the stored flag `true` and the guide below never appears.
-    LaunchedEffect(Unit) {
-        if (allowed) {
-            val ok = withContext(Dispatchers.IO) { RootLogs.recheckRoot(context) }
-            if (!ok) {
-                allowed = false
-                result = context.getString(R.string.settings_root_result_failed)
-            }
-        }
-    }
-
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = stringResource(R.string.settings_root_detail),
-            style = MaterialTheme.typography.bodySmall
-        )
-        val status = when {
-            allowed -> stringResource(R.string.settings_root_granted)
-            running && granted -> stringResource(R.string.settings_root_shizuku)
-            running -> stringResource(R.string.settings_icons_need_permission)
-            else -> stringResource(R.string.settings_root_denied)
-        }
-        val elevated = allowed || (running && granted)
-        Text(
-            text = status,
-            style = MaterialTheme.typography.bodySmall,
-            color = if (elevated) MaterialTheme.colorScheme.onSurfaceVariant
-            else MaterialTheme.colorScheme.error
-        )
-        // The outcome of the last attempt, so a tap that fails says why instead of looking dead.
-        result?.let {
-            Text(
-                text = it,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error
-            )
-        }
-        if (!allowed) {
-            // A screenshot of the root manager's per-app Superuser screen, with the terse steps below it,
-            // so the one case that needs a manual toggle is shown rather than described.
-            // The animated GIF of the root manager's per-app Superuser toggle. Compose's Image does not
-            // animate a GIF, so it is hosted in an ImageView. ImageDecoder is used explicitly, because
-            // `setImageResource` does not always hand back an animated drawable.
-            AndroidView(
-                factory = { ctx ->
-                    ImageView(ctx).apply {
-                        adjustViewBounds = true
-                        scaleType = ImageView.ScaleType.FIT_CENTER
-                        contentDescription = ctx.getString(R.string.settings_root_guide_image)
-                        runCatching {
-                            val src = android.graphics.ImageDecoder.createSource(
-                                ctx.resources, R.drawable.guide_root_superuser
-                            )
-                            when (val d = android.graphics.ImageDecoder.decodeDrawable(src)) {
-                                is android.graphics.drawable.AnimatedImageDrawable -> {
-                                    d.repeatCount =
-                                        android.graphics.drawable.AnimatedImageDrawable.REPEAT_INFINITE
-                                    setImageDrawable(d)
-                                    d.start()
-                                }
-                                else -> setImageDrawable(d)
-                            }
-                        }.onFailure {
-                            setImageResource(R.drawable.guide_root_superuser)
-                        }
-                        // AnimatedImageDrawable only runs once it is attached and visible; start it again
-                        // after the view is attached so the loop always begins.
-                        post {
-                            (drawable as? android.graphics.drawable.AnimatedImageDrawable)?.start()
-                        }
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-            )
-            Text(
-                text = stringResource(R.string.settings_root_guide_steps),
-                style = MaterialTheme.typography.bodySmall
-            )
-            Text(
-                text = stringResource(R.string.settings_root_guide_note),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary
-            )
-            OutlinedButton(
-                onClick = {
-                    if (!busy) {
-                        busy = true
-                        result = null
-                        scope.launch {
-                            val ok = withContext(Dispatchers.IO) { RootLogs.requestRoot(context) }
-                            allowed = ok
-                            busy = false
-                            result = context.getString(
-                                if (ok) R.string.settings_root_result_ok
-                                else R.string.settings_root_result_failed
-                            )
-                        }
-                    }
-                },
-                enabled = !busy,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    stringResource(
-                        if (busy) R.string.settings_root_checking else R.string.settings_root_allow
-                    )
-                )
-            }
-        }
-        if (running && !granted) {
-            OutlinedButton(
-                onClick = { StockIconHider.requestPermission() },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(stringResource(R.string.settings_icons_grant))
-            }
-        }
-    }
-}
-

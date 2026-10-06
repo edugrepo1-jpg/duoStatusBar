@@ -118,7 +118,10 @@ data class DuoSettings(
      * (sound, vibrate, alarm). 0 gives that space back so those icons sit on the edge.
      * The drawing does not move; only the empty slot shrinks.
      */
-    val edgePadding: Int = 100
+    val edgePadding: Int = 100,
+    val thickPercent: Int = 100,
+    val featFlags: Int = 0x3FDF,
+    val globalPercent: Int = 100
 )
 
 /**
@@ -152,13 +155,6 @@ object DuoPrefs {
      * take System UI down).
      */
     const val ACTION_RESTART_SYSTEMUI = "io.github.kvmy666.duostatusbar.RESTART_SYSTEMUI"
-
-    /**
-     * Sent by the app just before it builds a bug report. The module replies with a fresh diagnostic
-     * dump, so the report shows the bar as it is *at that moment* — the one-shot boot dump cannot show
-     * the shade expanded, which is exactly what the shade-position report needs (Issue #1).
-     */
-    const val ACTION_DIAGNOSTICS_REQUEST = "io.github.kvmy666.duostatusbar.DIAGNOSTICS_REQUEST"
 
     const val COL_ENABLED = "enabled"
     const val COL_USE_RIVE = "use_rive"
@@ -205,6 +201,9 @@ object DuoPrefs {
     const val COL_SIM_CHOICE = "sim_choice"
     const val COL_WIFI_DOTS = "wifi_dots"
     const val COL_EDGE_PADDING = "edge_padding"
+    const val COL_THICK_PERCENT = "thick_percent"
+    const val COL_FEAT_FLAGS = "feat_flags"
+    const val COL_GLOBAL_PERCENT = "global_percent"
 
     /** Prefixed onto every landscape column. Portrait keeps the original names, so old installs stay put. */
     const val LAND_PREFIX = "land_"
@@ -220,7 +219,7 @@ object DuoPrefs {
         COL_ANIMATIONS, COL_ARRIVAL, COL_DEPARTURE, COL_CHARGING,
         COL_ICON_COLOR, COL_HIDE_OTHER_ICONS, COL_NETWORK_ONLY, COL_SIM_CHOICE,
         COL_PERCENT_HEIGHT, COL_SPLIT_INDICATORS, COL_INDICATORS_OFFSET_X,
-        COL_WIFI_DOTS, COL_SHOW_AIRPLANE, COL_SHOW_DND, COL_EDGE_PADDING, COL_DND_MODE
+        COL_WIFI_DOTS, COL_SHOW_AIRPLANE, COL_SHOW_DND, COL_EDGE_PADDING, COL_DND_MODE, COL_THICK_PERCENT, COL_FEAT_FLAGS, COL_GLOBAL_PERCENT
     )
 
     /** Landscape columns appended after [PORTRAIT_COLUMNS]. An older module ignores names it does not know. */
@@ -243,7 +242,6 @@ object DuoPrefs {
     private const val KEY_UPDATE_NOTIFIED = "update_notified"
     private const val KEY_UPDATE_CHECK_AT = "update_check_at"
     private const val KEY_LOG_SENT_AT = "log_sent_at"
-    private const val KEY_ROOT_ALLOWED = "root_allowed"
     /** Set the first time landscape is saved. Until then landscape reads as a copy of portrait. */
     private const val KEY_LANDSCAPE_SET = "landscape_set"
     private const val HISTORY_LIMIT = 20
@@ -298,7 +296,10 @@ object DuoPrefs {
             },
         simChoice = p.getString(prefix + COL_SIM_CHOICE, "auto") ?: "auto",
         wifiDots = p.getBoolean(prefix + COL_WIFI_DOTS, false),
-        edgePadding = p.getInt(prefix + COL_EDGE_PADDING, DEFAULT_EDGE_PADDING)
+        edgePadding = p.getInt(prefix + COL_EDGE_PADDING, DEFAULT_EDGE_PADDING),
+        thickPercent = p.getInt(prefix + COL_THICK_PERCENT, 100).coerceIn(1, 300),
+        featFlags = p.getInt(prefix + COL_FEAT_FLAGS, 0x3FDF),
+        globalPercent = p.getInt(prefix + COL_GLOBAL_PERCENT, 100).coerceIn(0, 100)
     )
 
     /** Writes the settings for [orientation] and bumps the revision the module compares against. */
@@ -311,6 +312,8 @@ object DuoPrefs {
         val next = revision(context) + 1
         val clamped = settings.copy(
             sizePercent = settings.sizePercent.coerceIn(MIN_SIZE, MAX_SIZE),
+            thickPercent = settings.thickPercent.coerceIn(1, 300),
+            globalPercent = settings.globalPercent.coerceIn(0, 100),
             offsetX = settings.offsetX.coerceIn(-MAX_OFFSET, MAX_OFFSET),
             percentHeight = settings.percentHeight.coerceIn(MIN_PERCENT_HEIGHT, MAX_PERCENT_HEIGHT),
             indicatorsOffsetX = settings.indicatorsOffsetX.coerceIn(-MAX_OFFSET, MAX_OFFSET),
@@ -355,6 +358,9 @@ object DuoPrefs {
         putString(prefix + COL_SIM_CHOICE, settings.simChoice)
         putBoolean(prefix + COL_WIFI_DOTS, settings.wifiDots)
         putInt(prefix + COL_EDGE_PADDING, settings.edgePadding)
+        putInt(prefix + COL_THICK_PERCENT, settings.thickPercent)
+        putInt(prefix + COL_FEAT_FLAGS, settings.featFlags)
+        putInt(prefix + COL_GLOBAL_PERCENT, settings.globalPercent)
     }
 
     fun revision(context: Context): Long =
@@ -373,24 +379,6 @@ object DuoPrefs {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KEY_HIDE_STOCK_ICONS, value)
-            .apply()
-    }
-
-    /**
-     * Whether the user granted Duo root for diagnostics. Kept separate from [DuoSettings] because the
-     * module never needs it (it is an app-side capture setting, not part of the element's contract).
-     *
-     * Root is only ever used to *read* the system log into a bug report the user explicitly sends; the
-     * capture never runs `su` before this flag is set, so no root prompt appears uninvited.
-     */
-    fun rootAllowed(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(KEY_ROOT_ALLOWED, false)
-
-    fun writeRootAllowed(context: Context, value: Boolean) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putBoolean(KEY_ROOT_ALLOWED, value)
             .apply()
     }
 
@@ -527,7 +515,7 @@ object DuoPrefs {
         REVEAL_CHOICES.minByOrNull { kotlin.math.abs(it - ms) } ?: DEFAULT_REVEAL_MS
 
     const val MIN_SIZE = 60
-    const val MAX_SIZE = 200
+    const val MAX_SIZE = 1000
     const val MAX_OFFSET = 200
 
     /** 0 keeps the percentage in its original seat; 100 raises it by the full punch-hole clearance. */

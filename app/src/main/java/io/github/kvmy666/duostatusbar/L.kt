@@ -25,26 +25,13 @@ object L {
 
     const val TAG = "DuoSB"
 
-    /** How many of the most recent lines the module keeps to hand to the app. Bounded, so no leak. */
-    private const val MAX_RECENT = 600
-
-    private val ringLock = Any()
-    private val ring = ArrayDeque<String>(MAX_RECENT)
-
     /**
      * One entry point for every level. The XposedBridge sink carries no level, so nothing is lost by
      * sending `w`/`d`/`v`/`e` through the same path - and keeping them visible is the whole point: a
      * warning that never arrives is worse than no warning, because it looks like silence.
      */
     private fun both(msg: String) {
-        record(msg)
-        sinks(msg)
-    }
-
-    /** Writes to both sinks without keeping the line (used for the bulky diagnostic dump). */
-    fun diag(msg: String) = sinks(msg)
-
-    private fun sinks(msg: String) {
+        io.github.kvmy666.duostatusbar.fx.Events.record(System.currentTimeMillis(), msg)
         try {
             Log.i(TAG, msg)
         } catch (_: Throwable) {
@@ -53,31 +40,6 @@ object L {
             XposedBridge.log("$TAG | $msg")
         } catch (_: Throwable) {
         }
-    }
-
-    /**
-     * Keeps the last [MAX_RECENT] lines in memory so the module can push its own log to the app through
-     * the settings channel. This is what makes a report self-contained on a device where the app cannot
-     * get root: reading LSPosed's log file needs `su`, and on a locked-bootloader root `su` is often not
-     * runnable from the app at all ("Cannot run program su: error=2"). The module already has every line;
-     * it just hands them over. Never throws, never blocks on a lock for long.
-     */
-    private fun record(msg: String) {
-        try {
-            val line = System.currentTimeMillis().toString() + " " + msg
-            synchronized(ringLock) {
-                ring.addLast(line)
-                while (ring.size > MAX_RECENT) ring.removeFirst()
-            }
-        } catch (_: Throwable) {
-        }
-    }
-
-    /** The recent module log, oldest first, as one text block. Empty when nothing was logged yet. */
-    fun recentText(): String = try {
-        synchronized(ringLock) { ring.joinToString("\n") }
-    } catch (_: Throwable) {
-        ""
     }
 
     fun i(msg: String) = both(msg)

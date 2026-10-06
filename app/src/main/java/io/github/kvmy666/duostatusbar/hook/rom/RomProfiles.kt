@@ -10,12 +10,8 @@ import org.json.JSONObject
  *
  * The built-in adapters in [RomDetection] stay the source of truth for anything we have not measured.
  * This only supplies profiles that were read off a real device, and [RomDetection.forThisRom] accepts
- * them only when `measured` is true — so a data edit can add a new device without touching the Kotlin,
- * but it can never silently override an unverified guess.
- *
- * The asset is bundled in the APK, so a profile reaches users only through an app update. There is no
- * remote override channel (see `docs/rom-support-design.md`); do not read this as server-delivered
- * configuration.
+ * them only when `measured` is true — so a data edit can add a new device without an APK, but it can
+ * never silently override an unverified guess.
  *
  * Parsing is defensive: a missing or malformed asset yields an empty list, never an exception, and the
  * module falls back to the code defaults exactly as before.

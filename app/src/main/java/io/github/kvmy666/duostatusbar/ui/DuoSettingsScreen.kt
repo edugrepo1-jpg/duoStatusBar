@@ -104,12 +104,6 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
     var overrideFailed by remember { mutableStateOf(false) }
     // Whether the module is working, running old code, or unable to report (see ModuleHealthCheck).
     var moduleHealth by remember { mutableStateOf(ModuleHealthCheck.of(context)) }
-    // Whether a report has an evidence source: root granted, or Shizuku granted. The module's own log
-    // (moduleLoadAt > 0) is the third source and needs no privilege. Re-read on the poll below so the
-    // Send button enables right after the user grants access.
-    var accessGranted by remember {
-        mutableStateOf(DuoPrefs.rootAllowed(context) || StockIconHider.isPermissionGranted())
-    }
     var checkUpdates by remember { mutableStateOf(DuoPrefs.checkUpdates(context)) }
     var checkingUpdate by remember { mutableStateOf(false) }
     var updateMessage by remember { mutableStateOf("") }
@@ -153,7 +147,6 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             fallback = DuoPrefs.fallback(context)
             stageOverride = StageOverride.read(context)
             moduleHealth = ModuleHealthCheck.of(context)
-            accessGranted = DuoPrefs.rootAllowed(context) || StockIconHider.isPermissionGranted()
         }
     }
 
@@ -183,21 +176,6 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
 
     val onUpdate: (DuoSettings) -> Unit = { update(it) }
 
-    /**
-     * Asks the module for a fresh diagnostic dump and returns it, so a report captures the bar as it is
-     * right now (e.g. the shade open) rather than the one-shot boot dump. Falls back to the last stored
-     * dump if the module is unreachable or does not answer in time.
-     */
-    suspend fun refreshedDump(): String = try {
-        context.sendBroadcast(
-            Intent(DuoPrefs.ACTION_DIAGNOSTICS_REQUEST).setPackage("com.android.systemui")
-        )
-        withContext(Dispatchers.IO) { Thread.sleep(900) }
-        DuoPrefs.dump(context).ifEmpty { dump }
-    } catch (t: Throwable) {
-        dump
-    }
-
     // One-tap bug report, shared by the About button and the module-health card: packs the description,
     // the module status and the logs, uploads it, and falls back to the share sheet.
     fun collectAndSend() {
@@ -205,10 +183,10 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
         collecting = true
         logSent = false
         scope.launch {
-            val logs = withContext(Dispatchers.IO) { RootLogs.collect(context) }
+            val logs = withContext(Dispatchers.IO) { RootLogs.collect() }
             collecting = false
             val message = problem.trim()
-            val report = buildFullReport(problem, settings, status, history, refreshedDump(), moduleLoadAt, logs)
+            val report = buildFullReport(problem, settings, status, history, dump, moduleLoadAt, logs)
             val file = writeDiagnostics(context, report)
             if (file == null) {
                 shareText(context, report)
@@ -307,13 +285,13 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                     if (!collecting) {
                         collecting = true
                         scope.launch {
-                            // Same full log as the About button: the module dump plus the device capture.
-                            val logs = withContext(Dispatchers.IO) { RootLogs.collect(context) }
+                            // Same full log as the About button: the module dump plus the root logcat.
+                            val logs = withContext(Dispatchers.IO) { RootLogs.collect() }
                             collecting = false
                             sendLogOnTelegram(
                                 context,
                                 buildDiagnostics(settings, status, history, dump, moduleLoadAt) +
-                                    "\n\n===== device capture =====\n" + logs
+                                    "\n\n===== root log capture =====\n" + logs
                             )
                         }
                     }
@@ -363,6 +341,9 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             )
         }
 
+        EffectsSection(settings, onUpdate, search)
+        EffectsPreview(settings,search)
+        LiveEventsSection(search)
         CustomizeSection(
             settings = settings,
             onUpdate = onUpdate,
@@ -401,7 +382,6 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             status = status,
             history = history,
             moduleLoadAt = moduleLoadAt,
-            accessGranted = accessGranted,
             problem = problem,
             onProblemChange = { problem = it; logSent = false },
             collecting = collecting,
@@ -412,10 +392,10 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                 exporting = true
                 logSent = false
                 scope.launch {
-                    val logs = withContext(Dispatchers.IO) { RootLogs.collect(context) }
+                    val logs = withContext(Dispatchers.IO) { RootLogs.collect() }
                     exporting = false
                     pendingExport = buildFullReport(
-                        problem, settings, status, history, refreshedDump(), moduleLoadAt, logs
+                        problem, settings, status, history, dump, moduleLoadAt, logs
                     )
                     val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
                     exportLog.launch("duo-log-$stamp.txt")

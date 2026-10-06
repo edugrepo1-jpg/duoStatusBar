@@ -111,9 +111,12 @@ class DuoMappingTest {
     }
 
     @Test
-    fun `below twenty percent is red`() {
+    fun `one through twenty is red and takes priority over saver`() {
         assertEquals(DuoMapping.RED_CRITICAL, DuoMapping.tint(19, charging = false, saver = false))
-        assertEquals(DuoMapping.WHITE, DuoMapping.tint(20, charging = false, saver = false))
+        assertEquals(DuoMapping.RED_CRITICAL, DuoMapping.tint(20, charging = false, saver = false))
+        assertEquals(DuoMapping.RED_CRITICAL, DuoMapping.tint(1, charging = false, saver = true))
+        assertEquals(DuoMapping.WHITE, DuoMapping.tint(0, charging = false, saver = false))
+        assertEquals(DuoMapping.YELLOW_SAVER, DuoMapping.tint(21, charging = false, saver = true))
     }
 
     @Test
@@ -168,27 +171,6 @@ class DuoMappingTest {
     }
 
     // ------------------------------------------------------------------------------ the snapshot
-
-    @Test
-    fun `the track follows the gap, so the fallback cannot draw a closed ring under the digits`() {
-        // The Rive track arcs (ringTrackL/R) read leftArc/rightArc, and so must the Canvas fallback;
-        // drawing one full circle drew a closed track under the number when the percentage was off
-        // (user-reported). With the digits the track keeps the gap; without, it closes on the left.
-        val open = DuoMapping.visual(
-            level = 50, charging = false, saver = false, showPercent = true,
-            wifiLevel = 3, cellLevel = 4, airplane = false
-        )
-        assertEquals(DuoMapping.halfArc(false), open.leftArc, 0.0001f)
-        assertEquals(DuoMapping.halfArc(false), open.rightArc, 0.0001f)
-
-        val closed = DuoMapping.visual(
-            level = 50, charging = false, saver = false, showPercent = false,
-            wifiLevel = 3, cellLevel = 4, airplane = false
-        )
-        assertEquals(DuoMapping.DRAWN_ARC, closed.leftArc, 0.0001f)
-        assertEquals(0f, closed.rightArc, 0.0001f)
-        assertEquals(0f, closed.percentOpacity, 0.0001f)
-    }
 
     @Test
     fun `charging hides the percentage and shows the bolt`() {

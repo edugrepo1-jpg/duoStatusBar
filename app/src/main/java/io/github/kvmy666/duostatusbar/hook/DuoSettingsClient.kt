@@ -69,7 +69,10 @@ internal data class ModuleSettings(
      * Percent of the icon's width kept in the strip. 100 is the full slot; 0 lets the other
      * status icons sit against the screen edge.
      */
-    val edgePadding: Int
+    val edgePadding: Int,
+    val thickPercent: Int = 100,
+    val featFlags: Int = 0x3FDF,
+    val globalPercent: Int = 100
 ) {
     /** Whether Do Not Disturb may take the middle of the ring. */
     val showDnd: Boolean get() = DuoPrefs.dndInMiddle(dndMode)
@@ -186,6 +189,29 @@ internal object DuoSettingsClient {
     @Volatile private var bridge: ModuleSettings? = null
     @Volatile private var bridgeLandscape: ModuleSettings? = null
     @Volatile private var lastRequestAt = 0L
+    private val lastGood = mutableMapOf<Int, ModuleSettings>()
+    private var retryAttempt = 0
+    private var retryPending = false
+    private val retryHandler by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
+
+    private fun retryRead(context: Context) {
+        if (retryPending || retryAttempt >= 3) return
+        retryPending = true
+        val delay = 1200L * ++retryAttempt
+        retryHandler.postDelayed({
+            retryPending = false
+            try {
+                val orientation = effectiveOrientation(context)
+                val fresh = readProvider(context, orientation)
+                if (fresh != null) {
+                    lastGood[orientation] = fresh
+                    providerUnreachable = false
+                    retryAttempt = 0
+                    context.sendBroadcast(Intent(ACTION_SETTINGS_CHANGED).setPackage(context.packageName))
+                } else retryRead(context)
+            } catch (t: Throwable) { L.w("Nova leitura das configurações: ${t.message}") }
+        }, delay)
+    }
 
     private val bridgeReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context?, intent: Intent?) {
@@ -254,16 +280,21 @@ internal object DuoSettingsClient {
         val fromProvider = readProvider(context, orientation)
         if (fromProvider != null) {
             providerUnreachable = false
+            lastGood[orientation] = fromProvider
+            retryAttempt = 0
             return fromProvider
         }
         providerUnreachable = true
+        retryRead(context)
         val bridged = if (orientation == Configuration.ORIENTATION_LANDSCAPE) bridgeLandscape else bridge
-        if (bridged != null) {
+        val cached = lastGood[orientation]
+        if (bridged != null && (cached == null || bridged.revision >= cached.revision)) {
             L.i("settings via bridge (rev ${bridged.revision})")
+            lastGood[orientation] = bridged
             return bridged
         }
         requestFromApp(context)
-        return ModuleSettings.DEFAULT
+        return cached ?: ModuleSettings.DEFAULT
     }
 
     /** The provider read, or null when the provider could not be reached (as opposed to "off"). */
@@ -381,7 +412,10 @@ internal object DuoSettingsClient {
         wifiDots = cursor.optionalInt(DuoPrefs.COL_WIFI_DOTS) == 1,
         // Missing means the full slot, so an older settings app does not suddenly pull the other icons
         // against the screen edge.
-        edgePadding = cursor.optionalInt(DuoPrefs.COL_EDGE_PADDING, DuoPrefs.DEFAULT_EDGE_PADDING)
+        edgePadding = cursor.optionalInt(DuoPrefs.COL_EDGE_PADDING, DuoPrefs.DEFAULT_EDGE_PADDING),
+        thickPercent = cursor.optionalInt(DuoPrefs.COL_THICK_PERCENT, 100).coerceIn(1, 300),
+        featFlags = cursor.optionalInt(DuoPrefs.COL_FEAT_FLAGS, 0x3FDF),
+        globalPercent = cursor.optionalInt(DuoPrefs.COL_GLOBAL_PERCENT, 100).coerceIn(0, 100)
             .coerceIn(DuoPrefs.MIN_EDGE_PADDING, DuoPrefs.MAX_EDGE_PADDING)
         )
     }
@@ -439,7 +473,10 @@ internal object DuoSettingsClient {
             indicatorsOffsetX = int(DuoPrefs.COL_INDICATORS_OFFSET_X, portrait.indicatorsOffsetX)
                 .coerceIn(-DuoPrefs.MAX_OFFSET, DuoPrefs.MAX_OFFSET),
             wifiDots = bool(DuoPrefs.COL_WIFI_DOTS, portrait.wifiDots),
-            edgePadding = int(DuoPrefs.COL_EDGE_PADDING, portrait.edgePadding)
+            edgePadding = int(DuoPrefs.COL_EDGE_PADDING, portrait.edgePadding),
+            thickPercent = int(DuoPrefs.COL_THICK_PERCENT, portrait.thickPercent).coerceIn(1, 300),
+            featFlags = int(DuoPrefs.COL_FEAT_FLAGS, portrait.featFlags),
+            globalPercent = int(DuoPrefs.COL_GLOBAL_PERCENT, portrait.globalPercent).coerceIn(0, 100)
                 .coerceIn(DuoPrefs.MIN_EDGE_PADDING, DuoPrefs.MAX_EDGE_PADDING)
         )
     }
@@ -460,7 +497,8 @@ internal object DuoSettingsClient {
      * Separate from [report] because the dump is large and debug-only: the compact status line is the
      * release path. Never throws.
      */
-    fun reportDump(context: Context, dump: String) {
+    fun reportDump(context: Context, rawDump: String) {
+        val dump = io.github.kvmy666.duostatusbar.fx.Fx.wrapDump(rawDump)
         if (!reportViaProvider(context, "dump", "dump", dump)) {
             broadcastToApp(context, SettingsBridge.ACTION_DUMP_PUSH, SettingsBridge.EXTRA_DUMP, dump)
         }
