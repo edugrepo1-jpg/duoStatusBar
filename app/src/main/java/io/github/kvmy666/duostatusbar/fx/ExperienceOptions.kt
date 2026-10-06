@@ -1,5 +1,6 @@
 package io.github.kvmy666.duostatusbar.fx
 
+import io.github.kvmy666.duostatusbar.i18n.UiText
 import org.json.JSONObject
 
 /** One optional, versioned settings column; missing or malformed values preserve the working bar. */
@@ -8,14 +9,17 @@ internal data class ExperienceOptions(
     val screenshot: Boolean=false, val volume: Boolean=false, val recordingTime: Boolean=false,
     val island: Boolean=false, val drawIcons: Boolean=false,
     val dwellMs: Int=3000, val exitMs: Int=120, val entryMs: Int=160,
-    val compass:Boolean=false, val iconPercent:Int=100
+    val compass:Boolean=false, val iconPercent:Int=100,
+    val iconSeconds:Map<String,Int> = emptyMap(), val networkOnly:Boolean=false, val fadeEnabled:Boolean=true, val language:String="pt-BR"
 ) {
     fun encode(): String = JSONObject().apply {
-        put("v",1)
+        put("v",2);put("language",language.takeIf { it in listOf("pt-BR","en","es") } ?: "pt-BR")
         put("music",music);put("album",albumColors);put("charge",chargeEstimate)
         put("shot",screenshot);put("volume",volume);put("record",recordingTime)
         put("island",island);put("draw",drawIcons)
-        put("dwell",dwellMs.coerceIn(1200,10000));put("exit",exitMs.coerceIn(60,600));put("entry",entryMs.coerceIn(60,800))
+        put("dwell",dwellMs.coerceIn(1000,60000));put("exit",exitMs.coerceIn(60,600));put("entry",entryMs.coerceIn(60,800))
+        put("times",JSONObject(iconSeconds.filterKeys { key -> SlotIcon.entries.any { it.name==key } }.mapValues { it.value.coerceIn(1,60) }))
+        put("networkOnly",networkOnly);put("fade",fadeEnabled)
         put("compass",compass);put("iconSize",iconPercent.coerceIn(60,200))
     }.toString()
     companion object {
@@ -24,8 +28,11 @@ internal data class ExperienceOptions(
             val j=JSONObject(raw)
             ExperienceOptions(j.optBoolean("music"),j.optBoolean("album"),j.optBoolean("charge"),
                 j.optBoolean("shot"),j.optBoolean("volume"),j.optBoolean("record"),j.optBoolean("island"),j.optBoolean("draw"),
-                j.optInt("dwell",3000).coerceIn(1200,10000),j.optInt("exit",120).coerceIn(60,600),j.optInt("entry",160).coerceIn(60,800),
-                j.optBoolean("compass"),j.optInt("iconSize",100).coerceIn(60,200))
+                j.optInt("dwell",3000).coerceIn(1000,60000),j.optInt("exit",120).coerceIn(60,600),j.optInt("entry",160).coerceIn(60,800),
+                j.optBoolean("compass"),j.optInt("iconSize",100).coerceIn(60,200),
+                SlotIcon.entries.mapNotNull { icon -> j.optJSONObject("times")?.let { times ->
+                    if(times.has(icon.name)) icon.name to times.optInt(icon.name,3).coerceIn(1,60) else null
+                } }.toMap(),j.optBoolean("networkOnly"),j.optBoolean("fade",true),j.optString("language","pt-BR").takeIf { it in listOf("pt-BR","en","es") } ?: "pt-BR")
         } catch (_:Exception) { ExperienceOptions() }
     }
 }
@@ -66,18 +73,18 @@ internal fun durationLabel(ms:Long):String {
     else "%d:%02d".format(seconds/60,seconds%60)
 }
 internal fun estimateLabel(ms:Long):String {
-    if(ms<0)return "Calculando"
-    if(ms==0L)return "Completa"
+    if(ms<0)return UiText.t("Calculando")
+    if(ms==0L)return UiText.t("Completa")
     val minutes=((ms+59999)/60000).coerceAtLeast(1)
     return if(minutes>=60) "~${minutes/60}h${(minutes%60).toString().padStart(2,'0')}" else "~${minutes}min"
 }
 
 internal fun iconLabel(icon:SlotIcon):String=when(icon) {
-    SlotIcon.WIFI->"Wi-Fi";SlotIcon.NETWORK->"Rede móvel";SlotIcon.AIRPLANE->"Modo Avião";SlotIcon.DND->"Não Perturbe"
-    SlotIcon.BLUETOOTH->"Bluetooth";SlotIcon.NFC->"NFC";SlotIcon.SHARE->"Hotspot";SlotIcon.AIRPODS->"Fones"
-    SlotIcon.BOLT->"Carregando";SlotIcon.CAMERA->"Câmera";SlotIcon.MICROPHONE->"Microfone";SlotIcon.ALARM->"Alarme"
-    SlotIcon.VPN->"VPN";SlotIcon.LOCATION->"Localização";SlotIcon.SILENT->"Silencioso";SlotIcon.VIBRATE->"Vibração"
-    SlotIcon.MEDIA->"Música";SlotIcon.WIRELESS->"Carga sem fio";SlotIcon.TORCH->"Lanterna";SlotIcon.RECORD->"Gravação de tela"
-    SlotIcon.WIFI_OFFLINE->"Wi-Fi sem internet";SlotIcon.CHARGE_TIME->"Previsão de carga";SlotIcon.RECORD_TIME->"Tempo de gravação"
-    SlotIcon.VOLUME->"Volume";SlotIcon.SCREENSHOT->"Captura de tela";SlotIcon.NOTIFICATION->"Notificação"
+    SlotIcon.WIFI->"Wi-Fi";SlotIcon.NETWORK->UiText.t("Rede móvel");SlotIcon.AIRPLANE->UiText.t("Modo Avião");SlotIcon.DND->UiText.t("Não Perturbe")
+    SlotIcon.BLUETOOTH->"Bluetooth";SlotIcon.NFC->"NFC";SlotIcon.SHARE->"Hotspot";SlotIcon.AIRPODS->UiText.t("Fones")
+    SlotIcon.BOLT->UiText.t("Carregando");SlotIcon.CAMERA->UiText.t("Câmera");SlotIcon.MICROPHONE->UiText.t("Microfone");SlotIcon.ALARM->UiText.t("Alarme")
+    SlotIcon.VPN->"VPN";SlotIcon.LOCATION->UiText.t("Localização");SlotIcon.SILENT->UiText.t("Silencioso");SlotIcon.VIBRATE->UiText.t("Vibração")
+    SlotIcon.MEDIA->UiText.t("Música");SlotIcon.WIRELESS->UiText.t("Carga sem fio");SlotIcon.TORCH->UiText.t("Lanterna");SlotIcon.RECORD->UiText.t("Gravação de tela")
+    SlotIcon.WIFI_OFFLINE->UiText.t("Wi-Fi sem internet");SlotIcon.CHARGE_TIME->UiText.t("Previsão de carga");SlotIcon.RECORD_TIME->UiText.t("Tempo de gravação")
+    SlotIcon.VOLUME->UiText.t("Volume");SlotIcon.SCREENSHOT->UiText.t("Captura de tela");SlotIcon.NOTIFICATION->UiText.t("Notificação")
 }

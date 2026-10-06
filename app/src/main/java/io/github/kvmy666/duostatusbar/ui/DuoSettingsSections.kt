@@ -1,4 +1,5 @@
 package io.github.kvmy666.duostatusbar.ui
+import io.github.kvmy666.duostatusbar.i18n.UiText
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
@@ -46,39 +47,39 @@ import io.github.kvmy666.duostatusbar.settings.UpdateInfo
 // ------------------------------------------------------------------ Battery icon
 @Composable
 internal fun CustomizeSection(settings: DuoSettings,onUpdate:(DuoSettings)->Unit,matches:SearchGate,onRestart:()->Unit) {
-    if(matches("Porcentagem","Número","Altura da porcentagem","Mostrar a porcentagem")) StudioCard {
-        SectionTitle("Porcentagem")
-        SettingSwitch(stringResource(R.string.settings_percent),"Mostre a bateria no topo do anel.",settings.showPercent,settings.enabled) {
+    if(matches(UiText.t("Porcentagem"),UiText.t("Número"),UiText.t("Altura da porcentagem"),UiText.t("Mostrar a porcentagem"))) StudioCard {
+        SectionTitle(UiText.t("Porcentagem"))
+        SettingSwitch(stringResource(R.string.settings_percent),UiText.t("Mostre a bateria no topo do anel."),settings.showPercent,settings.enabled) {
             onUpdate(settings.copy(showPercent=it))
         }
-        LabelledSlider("Altura da porcentagem: ${settings.percentHeight}%",settings.percentHeight.toFloat(),
+        LabelledSlider(UiText.format("Altura da porcentagem: {0}%", settings.percentHeight),settings.percentHeight.toFloat(),
             DuoPrefs.MIN_PERCENT_HEIGHT.toFloat()..DuoPrefs.MAX_PERCENT_HEIGHT.toFloat(),enabled=settings.enabled&&settings.showPercent) {
             onUpdate(settings.copy(percentHeight=it.toInt()))
         }
         Text(stringResource(R.string.settings_percent_height_detail),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
     }
-    if(matches("Posição","Ícones fora do anel","Separar","Espaço nas bordas","Aplicar mudanças","Reiniciar","Horizontal","Vertical")) StudioCard {
-        SectionTitle("Posição e organização")
-        SettingSwitch(stringResource(R.string.settings_split),"Separe os indicadores e ajuste cada posição.",settings.splitIndicators,settings.enabled) {
+    if(matches(UiText.t("Posição"),UiText.t("Ícones fora do anel"),UiText.t("Separar"),UiText.t("Espaço nas bordas"),UiText.t("Aplicar mudanças"),UiText.t("Reiniciar"),UiText.t("Horizontal"),UiText.t("Vertical"))) StudioCard {
+        SectionTitle(UiText.t("Posição e organização"))
+        SettingSwitch(stringResource(R.string.settings_split),UiText.t("Separe os indicadores e ajuste cada posição."),settings.splitIndicators,settings.enabled) {
             onUpdate(settings.copy(splitIndicators=it))
         }
         PositionEditor(settings.offsetX,settings.enabled,
-            label=if(settings.splitIndicators)"Posição do anel" else "Posição na barra",
+            label=if(settings.splitIndicators)UiText.t("Posição do anel") else UiText.t("Posição na barra"),
             visual=if(settings.splitIndicators)DuoPart.RING.apply(demo()) else null) {
             onUpdate(settings.copy(offsetX=it))
         }
         if(settings.splitIndicators) PositionEditor(settings.indicatorsOffsetX,settings.enabled,
-            label="Posição dos indicadores",visual=DuoPart.INDICATORS.apply(demo())) {
+            label=UiText.t("Posição dos indicadores"),visual=DuoPart.INDICATORS.apply(demo())) {
             onUpdate(settings.copy(indicatorsOffsetX=it))
         }
-        LabelledSlider("Espaço nas bordas: ${settings.edgePadding}%",settings.edgePadding.toFloat(),
+        LabelledSlider(UiText.format("Espaço nas bordas: {0}%", settings.edgePadding),settings.edgePadding.toFloat(),
             DuoPrefs.MIN_EDGE_PADDING.toFloat()..DuoPrefs.MAX_EDGE_PADDING.toFloat(),enabled=settings.enabled) {
             onUpdate(settings.copy(edgePadding=it.toInt()))
         }
-        SettingSwitch("Aplicar na hora","As mudanças são aplicadas ao terminar o ajuste.",settings.liveApply,settings.enabled) {
+        SettingSwitch(UiText.t("Aplicar na hora"),UiText.t("As mudanças são aplicadas ao terminar o ajuste."),settings.liveApply,settings.enabled) {
             onUpdate(settings.copy(liveApply=it))
         }
-        OutlinedButton(onClick=onRestart,enabled=settings.enabled,modifier=Modifier.fillMaxWidth()) {Text("Reiniciar a barra")}
+        OutlinedButton(onClick=onRestart,enabled=settings.enabled,modifier=Modifier.fillMaxWidth()) {Text(UiText.t("Reiniciar a barra"))}
     }
 }
 // -------------------------------------------------------------------- Animations
@@ -343,17 +344,17 @@ internal fun ActionsSection(
             ActionPicker(
                 label = stringResource(R.string.settings_tap),
                 selectedKey = settings.tapAction,
-                enabled = autoExpand && settings.enabled
+                enabled = settings.enabled
             ) { onUpdate(settings.copy(tapAction = it)) }
             ActionPicker(
                 label = stringResource(R.string.settings_double_tap),
                 selectedKey = settings.doubleTapAction,
-                enabled = autoExpand && settings.enabled
+                enabled = settings.enabled
             ) { onUpdate(settings.copy(doubleTapAction = it)) }
             ActionPicker(
                 label = stringResource(R.string.settings_long_press),
                 selectedKey = settings.longPressAction,
-                enabled = autoExpand && settings.enabled
+                enabled = settings.enabled
             ) { onUpdate(settings.copy(longPressAction = it)) }
         }
     }
@@ -365,6 +366,7 @@ internal fun AboutSection(
     status: String,
     history: List<String>,
     moduleLoadAt: Long,
+    accessGranted: Boolean,
     problem: String,
     onProblemChange: (String) -> Unit,
     collecting: Boolean,
@@ -382,34 +384,39 @@ internal fun AboutSection(
 ) {
     val context=LocalContext.current
     var details by remember { mutableStateOf(false) }
-    if(matches("Ajuda","Diagnóstico","Relatório","Logs",stringResource(R.string.section_about),
+    if(matches(UiText.t("Ajuda"),UiText.t("Diagnóstico"),UiText.t("Relatório"),UiText.t("Logs"),stringResource(R.string.section_about),
             stringResource(R.string.settings_collect_log),stringResource(R.string.settings_status))) StudioCard {
-        SectionTitle("Ajuda e diagnóstico")
-        Text("Conte o que aconteceu. Salve ou compartilhe um relatório quando precisar.",
+        SectionTitle(UiText.t("Ajuda e diagnóstico"))
+        Text(UiText.t("Conte o que aconteceu. Salve ou compartilhe um relatório quando precisar."),
             style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(UiText.t("O relatório técnico funciona sem conceder root ao app."),style=MaterialTheme.typography.bodySmall)
         OutlinedTextField(value=problem,onValueChange=onProblemChange,
-            placeholder={Text("O que você gostaria de corrigir?")},minLines=2,
+            placeholder={Text(UiText.t("O que você gostaria de corrigir?"))},minLines=2,
             shape=RoundedCornerShape(16.dp),modifier=Modifier.fillMaxWidth())
         OutlinedButton(onClick=onExport,enabled=!exporting&&!collecting,modifier=Modifier.fillMaxWidth()) {
-            Text(if(exporting)"Preparando relatório…" else "Salvar relatório")
+            Text(if(exporting)UiText.t("Preparando relatório…") else UiText.t("Salvar relatório"))
         }
         Button(onClick=onCollect,enabled=!collecting&&!exporting,modifier=Modifier.fillMaxWidth()) {
-            Text(if(collecting)"Preparando relatório…" else "Enviar relatório")
+            Text(if(collecting)UiText.t("Preparando relatório…") else UiText.t("Enviar relatório"))
         }
         if(logSent)Text(stringResource(R.string.settings_log_sent),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.tertiary)
-        TextButton(onClick={details=!details}) {Text(if(details)"Ocultar informações do módulo" else "Ver informações do módulo")}
+        TextButton(onClick={details=!details}) {Text(if(details)UiText.t("Ocultar informações do módulo") else UiText.t("Ver informações do módulo"))}
         if(details) {
+            RootAccessSetting()
             Text(status.ifBlank{context.getString(R.string.settings_no_status)},style=MaterialTheme.typography.bodySmall)
             Text(if(moduleLoadAt>0L)context.getString(R.string.settings_module_loaded,formatTimestamp(moduleLoadAt)) else context.getString(R.string.settings_module_never),
                 style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             history.takeLast(3).forEach {Text(it.substringAfter(' '),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
         }
     }
-    if(matches("Atualizações",stringResource(R.string.settings_check_updates))) StudioCard {
-        SectionTitle("Atualizações")
-        SettingSwitch("Buscar automaticamente","Receba avisos quando uma atualização estiver disponível.",checkUpdates,onChange=onToggleUpdates)
+    if(matches(UiText.t("Idioma"),UiText.t("Language"),"Español","Português","English")) StudioCard {
+        LanguagePicker(false) { tag -> io.github.kvmy666.duostatusbar.i18n.AppLanguage.choose(context,tag) }
+    }
+    if(matches(UiText.t("Atualizações"),stringResource(R.string.settings_check_updates))) StudioCard {
+        SectionTitle(UiText.t("Atualizações"))
+        SettingSwitch(UiText.t("Buscar automaticamente"),UiText.t("Receba avisos quando uma atualização estiver disponível."),checkUpdates,onChange=onToggleUpdates)
         OutlinedButton(onClick=onCheckNow,enabled=!checkingUpdate,modifier=Modifier.fillMaxWidth()) {
-            Text(if(checkingUpdate)"Verificando…" else "Verificar agora")
+            Text(if(checkingUpdate)UiText.t("Verificando…") else UiText.t("Verificar agora"))
         }
         if(updateMessage.isNotEmpty())Text(updateMessage,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         updateInfo?.let { info ->
@@ -417,9 +424,9 @@ internal fun AboutSection(
             else Text(stringResource(R.string.settings_update_no_apk),style=MaterialTheme.typography.bodySmall)
         }
     }
-    if(matches("Sobre","Contato","Apoiar",stringResource(R.string.section_about),stringResource(R.string.settings_contact_developer),stringResource(R.string.settings_donate))) StudioCard {
+    if(matches(UiText.t("Sobre"),UiText.t("Contato"),UiText.t("Apoiar"),stringResource(R.string.section_about),stringResource(R.string.settings_contact_developer),stringResource(R.string.settings_donate))) StudioCard {
         SectionTitle("Duo Status Bar")
-        Text("Uma assinatura discreta para a sua barra de status.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(UiText.t("Uma assinatura discreta para a sua barra de status."),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         TextButton(onClick={runCatching{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(TELEGRAM_CHAT_URL)))}}) {
             Text(stringResource(R.string.settings_contact_developer))
         }
@@ -476,4 +483,4 @@ private fun dndPreview(mode: String) = when (mode) {
 /** FR-09: a level that shows a clear half-full ring rather than an empty or full one. */
 private const val DEMO_LEVEL = 72
 /** FR-25: the five arrival speeds, slowest first, matching [DuoPrefs.REVEAL_CHOICES] reversed. */
-private val SPEED_LABELS = listOf("Lenta", "Suave", "Normal", "Rápida", "Muito rápida")
+private val SPEED_LABELS get() = listOf(UiText.t("Lenta"), UiText.t("Suave"), UiText.t("Normal"), UiText.t("Rápida"), UiText.t("Muito rápida"))

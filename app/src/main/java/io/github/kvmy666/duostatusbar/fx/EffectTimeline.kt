@@ -66,15 +66,31 @@ internal class SlotCycle {
     private val swap=SequentialSwap()
     private var initialized=false
     private var period=3000L
+    private var durations=emptyMap<String,Int>()
+    private var fades=true
+    private fun span(icon:SlotIcon)=maxOf(durations[icon.name]?.times(1000L) ?: period,exit+entry+400L)
+    private fun prefix(index:Int)=items.take(index).sumOf { span(it) }
+    private data class Position(val index:Int,val phase:Long,val start:Long)
+    private fun position(time:Long):Position {
+        if(items.isEmpty())return Position(0,0,time)
+        val total=items.sumOf { span(it) };val elapsed=(time-began).coerceAtLeast(0)
+        var phase=elapsed%total;var start=began+elapsed-phase
+        for(index in items.indices){val length=span(items[index]);if(phase<length)return Position(index,phase,start);phase-=length;start+=length}
+        return Position(0,0,start)
+    }
     private var exit=120L
     private var entry=160L
     private var temporary:SlotIcon?=null
     private var temporaryAt=0L
     private var returnAt=Long.MIN_VALUE
     fun configure(options:ExperienceOptions,now:Long) {
-        val next=maxOf(options.dwellMs.toLong(),options.exitMs+options.entryMs+400L)
-        if(next!=period) { val pose=frame(now).icon;began=now-items.indexOf(pose).coerceAtLeast(0)*next }
-        period=next;exit=options.exitMs.toLong();entry=options.entryMs.toLong();swap.configure(exit,entry)
+        val pose=frame(now).icon;val phase=position(pausedAt ?: now).phase
+        val next=options.dwellMs.coerceIn(1000,60000).toLong()
+        val changed=next!=period || durations!=options.iconSeconds || fades!=options.fadeEnabled
+        period=next;durations=options.iconSeconds;fades=options.fadeEnabled
+        exit=options.exitMs.toLong();entry=options.entryMs.toLong();swap.configure(exit,entry)
+        if(changed&&items.isNotEmpty()) { val index=items.indexOf(pose).coerceAtLeast(0);began=(pausedAt ?: now)-prefix(index)-phase.coerceAtMost(span(items[index])-1) }
+        if(!fades)swap.update(pose?.ordinal ?: -1,now,false)
     }
     fun transient(icon:SlotIcon?,now:Long) {
         if(icon==temporary)return
@@ -86,27 +102,30 @@ internal class SlotCycle {
         if(items==unique)return
         if(!initialized){initialized=true;items=unique;began=now;swap.update(items.firstOrNull()?.ordinal ?: -1,now,false);return}
         val before=frame(now).icon
-        val phase=((pausedAt ?: now)-began).coerceAtLeast(0)%period
+        val phase=position(pausedAt ?: now).phase
         val urgent=unique.firstOrNull { it !in items && it in listOf(SlotIcon.CAMERA,SlotIcon.MICROPHONE,SlotIcon.RECORD) }
         items=unique
         val chosen=urgent ?: before?.takeIf { it in items } ?: items.firstOrNull()
         val index=items.indexOf(chosen).coerceAtLeast(0)
         // Retain elapsed dwell time when the active set changes; polling must not starve later icons.
-        began=(pausedAt ?: now)-index*period-if(urgent!=null)0L else phase
-        if(temporary==null)swap.update(chosen?.ordinal ?: -1,now,true)
+        began=(pausedAt ?: now)-prefix(index)-if(urgent!=null||items.isEmpty())0L else phase.coerceAtMost(span(items[index])-1)
+        if(temporary==null)swap.update(chosen?.ordinal ?: -1,now,fades)
     }
     fun pause(now:Long){if(pausedAt==null)pausedAt=now}
     fun resume(now:Long){pausedAt?.let { began+=now-it;swap.shiftTime(now-it) };pausedAt=null}
     fun preferWifi(now:Long){
         val preferred=items.firstOrNull { it==SlotIcon.WIFI || it==SlotIcon.WIFI_OFFLINE } ?: return
-        began=now-items.indexOf(preferred)*period;swap.update(preferred.ordinal,now,false)
+        began=now-prefix(items.indexOf(preferred));swap.update(preferred.ordinal,now,false)
     }
     fun frame(now:Long):SlotFrame {
         val time=pausedAt ?: now
-        val elapsed=(time-began).coerceAtLeast(0)
-        val index=if(items.isEmpty())0 else ((elapsed/period + if(elapsed%period>=(period-exit)&&items.size>1)1 else 0)%items.size).toInt()
-        val transitionAt=if(items.size>1)began+(elapsed/period)*period+if(elapsed%period>=(period-exit))(period-exit) else -exit else time
-        swap.update((temporary ?: items.getOrNull(index))?.ordinal ?: -1, if(temporary!=null)temporaryAt else maxOf(transitionAt,returnAt),time>=began)
+        val pos=position(time)
+        val length=items.getOrNull(pos.index)?.let { span(it) } ?: period
+        val fadeOut=if(fades)exit else 0L
+        val changing=items.size>1&&pos.phase>=length-fadeOut
+        val index=if(changing)(pos.index+1)%items.size else pos.index
+        val transitionAt=if(items.size>1)pos.start+if(changing)length-fadeOut else -fadeOut else time
+        swap.update((temporary ?: items.getOrNull(index))?.ordinal ?: -1, if(temporary!=null)temporaryAt else maxOf(transitionAt,returnAt),fades&&time>=began)
         val frame=swap.frame(time)
         return SlotFrame(SlotIcon.entries.getOrNull(frame.key),frame.opacity,.8f+.2f*frame.opacity,frame.reveal)
     }
@@ -114,8 +133,9 @@ internal class SlotCycle {
         if(pausedAt!=null)return Long.MAX_VALUE
         if(swap.moving(now))return 16L
         if(temporary!=null||items.size<=1)return Long.MAX_VALUE
-        val phase=(now-began).coerceAtLeast(0)%period
-        return if(phase>=(period-exit))16L else (period-exit)-phase
+        val pos=position(now);val length=span(items[pos.index])
+        val fadeOut=if(fades)exit else 0L
+        return if(pos.phase>=length-fadeOut)16L else length-fadeOut-pos.phase
     }
 }
 

@@ -26,7 +26,7 @@ class ExperienceTest {
     }
     @Test fun `rhythm and internal icon size are bounded`() {
         val options=ExperienceOptions.decode(ExperienceOptions(dwellMs=0,exitMs=999,entryMs=-1,iconPercent=300).encode())
-        assertEquals(1200,options.dwellMs);assertEquals(600,options.exitMs);assertEquals(60,options.entryMs);assertEquals(200,options.iconPercent)
+        assertEquals(1000,options.dwellMs);assertEquals(600,options.exitMs);assertEquals(60,options.entryMs);assertEquals(200,options.iconPercent)
     }
     @Test fun `new settings round trip to module in both orientations and legacy columns remain readable`() {
         val ctx=ApplicationProvider.getApplicationContext<Context>()

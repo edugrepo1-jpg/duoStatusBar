@@ -1,5 +1,6 @@
 package io.github.kvmy666.duostatusbar.ui
 
+import io.github.kvmy666.duostatusbar.i18n.UiText
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -45,7 +46,7 @@ internal fun sendLogOnTelegram(context: Context, report: String) {
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_TEXT, "Duo Status Bar log")
+            putExtra(Intent.EXTRA_TEXT, UiText.t("Duo Status Bar log"))
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             setPackage(telegram)
         }
@@ -103,7 +104,7 @@ internal fun buildDiagnostics(
         }
     }
 
-/** The complete bug report: the user's description, the diagnostics, then the root log capture. */
+/** The complete bug report: the user's description, the diagnostics, then the device capture. */
 internal fun buildFullReport(
     problem: String,
     settings: DuoSettings,
@@ -112,7 +113,7 @@ internal fun buildFullReport(
     dump: String,
     moduleLoadAt: Long,
     logs: String
-): String = buildString {
+): String = io.github.kvmy666.duostatusbar.DiagnosticPrivacy.clean(buildString {
     val message = problem.trim()
     if (message.isNotEmpty()) {
         appendLine("mensagem do usuário:")
@@ -120,9 +121,9 @@ internal fun buildFullReport(
         appendLine()
     }
     append(buildDiagnostics(settings, status, history, dump, moduleLoadAt))
-    append("\n\n===== root log capture =====\n")
+    append("\n\n===== device capture =====\n")
     append(logs)
-}
+})
 
 internal fun formatTimestamp(ms: Long): String =
     SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(ms))
@@ -132,7 +133,7 @@ internal fun shareText(context: Context, report: String) {
         type = "text/plain"
         putExtra(Intent.EXTRA_TEXT, report)
     }
-    context.startActivity(Intent.createChooser(send, "Compartilhar diagnóstico"))
+    context.startActivity(Intent.createChooser(send, UiText.t("Compartilhar diagnóstico")))
 }
 
 /**

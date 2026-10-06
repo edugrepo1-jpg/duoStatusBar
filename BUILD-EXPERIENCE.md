@@ -1,1 +1,0 @@
-SDK 36, Java 17 ou 21. Execute ./gradlew :app:testDebugUnitTest :app:assembleDebug. No host local foi usado build-canvas.gradle e ECJ. Assine com sua própria chave. A pasta rive é referência histórica; o APK usa somente Canvas.

@@ -39,7 +39,9 @@ internal class RuntimeIndicators(private val context: Context, private val handl
     private val ops by lazy { context.getSystemService(AppOpsManager::class.java) }
     private val cameras by lazy { context.getSystemService(CameraManager::class.java) }
     private fun read(name: String, action: () -> Unit) {
-        try { action() } catch (t: Throwable) { if (failures.add(name)) L.w("Indicador $name indisponível: ${t.javaClass.simpleName}; estado não confirmado") }
+        try { action() } catch (t: Throwable) {
+            when(name){"Bluetooth"->bluetooth=false;"NFC"->nfc=false;"hotspot"->hotspot=false;"alarme"->alarm=false;"rede"->{vpn=false;wifiConnected=false;wifiValidated=false};"localização habilitada"->locationEnabled=false;"captura da tela"->recording=false;"bateria dos fones"->headphoneBattery=-1}
+            if (failures.add(name)) L.w("Indicador $name indisponível: ${t.javaClass.simpleName}; estado não confirmado") }
     }
     private val opListener = AppOpsManager.OnOpActiveChangedListener { op, uid, pkg, active ->
         if (started) {
@@ -102,7 +104,7 @@ internal class RuntimeIndicators(private val context: Context, private val handl
         read("Bluetooth") { bluetooth=context.getSystemService(BluetoothManager::class.java)?.adapter?.isEnabled==true }
         read("NFC") { nfc=android.nfc.NfcAdapter.getDefaultAdapter(context)?.isEnabled==true }
         read("hotspot") { val manager=context.getSystemService(android.net.wifi.WifiManager::class.java);hotspot=manager?.javaClass?.getMethod("isWifiApEnabled")?.invoke(manager)==true }
-        read("alarme") { alarm=context.getSystemService(AlarmManager::class.java)?.nextAlarmClock != null }
+        read("alarme") { alarm=(context.getSystemService(AlarmManager::class.java)?.nextAlarmClock?.triggerTime ?: 0)>System.currentTimeMillis() }
         read("não perturbe") { val filter=context.getSystemService(android.app.NotificationManager::class.java)?.currentInterruptionFilter;dnd=filter!=null&&filter!=android.app.NotificationManager.INTERRUPTION_FILTER_UNKNOWN&&filter!=android.app.NotificationManager.INTERRUPTION_FILTER_ALL }
         read("silencioso") { ringer=context.getSystemService(AudioManager::class.java)?.ringerMode ?: AudioManager.RINGER_MODE_NORMAL }
         read("rede") {

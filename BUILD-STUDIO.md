@@ -1,0 +1,1 @@
+Base upstream: 22-1.4.2-beta.2, f3d3ac9. SDK 36, Java 17 ou 21. ./gradlew :app:testDebugUnitTest :app:assembleDebug. O build local usa build-canvas.gradle e ECJ. Assine com sua própria chave. Rive é referência histórica, não integra o APK.

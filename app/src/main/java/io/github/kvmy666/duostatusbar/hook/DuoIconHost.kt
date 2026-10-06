@@ -199,7 +199,7 @@ internal class DuoIconHost(private val context: Context) {
     }
     fun pauseEffects(paused: Boolean) {
         if (paused) resetContinuum()
-        for (target in allElements()) target.setRenderActive(!paused && !ghost && !summaryOpen)
+        for (target in allElements()) target.setRenderActive(!paused && !ghost)
     }
     fun applyEffects(frame: io.github.kvmy666.duostatusbar.fx.EffectFrame, hidden: Boolean) {
         for (target in allElements()) (target as? DuoCanvasView)?.effects = frame
@@ -363,7 +363,7 @@ internal class DuoIconHost(private val context: Context) {
         val candidate = createElement(elementRoot, stage, ringPart())
         slot.container = target
         slot.bar = cap ?: target
-        slot.basePx = geometry.measuredWidth(target)
+        slot.basePx = geometry.slotBasePx.takeIf { it>0 } ?: geometry.measuredWidth(target)
         slot.element = candidate
         extras.add(slot)
         allowOverflow(target)
@@ -640,7 +640,11 @@ internal class DuoIconHost(private val context: Context) {
             BarPlacement.keepInside(view, windowRoot)
             return
         }
-        view.translationX = offsetDp * context.resources.displayMetrics.density
+        // A LinearLayout strip applies the edge-spacing setting as a start margin (see assignBox); a
+        // FrameLayout parent (the shade header's icon area) ignores margins, so it is applied as
+        // translation instead. Default 100 % is zero, so an existing user sees no change.
+        val flowInset = if (container is LinearLayout) 0 else edgeInsetPx(side, settings.edgePadding)
+        view.translationX = offsetDp * context.resources.displayMetrics.density + flowInset
         // The strip sits low in the window, so centring on it wastes the space above. Centre the
         // ring in the whole status bar instead, which is what lets it grow to the window height.
         // The view is taller than the ring; the extra shift keeps the ring put and leaves the
@@ -1138,6 +1142,14 @@ internal class DuoIconHost(private val context: Context) {
         val anchor = anchorBattery ?: return
         try {
             if (anchorOriginalVisibility == null) anchorOriginalVisibility = anchor.visibility
+            // The ROM can re-show the stock battery/cluster on its own - an OEM charging animation
+            // re-inflates the bar when the charger is plugged in - and this is the only moment we see it.
+            // The line is the evidence for "the battery appears over Duo while charging".
+            if (anchor.visibility == View.VISIBLE) {
+                logOnce.once("anchorReshown") {
+                    L.i("stock anchor ${anchor.javaClass.simpleName} was re-shown by the ROM - hiding it again")
+                }
+            }
             anchor.visibility = View.INVISIBLE
         } catch (t: Throwable) {
             L.w("anchor hide: ${t.javaClass.simpleName}: ${t.message}")
@@ -1158,8 +1170,12 @@ internal class DuoIconHost(private val context: Context) {
             battery.getLocationInWindow(batteryLocation)
             val density = context.resources.displayMetrics.density
             val height = RingGeometry.elementHeightPx(side)
+            // The overlay parent is a FrameLayout, so a start margin is ignored: the edge-spacing
+            // setting is applied as translation here instead. Default 100 % is a zero inset, so an
+            // untouched device does not move; on HyperOS 3 a lower value now actually pulls the element
+            // left off the battery (reported: "icon is all the way to the right", with no effect).
             view.translationX = batteryLocation[0] + battery.width / 2f - parentLocation[0] -
-                    side / 2f + offsetDp * density
+                    side / 2f + offsetDp * density + edgeInsetPx(side, settings.edgePadding)
             // height/2 is the view centre; the ring sits below that, so the anchor shift brings the
             // ring (not the empty space above it) onto the battery.
             view.translationY = batteryLocation[1] + battery.height / 2f - parentLocation[1] -

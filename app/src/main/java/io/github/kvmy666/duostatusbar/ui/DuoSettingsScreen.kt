@@ -1,5 +1,6 @@
 package io.github.kvmy666.duostatusbar.ui
 
+import io.github.kvmy666.duostatusbar.i18n.UiText
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -120,6 +121,12 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
     var overrideFailed by remember { mutableStateOf(false) }
     // Whether the module is working, running old code, or unable to report (see ModuleHealthCheck).
     var moduleHealth by remember { mutableStateOf(ModuleHealthCheck.of(context)) }
+    // Whether a report has an evidence source: root granted, or Shizuku granted. The module's own log
+    // (moduleLoadAt > 0) is the third source and needs no privilege. Re-read on the poll below so the
+    // Send button enables right after the user grants access.
+    var accessGranted by remember {
+        mutableStateOf(DuoPrefs.rootAllowed(context) || StockIconHider.isPermissionGranted())
+    }
     var checkUpdates by remember { mutableStateOf(DuoPrefs.checkUpdates(context)) }
     var checkingUpdate by remember { mutableStateOf(false) }
     var updateMessage by remember { mutableStateOf("") }
@@ -136,7 +143,7 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
         if (uri != null) {
             val text = pendingExport
             val ok = runCatching {
-                context.contentResolver.openOutputStream(uri)?.use { it.write(text.toByteArray()) }
+                (context.contentResolver.openOutputStream(uri) ?: throw java.io.IOException("Document stream unavailable")).use { it.write(text.toByteArray()) }
             }.isSuccess
             Toast.makeText(
                 context,
@@ -163,6 +170,7 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             fallback = DuoPrefs.fallback(context)
             stageOverride = StageOverride.read(context)
             moduleHealth = ModuleHealthCheck.of(context)
+            accessGranted = DuoPrefs.rootAllowed(context) || StockIconHider.isPermissionGranted()
         }
     }
 
@@ -192,6 +200,21 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
 
     val onUpdate: (DuoSettings) -> Unit = { update(it) }
 
+    /**
+     * Asks the module for a fresh diagnostic dump and returns it, so a report captures the bar as it is
+     * right now (e.g. the shade open) rather than the one-shot boot dump. Falls back to the last stored
+     * dump if the module is unreachable or does not answer in time.
+     */
+    suspend fun refreshedDump(): String = try {
+        context.sendBroadcast(
+            Intent(DuoPrefs.ACTION_DIAGNOSTICS_REQUEST).setPackage("com.android.systemui")
+        )
+        withContext(Dispatchers.IO) { Thread.sleep(900) }
+        DuoPrefs.dump(context).ifEmpty { dump }
+    } catch (t: Throwable) {
+        dump
+    }
+
     // One-tap bug report, shared by the About button and the module-health card: packs the description,
     // the module status and the logs, uploads it, and falls back to the share sheet.
     fun collectAndSend() {
@@ -199,15 +222,15 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
         collecting = true
         logSent = false
         scope.launch {
-            val logs = withContext(Dispatchers.IO) { RootLogs.collect() }
-            collecting = false
+            try {
+            val logs = withContext(Dispatchers.IO) { RootLogs.collect(context) }
             val message = problem.trim()
-            val report = buildFullReport(problem, settings, status, history, dump, moduleLoadAt, logs)
+            val report = buildFullReport(problem, settings, status, history, refreshedDump(), moduleLoadAt, logs)
             val file = writeDiagnostics(context, report)
             if (file == null) {
                 shareText(context, report)
             } else {
-                val caption = message.take(200).ifBlank { "Duo Status Bar log" }
+                val caption = io.github.kvmy666.duostatusbar.DiagnosticPrivacy.clean(message).take(200).ifBlank { UiText.t("Duo Status Bar log") }
                 val result = withContext(Dispatchers.IO) { TelegramLog.send(context, file, caption) }
                 when (result) {
                     TelegramLog.Result.SENT -> {
@@ -221,6 +244,7 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                         fileUri(context, file)?.let { shareLog(context, it) } ?: shareText(context, report)
                 }
             }
+            } finally { collecting = false }
         }
     }
 
@@ -238,9 +262,9 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
         StudioHeader(page,orientation==DuoOrientation.LANDSCAPE,query.isNotBlank())
         TextField(
             value=query,onValueChange={query=it},singleLine=true,
-            placeholder={Text("Buscar um ajuste…",style=MaterialTheme.typography.bodyMedium)},
+            placeholder={Text(UiText.t("Buscar um ajuste…"),style=MaterialTheme.typography.bodyMedium)},
             leadingIcon={StudioGlyph(StudioSymbol.SEARCH,MaterialTheme.colorScheme.onSurfaceVariant,Modifier.size(20.dp))},
-            trailingIcon=if(query.isNotEmpty()){{TextButton(onClick={query=""}){Text("Limpar")}}}else null,
+            trailingIcon=if(query.isNotEmpty()){{TextButton(onClick={query=""}){Text(UiText.t("Limpar"))}}}else null,
             shape=RoundedCornerShape(18.dp),
             colors=TextFieldDefaults.colors(
                 focusedContainerColor=MaterialTheme.colorScheme.surface,
@@ -250,8 +274,8 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
         )
         if(page==StudioPage.HOME && query.isBlank()) {
             StudioHome(settings,moduleHealth.state,onUpdate) { page=it }
-        } else if(query.isNotBlank() && search("Personalizar a barra","Ativar","Usar o Duo Status Bar")) {
-            StudioCard { SettingSwitch("Personalizar a barra","Ative o Duo na orientação atual.",settings.enabled,onChange={onUpdate(settings.copy(enabled=it))}) }
+        } else if(query.isNotBlank() && search(UiText.t("Personalizar a barra"),UiText.t("Ativar"),UiText.t("Usar o Duo Status Bar"))) {
+            StudioCard { SettingSwitch(UiText.t("Personalizar a barra"),UiText.t("Ative o Duo na orientação atual."),settings.enabled,onChange={onUpdate(settings.copy(enabled=it))}) }
         }
 
         // Red health card: not loaded, running old code after an update, or loaded but unable to report
@@ -276,13 +300,13 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                     if (!collecting) {
                         collecting = true
                         scope.launch {
-                            // Same full log as the About button: the module dump plus the root logcat.
-                            val logs = withContext(Dispatchers.IO) { RootLogs.collect() }
+                            // Same full log as the About button: the module dump plus the device capture.
+                            val logs = withContext(Dispatchers.IO) { RootLogs.collect(context) }
                             collecting = false
                             sendLogOnTelegram(
                                 context,
                                 buildDiagnostics(settings, status, history, dump, moduleLoadAt) +
-                                    "\n\n===== root log capture =====\n" + logs
+                                    "\n\n===== device capture =====\n" + logs
                             )
                         }
                     }
@@ -338,9 +362,9 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             AppearanceSection(settings,onUpdate,search)
         }
         if(StudioPage.EFFECTS.visible(page,query)) {
-            if(search("Experimente o movimento","Demonstração","Ícones","Efeitos")) StudioCard {
-                SectionTitle("Experimente o movimento")
-                Text("Veja os ícones e os efeitos com estados simulados.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            if(search(UiText.t("Experimente o movimento"),UiText.t("Demonstração"),UiText.t("Ícones"),UiText.t("Efeitos"))) StudioCard {
+                SectionTitle(UiText.t("Experimente o movimento"))
+                Text(UiText.t("Veja os ícones e os efeitos com estados simulados."),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 EffectsPreview(settings,search) { onUpdate(settings.copy(experienceJson=it.encode())) }
             }
             ExperienceSection(settings,onUpdate,search)
@@ -363,6 +387,7 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             status = status,
             history = history,
             moduleLoadAt = moduleLoadAt,
+            accessGranted = accessGranted,
             problem = problem,
             onProblemChange = { problem = it; logSent = false },
             collecting = collecting,
@@ -373,10 +398,10 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                 exporting = true
                 logSent = false
                 scope.launch {
-                    val logs = withContext(Dispatchers.IO) { RootLogs.collect() }
+                    val logs = withContext(Dispatchers.IO) { RootLogs.collect(context) }
                     exporting = false
                     pendingExport = buildFullReport(
-                        problem, settings, status, history, dump, moduleLoadAt, logs
+                        problem, settings, status, history, refreshedDump(), moduleLoadAt, logs
                     )
                     val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
                     exportLog.launch("duo-log-$stamp.txt")

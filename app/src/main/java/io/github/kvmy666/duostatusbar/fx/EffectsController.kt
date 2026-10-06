@@ -60,7 +60,7 @@ internal class EffectsController(private val context: Context, private val host:
     private var temporaryDuration=0L
     private var lastScreenshot=-100000L
     private fun spotlight(icon:SlotIcon,duration:Long) = guarded("aviso breve") {
-        if(!running||!screen)return@guarded
+        if(!running||!screen||Fx.experience.networkOnly)return@guarded
         if(icon==SlotIcon.SCREENSHOT) {
             val time=SystemClock.uptimeMillis()
             if(time-lastScreenshot<1500)return@guarded
@@ -206,9 +206,10 @@ internal class EffectsController(private val context: Context, private val host:
     fun settingsChanged() = guarded("configuração dos efeitos") {
         if (!running) return@guarded
         cycle.configure(Fx.experience,now())
+        if(Fx.experience.networkOnly){temporary=null;cycle.transient(null,now())}
         experience.configure()
         if(Fx.experience.volume)volumeObserver.start() else volumeObserver.stop()
-        if (!enabled(1)) { checkAt = -100000L; restoreClock() }
+        if (!enabled(1)||Fx.experience.networkOnly) { checkAt = -100000L; restoreClock() }
         if (!enabled(512)) pulseAt = -100000L
         if (!enabled(256)) chargeAt = -100000L
         if (!enabled(16)) audioAt = -100000L
@@ -323,7 +324,7 @@ internal class EffectsController(private val context: Context, private val host:
         if(indicators.recording&&recordingAt<0)recordingAt=SystemClock.elapsedRealtime()
         if(!indicators.recording)recordingAt=-1
         val items=buildList {
-            if(Fx.enabled(4)||Fx.enabled(8192)) {
+            if(Fx.enabled(4)||Fx.enabled(8192)||Fx.experience.networkOnly) {
                 if(airplane&&host.showAirplane)add(SlotIcon.AIRPLANE)
                 if(wifi&&indicators.wifiConnected)add(if(indicators.wifiValidated)SlotIcon.WIFI else SlotIcon.WIFI_OFFLINE)
                 if(!airplane&&networkText.isNotBlank())add(SlotIcon.NETWORK)
@@ -355,18 +356,19 @@ internal class EffectsController(private val context: Context, private val host:
             activeIcons=items
             L.i("Ícones ativos (${items.size}): ${items.joinToString()}; BT=$bluetooth GPS=${indicators.location} carga=$charging")
         }
-        cycle.update(items, now())
+        val carouselItems=if(Fx.experience.networkOnly)listOfNotNull(items.firstOrNull { it==SlotIcon.WIFI||it==SlotIcon.WIFI_OFFLINE } ?: items.firstOrNull { it==SlotIcon.NETWORK }) else items
+        cycle.update(carouselItems, now())
         if(Fx.experience.compass&&screen&&!pocket&&SlotIcon.LOCATION in items)heading.start() else heading.stop()
         host.updateSummary(IslandState(level,charging,items.distinct().map { icon ->
             IslandItem(icon,iconLabel(icon),when(icon) {
                 SlotIcon.CHARGE_TIME->estimateLabel(chargeRemaining)
                 SlotIcon.RECORD,SlotIcon.RECORD_TIME->durationLabel(if(recordingAt<0)0 else SystemClock.elapsedRealtime()-recordingAt)
-                SlotIcon.MEDIA->experience.playback.title.ifBlank { "Reproduzindo" }
-                SlotIcon.AIRPODS->if(indicators.headphoneBattery>=0)"${indicators.headphoneBattery}%" else "Conectados"
+                SlotIcon.MEDIA->experience.playback.title.ifBlank { io.github.kvmy666.duostatusbar.i18n.UiText.t("Reproduzindo") }
+                SlotIcon.AIRPODS->if(indicators.headphoneBattery>=0)"${indicators.headphoneBattery}%" else io.github.kvmy666.duostatusbar.i18n.UiText.t("Conectados")
                 SlotIcon.NETWORK->networkText
-                else->"Ativo"
+                else->io.github.kvmy666.duostatusbar.i18n.UiText.t("Ativo")
             })
-        }))
+        },experience.playback,chargeRemaining,indicators.headphoneBattery,indicators.torch))
     }
     private fun setPocket(value: Boolean) {
         val checkPriority = SystemClock.uptimeMillis()-lastUnlock in 0 until EffectTimeline.UNLOCK_MS
@@ -411,7 +413,7 @@ internal class EffectsController(private val context: Context, private val host:
     private fun unlock(source: String) {
         val realNow = SystemClock.uptimeMillis()
         if (!running) return
-        if (!enabled(1)) { L.i("Check ignorado: efeito ou animações desativados; origem=$source"); return }
+        if (!enabled(1)||Fx.experience.networkOnly) { L.i("Check ignorado: efeito ou animações desativados; origem=$source"); return }
         if (realNow-lastUnlock < EffectTimeline.UNLOCK_MS) return
         screen=true;lastUnlock=realNow
         host.dismissSummary()
@@ -427,7 +429,7 @@ internal class EffectsController(private val context: Context, private val host:
         handler.removeCallbacks(tick)
         if (!running || pocket) return
         val time = now()
-        fun age(at: Long, duration: Long, bit: Int): Long = EffectTimeline.age(time, at, duration, screen && enabled(bit))
+        fun age(at: Long, duration: Long, bit: Int): Long = EffectTimeline.age(time, at, duration, screen && enabled(bit) && !Fx.experience.networkOnly)
         val check = age(checkAt, EffectTimeline.UNLOCK_MS, 1)
         if(check<0&&temporary!=null) {
             if(temporaryUntil==0L){temporaryUntil=time+temporaryDuration;cycle.transient(temporary,time)}
@@ -441,8 +443,8 @@ internal class EffectsController(private val context: Context, private val host:
         val pulse = age(pulseAt, EffectTimeline.PULSE_MS, 512)
         val charge = age(chargeAt, EffectTimeline.CHARGE_MS, 256)
         val audioAge = if(check>=0)-1L else age(audioAt, EffectTimeline.AUDIO_MS, 16)
-        host.effectsHidden(camera && check<0)
-        val slot=cycle.frame(time).let { if(host.animationsEnabled)it else it.copy(opacity=1f,scale=1f) }
+        host.effectsHidden(camera && check<0 && !Fx.experience.networkOnly)
+        val slot=cycle.frame(time).let { if(host.animationsEnabled&&Fx.experience.fadeEnabled&&!Fx.experience.networkOnly)it else it.copy(opacity=1f,scale=1f) }
         if(slot.icon!=loggedSlot) { loggedSlot=slot.icon;L.i("Ícone exibido: ${slot.icon}; check=${check>=0} carga=$charging") }
         if (check >= 0) clockColors?.let { clockView?.setTextColor(CanvasMotion.blend(it.defaultColor, 0xFF3DDC84.toInt(), EffectTimeline.unlockColor(check))) }
         else restoreClock()
@@ -450,17 +452,17 @@ internal class EffectsController(private val context: Context, private val host:
             slot, (Fx.enabled(8) && hotspot) || (Fx.enabled(4) && airplane),
             Fx.enabled(512) && !charging && level in 0..9,
             Fx.enabled(1024), enabled(2048), time,
-            indicators.headphoneBattery, networkText, Fx.enabled(4)||Fx.enabled(8192)||Fx.enabled(4096), charging&&enabled(256),
-            musicPlaying=Fx.experience.music&&experience.playback.playing,
+            indicators.headphoneBattery, networkText, Fx.enabled(4)||Fx.enabled(8192)||Fx.enabled(4096)||Fx.experience.networkOnly, charging&&enabled(256)&&!Fx.experience.networkOnly,
+            musicPlaying=Fx.experience.music&&experience.playback.playing&&!Fx.experience.networkOnly,
             musicProgress=if(Fx.experience.music)experience.playback.progress(SystemClock.elapsedRealtime()) else -1f,
             albumColor=if(Fx.experience.albumColors)experience.playback.color else 0,
             chargeRemainingMs=chargeRemaining,recordElapsedMs=if(recordingAt<0)0 else SystemClock.elapsedRealtime()-recordingAt,
-            volumePercent=volumePercent,drawIcons=Fx.experience.drawIcons&&host.animationsEnabled,
+            volumePercent=volumePercent,drawIcons=Fx.experience.drawIcons&&host.animationsEnabled&&!Fx.experience.networkOnly,
             iconPercent=Fx.experience.iconPercent,iconRadius=(55.5f-8f*host.thickPercent/100f-2f).coerceAtLeast(12f),
             compassDegrees=compassDegrees,compass=Fx.experience.compass), camera)
-        if (!screen || (camera&&check<0) || !host.animationsEnabled) return
+        if (!screen || Fx.experience.networkOnly || (camera&&check<0) || !host.animationsEnabled) return
         val selected=cycle.frame(time).icon
-        val active = check >= 0 || pulse >= 0 || charge >= 0 || audioAge >= 0 || charging || temporary!=null || selected==SlotIcon.RECORD || selected==SlotIcon.RECORD_TIME || selected==SlotIcon.MEDIA
+        val active = check >= 0 || pulse >= 0 || charge >= 0 || audioAge >= 0 || (charging&&enabled(256)) || temporary!=null || selected==SlotIcon.RECORD || selected==SlotIcon.RECORD_TIME || selected==SlotIcon.MEDIA
         val delay = if (active || (Fx.enabled(8) && hotspot)) 16L else if(Fx.experience.music&&experience.playback.playing) minOf(250L,cycle.nextDelay(time)) else cycle.nextDelay(time)
         if (delay != Long.MAX_VALUE) handler.postDelayed(tick, delay)
     }

@@ -1,5 +1,6 @@
 package io.github.kvmy666.duostatusbar.fx
 
+import io.github.kvmy666.duostatusbar.i18n.UiText
 import android.graphics.*
 import kotlin.math.*
 
@@ -15,7 +16,7 @@ internal class StatusIconPainter {
         do { total+=m.length } while(m.nextContour())
         total
     }
-    private val outlined=setOf(SlotIcon.WIFI,SlotIcon.BLUETOOTH,SlotIcon.SHARE,SlotIcon.NFC,SlotIcon.WIRELESS,SlotIcon.MICROPHONE,SlotIcon.ALARM,SlotIcon.SILENT,SlotIcon.VIBRATE,SlotIcon.AIRPODS)
+    private val outlined=setOf(SlotIcon.WIFI,SlotIcon.BLUETOOTH,SlotIcon.SHARE,SlotIcon.NFC,SlotIcon.WIRELESS,SlotIcon.MICROPHONE,SlotIcon.ALARM,SlotIcon.SILENT,SlotIcon.VIBRATE)
     fun draw(canvas:Canvas,icon:SlotIcon,fg:Int,opacity:Float,frame:EffectFrame) {
         if(opacity<=.001f)return
         val save=canvas.save()
@@ -30,12 +31,19 @@ internal class StatusIconPainter {
         paint.style=if(icon in outlined)Paint.Style.STROKE else Paint.Style.FILL;paint.strokeWidth=2.6f
         when(icon) {
             SlotIcon.NETWORK->label(canvas,frame.networkText,0f,1f,28f,fg,opacity)
-            SlotIcon.CHARGE_TIME->{label(canvas,estimateLabel(frame.chargeRemainingMs),0f,0f,if(frame.chargeRemainingMs<0)10.5f else 15f,0xFF71E3B1.toInt(),opacity);label(canvas,"até 100%",0f,19f,8f,fg,opacity)}
+            SlotIcon.CHARGE_TIME->{label(canvas,estimateLabel(frame.chargeRemainingMs),0f,0f,if(frame.chargeRemainingMs<0)10.5f else 15f,0xFF71E3B1.toInt(),opacity);label(canvas,UiText.t("até 100%"),0f,19f,8f,fg,opacity)}
             SlotIcon.RECORD_TIME->{label(canvas,durationLabel(frame.recordElapsedMs),0f,3f,19f,fg,opacity);paint.style=Paint.Style.FILL;paint.color=0xFFFF453A.toInt();canvas.drawCircle(0f,-17f,3f,paint)}
             SlotIcon.VOLUME->{paint.style=Paint.Style.STROKE;paint.strokeWidth=3f;canvas.drawArc(RectF(-34f,-34f,34f,34f),145f,250f*(frame.volumePercent.coerceIn(0,100)/100f),false,paint);label(canvas,"${frame.volumePercent.coerceIn(0,100)}%",0f,1f,22f,fg,opacity)}
             SlotIcon.SCREENSHOT->{paint.style=Paint.Style.STROKE;paint.strokeWidth=2.8f;canvas.drawCircle(0f,0f,20f,paint);val s=canvas.save();canvas.rotate((1-frame.slot.reveal)*65f);for(i in 0..5){canvas.rotate(60f);canvas.drawLine(0f,-19f,11f,0f,paint)};canvas.restoreToCount(s)}
             SlotIcon.NOTIFICATION->{paint.style=Paint.Style.FILL;canvas.drawRoundRect(RectF(-20f,-14f,20f,12f),7f,7f,paint);paint.color=Color.BLACK;canvas.drawCircle(-9f,-1f,2f,paint);canvas.drawCircle(0f,-1f,2f,paint);canvas.drawCircle(9f,-1f,2f,paint)}
-            SlotIcon.WIFI_OFFLINE->label(canvas,"!",0f,7f,20f,0xFFFF453A.toInt(),opacity)
+            SlotIcon.WIFI_OFFLINE->{
+                // Clear the central symbol area before drawing the larger, legible warning.
+                val layer=canvas.saveLayer(-28f,-30f,28f,30f,null)
+                paint.style=Paint.Style.STROKE;paint.strokeWidth=3.5f;canvas.drawPath(paths.getValue(SlotIcon.WIFI),paint)
+                paint.style=Paint.Style.FILL;paint.xfermode=PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+                canvas.drawRoundRect(RectF(-8f,-25f,8f,25f),3f,3f,paint);paint.xfermode=null
+                label(canvas,"!",0f,0f,44f,0xFFFF453A.toInt(),opacity);canvas.restoreToCount(layer)
+            }
             SlotIcon.VPN->{paint.style=Paint.Style.STROKE;canvas.drawRoundRect(RectF(-24f,-12f,24f,12f),4f,4f,paint);label(canvas,"VPN",0f,1f,17f,fg,opacity)}
             SlotIcon.RECORD->{val pulse=.55f+.45f*(.5f+.5f*sin(frame.motionMs/260f));paint.alpha=(255*opacity*pulse).toInt();canvas.drawCircle(0f,0f,8f,paint)}
             SlotIcon.MEDIA->{paint.style=Paint.Style.STROKE;paint.strokeWidth=3.2f;for(i in 0..4){val h=4f+11f*abs(sin(frame.motionMs/170f+i*.8f));canvas.drawLine(-16f+i*8f,-h,-16f+i*8f,h,paint)}}
@@ -56,12 +64,6 @@ internal class StatusIconPainter {
                     }
                 }
             }
-        }
-        if(icon==SlotIcon.AIRPODS) {
-            paint.style=Paint.Style.FILL;paint.color=0xFF57CFF4.toInt();paint.alpha=(255*opacity).toInt()
-            canvas.drawRoundRect(RectF(-14f,-21f,-10f,-13f),2f,2f,paint)
-            val vent=canvas.save();canvas.translate(14f,-5f);canvas.rotate(-34f)
-            canvas.drawRoundRect(RectF(-4.5f,-1.8f,4.5f,1.8f),1.8f,1.8f,paint);canvas.restoreToCount(vent)
         }
         canvas.restoreToCount(save)
         if(icon==SlotIcon.AIRPODS&&frame.headphoneBattery in 0..100)
@@ -90,19 +92,19 @@ internal class StatusIconPainter {
                 moveTo(-14f,-1f);lineTo(-14f,1f)
             }
             SlotIcon.AIRPODS->{
-                // Outline proportions traced from the user's earbud reference, without a bitmap backdrop.
-                moveTo(-15f,-7f);cubicTo(-24f,-12f,-25f,-20f,-17f,-25f)
-                cubicTo(-12f,-29f,-4f,-23f,0f,-19f);cubicTo(8f,-8f,-1f,-1f,-8f,-5f)
-                moveTo(-17f,-15f);cubicTo(-15f,-10f,-16f,-8f,-16f,-5f)
-                lineTo(-16f,10f);quadTo(-16f,12f,-14f,12f);lineTo(-10f,12f);quadTo(-8f,12f,-8f,10f)
-                lineTo(-8f,-4f);cubicTo(-8f,-8f,-7f,-11f,-6f,-15f)
-                moveTo(-2f,-17f);cubicTo(4f,-11f,3f,-3f,-6f,-2f)
-                moveTo(2f,1f);cubicTo(7f,-8f,15f,-11f,21f,-5f)
-                cubicTo(30f,7f,15f,17f,8f,13f);cubicTo(-4f,9f,-6f,3f,2f,1f);close()
-                moveTo(-1f,3f);cubicTo(3f,1f,8f,3f,10f,7f);cubicTo(14f,15f,5f,15f,2f,11f)
-                moveTo(10f,15f);lineTo(10f,24f);quadTo(10f,26f,12f,26f);lineTo(17f,26f)
-                quadTo(19f,26f,19f,24f);lineTo(19f,11f)
-                moveTo(-13f,9f);lineTo(-10f,9f);moveTo(13f,23f);lineTo(16f,23f)
+                // Original filled pair with short stems and transparent speaker cutouts.
+                fillType=Path.FillType.EVEN_ODD
+                for(sign in intArrayOf(-1,1)) {
+                    val ear=Path().apply {
+                        moveTo(-19f,-10f);cubicTo(-23f,-23f,-8f,-27f,-3f,-17f)
+                        cubicTo(2f,-9f,-3f,-3f,-8f,-2f);lineTo(-8f,19f)
+                        quadTo(-8f,22f,-11f,22f);lineTo(-15f,22f);quadTo(-18f,22f,-18f,19f)
+                        lineTo(-18f,-4f);quadTo(-19f,-6f,-19f,-10f);close()
+                    }
+                    ear.addOval(RectF(-15f,-14f,-9f,-6f),Path.Direction.CCW)
+                    if(sign==1)ear.transform(Matrix().apply { setScale(-1f,1f) })
+                    addPath(ear)
+                }
             }
             SlotIcon.BOLT->polygon(4f,-19f,-12f,3f,-2f,3f,-5f,20f,13f,-5f,3f,-5f)
             SlotIcon.CAMERA->{fillType=Path.FillType.EVEN_ODD;moveTo(-17f,-12f);lineTo(-10f,-12f);lineTo(-7f,-17f);lineTo(7f,-17f);lineTo(10f,-12f);lineTo(17f,-12f);cubicTo(21f,-12f,21f,-10f,21f,-8f);lineTo(21f,11f);cubicTo(21f,15f,19f,15f,17f,15f);lineTo(-17f,15f);cubicTo(-21f,15f,-21f,13f,-21f,11f);lineTo(-21f,-8f);cubicTo(-21f,-12f,-19f,-12f,-17f,-12f);close();addCircle(0f,1f,8f,Path.Direction.CCW)}

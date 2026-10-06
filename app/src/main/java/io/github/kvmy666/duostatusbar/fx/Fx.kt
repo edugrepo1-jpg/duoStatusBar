@@ -22,6 +22,7 @@ internal object Fx {
     fun sync(settings: ModuleSettings, ctx: Context) {
         flags = settings.featFlags
         experience = ExperienceOptions.decode(settings.experienceJson)
+        io.github.kvmy666.duostatusbar.i18n.UiText.initialize(ctx,experience.language)
         context = ctx.applicationContext ?: ctx
         Events.changed = ::scheduleLocalLog
     }

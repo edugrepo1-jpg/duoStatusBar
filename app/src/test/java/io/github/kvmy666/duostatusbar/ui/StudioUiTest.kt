@@ -118,4 +118,39 @@ class StudioUiTest {
             assertEquals(oldSize+1,DuoPrefs.read(context,DuoOrientation.PORTRAIT).sizePercent)
         } finally {controller.pause().stop().destroy();idle()}
     }
+    @Test fun `language picker renders flags and every language card accepts selection`() {
+        val controller=Robolectric.buildActivity(ComponentActivity::class.java)
+        controller.get().setTheme(R.style.Theme_DuoStatusBar)
+        val activity=controller.setup().get();val selected=mutableListOf<String>()
+        activity.setContent {DuoTheme {Surface {LanguagePicker(true) {selected.add(it)}}}}
+        try {
+            val root=activity.findViewById<View>(android.R.id.content);idle();capture(root,"language-picker")
+            for(name in listOf("Português","English","Español")) {
+                val node=nodes(root).first { text(it).contains(name)&&it.config.getOrNull(SemanticsActions.OnClick)!=null }
+                assertTrue(node.config[SemanticsActions.OnClick].action!!.invoke());idle()
+            }
+            assertEquals(listOf("pt-BR","en","es"),selected)
+        } finally {controller.pause().stop().destroy();idle()}
+    }
+    @Test fun `English and Spanish pages use translated navigation headings and controls`() {
+        val context=ApplicationProvider.getApplicationContext<Context>()
+        try {for(tag in listOf("en","es")) {
+            io.github.kvmy666.duostatusbar.i18n.UiText.initialize(context,tag)
+            val controller=Robolectric.buildActivity(ComponentActivity::class.java)
+            controller.get().resources.updateConfiguration(android.content.res.Configuration(context.resources.configuration).apply {setLocales(android.os.LocaleList.forLanguageTags(tag))},controller.get().resources.displayMetrics)
+            controller.get().setTheme(R.style.Theme_DuoStatusBar)
+            val activity=controller.setup().get()
+            activity.setContent {DuoTheme {DuoSettingsScreen()}}
+            try {
+                val root=activity.findViewById<View>(android.R.id.content);idle();capture(root,"home-$tag")
+                assertFalse(nodes(root).any {text(it).contains("Personalizar a barra")})
+                for(page in listOf(StudioPage.VISUAL,StudioPage.EFFECTS,StudioPage.MORE)) {
+                    click(root,"nav-${page.name}");capture(root,"${page.name.lowercase()}-$tag")
+                    assertTrue(nodes(root).any {text(it).contains(page.heading)})
+                    assertFalse(nodes(root).any {text(it).contains("Experiência expandida")||text(it).contains("Seu resumo")})
+                }
+            } finally {controller.pause().stop().destroy();idle()}
+        }} finally {io.github.kvmy666.duostatusbar.i18n.UiText.initialize(context,"pt-BR")}
+    }
+
 }

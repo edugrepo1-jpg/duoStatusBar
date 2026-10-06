@@ -49,7 +49,7 @@ internal class RuntimeExperience(private val context:Context,private val handler
     }
     fun configure() {
         if(!running)return
-        val relay=Fx.experience.music||Fx.experience.screenshot
+        val relay=Fx.experience.music||Fx.experience.island||Fx.experience.screenshot
         if(relay&&!receiverRegistered)read("canal do app") {
             context.registerReceiver(receiver,IntentFilter(ACTION),SettingsBridge.PERMISSION,handler,Context.RECEIVER_EXPORTED)
             receiverRegistered=true
@@ -58,11 +58,11 @@ internal class RuntimeExperience(private val context:Context,private val handler
         if(Fx.experience.screenshot&&observer==null) {
             observer=ScreenshotObserver(context,handler) { if(running)screenshot() }.also { it.start() }
         } else if(!Fx.experience.screenshot) { observer?.stop();observer=null }
-        if(!Fx.experience.music) { controllers.forEach { read("encerrar mídia") { it.unregisterCallback(callback) } };controllers=emptyList();playback=PlaybackSnapshot() }
+        if(!Fx.experience.music&&!Fx.experience.island) { controllers.forEach { read("encerrar mídia") { it.unregisterCallback(callback) } };controllers=emptyList();playback=PlaybackSnapshot() }
         else refresh()
     }
     fun refresh() {
-        if(!running||!Fx.experience.music)return
+        if(!running||(!Fx.experience.music&&!Fx.experience.island))return
         var direct:PlaybackSnapshot?=null
         read("sessões de música") {
             val next=manager?.getActiveSessions(null).orEmpty()

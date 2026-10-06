@@ -1,5 +1,6 @@
 package io.github.kvmy666.duostatusbar.ui
 
+import io.github.kvmy666.duostatusbar.i18n.UiText
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
@@ -24,11 +25,14 @@ import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.hook.*
 import io.github.kvmy666.duostatusbar.settings.*
 
-internal enum class StudioPage(val label: String, val heading: String, val subtitle: String, val glyph: StudioSymbol) {
+internal enum class StudioPage(private val labelKey: String, private val headingKey: String, private val subtitleKey: String, val glyph: StudioSymbol) {
     HOME("Início","Seu jeito.\nSua barra.","Pequenos detalhes. Uma nova experiência.",StudioSymbol.HOME),
     VISUAL("Visual","Seu desenho.","Ajuste cada detalhe do seu anel.",StudioSymbol.VISUAL),
     EFFECTS("Efeitos","Em movimento.","Ícones, transições e personalidade.",StudioSymbol.EFFECTS),
     MORE("Ajustes","Tudo no lugar.","Ativação, gestos e ajuda quando precisar.",StudioSymbol.SETTINGS);
+    val label get()=UiText.t(labelKey)
+    val heading get()=UiText.t(headingKey)
+    val subtitle get()=UiText.t(subtitleKey)
     fun visible(current: StudioPage, query: String) = current == this || query.isNotBlank()
 }
 internal enum class StudioSymbol { HOME,VISUAL,EFFECTS,SETTINGS,SEARCH,ARROW,PLUS,MINUS,CHECK }
@@ -83,11 +87,11 @@ internal enum class StudioSymbol { HOME,VISUAL,EFFECTS,SETTINGS,SEARCH,ARROW,PLU
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
         Text("DUO  /  STATUS BAR",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,letterSpacing=1.8.sp)
         Surface(shape=RoundedCornerShape(50),color=MaterialTheme.colorScheme.surface) {
-            Text(if(landscape)"Horizontal" else "Vertical",Modifier.padding(horizontal=12.dp,vertical=7.dp),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(if(landscape)UiText.t("Horizontal") else UiText.t("Vertical"),Modifier.padding(horizontal=12.dp,vertical=7.dp),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
-    Text(if(searching)"Encontre seu ajuste." else page.heading,style=MaterialTheme.typography.headlineLarge)
-    Text(if(searching)"Resultados em todas as áreas do app." else page.subtitle,style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(if(searching)UiText.t("Encontre seu ajuste.") else page.heading,style=MaterialTheme.typography.headlineLarge)
+    Text(if(searching)UiText.t("Resultados em todas as áreas do app.") else page.subtitle,style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable internal fun StudioNavigation(page: StudioPage, onSelect: (StudioPage) -> Unit) {
@@ -114,7 +118,7 @@ internal enum class StudioSymbol { HOME,VISUAL,EFFECTS,SETTINGS,SEARCH,ARROW,PLU
     Surface(Modifier.fillMaxWidth().testTag("studio-home"),shape=RoundedCornerShape(30.dp),color=StudioInk) {
         Column(Modifier.padding(22.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
-                Text("SUA ASSINATURA",style=MaterialTheme.typography.labelSmall,color=Color(0xFFADBBD3),letterSpacing=1.7.sp)
+                Text(UiText.t("SUA ASSINATURA"),style=MaterialTheme.typography.labelSmall,color=Color(0xFFADBBD3),letterSpacing=1.7.sp)
                 Image(painterResource(R.drawable.duo_mark),null,Modifier.size(38.dp))
             }
             Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(16.dp)) {
@@ -123,34 +127,34 @@ internal enum class StudioSymbol { HOME,VISUAL,EFFECTS,SETTINGS,SEARCH,ARROW,PLU
                     view.render(DuoMapping.visual(72,false,false,settings.showPercent,3,4,false,percentHeight=settings.percentHeight,wifiDots=settings.wifiDots))
                 })
                 Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                    Text("Seu anel.\nSua identidade.",style=MaterialTheme.typography.titleLarge,color=Color.White)
-                    Text("Prévia com seus ajustes de desenho.",style=MaterialTheme.typography.bodySmall,color=Color(0xFFB1BED3))
-                    Text("SIMULAÇÃO · 72%",style=MaterialTheme.typography.labelSmall,color=StudioMint)
+                    Text(UiText.t("Seu anel.\nSua identidade."),style=MaterialTheme.typography.titleLarge,color=Color.White)
+                    Text(UiText.t("Prévia com seus ajustes de desenho."),style=MaterialTheme.typography.bodySmall,color=Color(0xFFB1BED3))
+                    Text(UiText.t("SIMULAÇÃO · 72%"),style=MaterialTheme.typography.labelSmall,color=StudioMint)
                 }
             }
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha=.06f)).padding(12.dp),horizontalArrangement=Arrangement.SpaceBetween) {
-                Text("Anel ${settings.sizePercent}%",style=MaterialTheme.typography.labelSmall,color=Color.White)
-                Text("Traço ${settings.thickPercent}%",style=MaterialTheme.typography.labelSmall,color=Color(0xFFB1BED3))
+                Text(UiText.format("Anel {0}%", settings.sizePercent),style=MaterialTheme.typography.labelSmall,color=Color.White)
+                Text(UiText.format("Traço {0}%", settings.thickPercent),style=MaterialTheme.typography.labelSmall,color=Color(0xFFB1BED3))
             }
         }
     }
     StudioCard {
-        SettingSwitch("Personalizar a barra", "Ative o Duo na orientação atual.",settings.enabled,onChange={onUpdate(settings.copy(enabled=it))})
+        SettingSwitch(UiText.t("Personalizar a barra"), UiText.t("Ative o Duo na orientação atual."),settings.enabled,onChange={onUpdate(settings.copy(enabled=it))})
         HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant)
         Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onSelect(StudioPage.MORE) }.padding(vertical=6.dp),verticalAlignment=Alignment.CenterVertically) {
             val healthy=settings.enabled&&state==ModuleState.OK
-            val status=when { !settings.enabled -> "Personalização desligada";healthy -> "Módulo conectado";state==ModuleState.NEEDS_RESTART -> "Atualização pronta · reinicie a barra";else -> "Verificar ativação do módulo" }
+            val status=when { !settings.enabled -> UiText.t("Personalização desligada");healthy -> UiText.t("Módulo conectado");state==ModuleState.NEEDS_RESTART -> UiText.t("Atualização pronta · reinicie a barra");else -> UiText.t("Verificar ativação do módulo") }
             Box(Modifier.size(7.dp).clip(RoundedCornerShape(50)).background(if(healthy)MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant))
             Text(status,Modifier.weight(1f).padding(start=9.dp),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             StudioGlyph(StudioSymbol.ARROW,MaterialTheme.colorScheme.onSurfaceVariant,Modifier.size(16.dp))
         }
     }
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-        StudioDestination("Visual","Tamanho e posição",StudioPage.VISUAL,Modifier.weight(1f),onSelect)
-        StudioDestination("Efeitos","Ícones e movimento",StudioPage.EFFECTS,Modifier.weight(1f),onSelect)
+        StudioDestination(UiText.t("Visual"),UiText.t("Tamanho e posição"),StudioPage.VISUAL,Modifier.weight(1f),onSelect)
+        StudioDestination(UiText.t("Efeitos"),UiText.t("Ícones e movimento"),StudioPage.EFFECTS,Modifier.weight(1f),onSelect)
     }
     StudioCard {
-        SettingSwitch("Movimento suave","Controle geral das animações do anel.",settings.animationsEnabled,settings.enabled,onChange={onUpdate(settings.copy(animationsEnabled=it))})
+        SettingSwitch(UiText.t("Movimento suave"),UiText.t("Controle geral das animações do anel."),settings.animationsEnabled,settings.enabled,onChange={onUpdate(settings.copy(animationsEnabled=it))})
     }
 }
 

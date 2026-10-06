@@ -12,9 +12,9 @@ android {
         applicationId 'io.github.kvmy666.duostatusbar'
         minSdk 33
         targetSdk 36
-        versionCode 25
+        versionCode 26
         buildConfigField 'int', 'FEATURE_MASK', (project.findProperty('duoFeatureMask') ?: '16383').toString().toInteger().toString()
-        versionName '1.4.0-canvas-experience'
+        versionName '1.4.2-canvas-studio'
         buildConfigField 'String', 'TELEGRAM_RELAY_URL', '"https://duo-log-relay.kvmy-duo-logs.workers.dev"'
         buildConfigField 'String', 'TELEGRAM_BOT_TOKEN', '""'
         buildConfigField 'String', 'TELEGRAM_CHAT_ID', '""'

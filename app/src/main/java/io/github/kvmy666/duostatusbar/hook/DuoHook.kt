@@ -71,7 +71,13 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     private var shadeHeader: View? = null
 
     /** Sends status and the one-shot diagnostic dump to the app. */
-    private val reporter = HookReporter({ statusBarRoot }, { host?.duo })
+    private val reporter = HookReporter(
+        { statusBarRoot },
+        { host?.duo },
+        // The shade/keyguard window and the shade header are separate windows the status-bar dump never
+        // reaches; their tree is what shows where the shade element actually sits (Issue #1).
+        { listOf("shade window" to shadeRoot, "shade header" to shadeHeader) }
+    )
 
     /** The ROM adapter, used only to resolve resource ids against SystemUI's package. */
     private val rom = RomDetection.forThisRom(
@@ -321,6 +327,21 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                         }, RESTART_DELAY_MS)
                         return
                     }
+                    if (intent?.action == DuoPrefs.ACTION_DIAGNOSTICS_REQUEST) {
+                        // The app is building a bug report: capture the bar now (the shade may be open),
+                        // so the dump reflects the reported state instead of the boot-time one.
+                        val ctxNow = app
+                        if (ctxNow != null) {
+                            reporter.reportDiagnostics(
+                                ctxNow,
+                                DuoGuard(ctxNow).stage(),
+                                DuoSettingsClient.read(ctxNow),
+                                host?.duo
+                            )
+                            L.i("diagnostic dump refreshed on app request")
+                        }
+                        return
+                    }
                     // Coalesce a burst of changes (a slider drag broadcasts on every tick) into one
                     // apply. Each apply does synchronous provider reads on System UI's main thread, so
                     // without this a drag could block it and get System UI restarted by the watchdog.
@@ -566,6 +587,12 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                         L.guard("DuoHook shade settle") {
                             host?.reapplyHiding()
                             shadeHeader?.let { host?.attachShadeHeader(it) }
+                            // Snapshot the header's layout while the shade is open. The app-only dump
+                            // happens after the shade closed, by which point these bounds are gone
+                            // (Issue #1: the element jumps when Quick Settings expands).
+                            shadeHeader?.let {
+                                reporter.captureExtras(Diag.treeText("shade header (as last laid out)", it))
+                            }
                         }
                     }, SHADE_SETTLE_MS)
                 }

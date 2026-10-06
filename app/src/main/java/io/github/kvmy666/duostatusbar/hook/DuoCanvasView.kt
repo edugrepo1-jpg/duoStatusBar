@@ -232,7 +232,7 @@ internal class DuoCanvasView(context: Context, part: DuoPart = DuoPart.ALL) : Vi
         if (slotAlpha > 0f && cycleIcon != null) {
             val saved = canvas.save(); canvas.scale(effects.slot.scale, effects.slot.scale)
             when (cycleIcon) {
-                SlotIcon.WIFI, SlotIcon.WIFI_OFFLINE -> {
+                SlotIcon.WIFI -> {
                     val requested=effects.iconPercent.coerceIn(60,200)/100f
                     val factor=if(requested<=1)requested else minOf(requested,((55.5f-8f*f-2f)/28f).coerceAtLeast(1f))
                     canvas.scale(factor,factor)
