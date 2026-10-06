@@ -96,7 +96,7 @@ internal class StockIconHider {
             return true
         }
         val cls = view.javaClass.simpleName.lowercase()
-        return cls.contains("battery") || cls.contains("wifi") || cls.contains("mobile")
+        return cls.contains("battery") || cls.contains("wifi") || cls.contains("mobile") || cls == "combinedstatusview"
     }
 
     /** `StatusBarIconView.getSlot()`, or the OEM `getSlotTag()`; null when neither exists. */
