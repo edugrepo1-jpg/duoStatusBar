@@ -47,6 +47,28 @@ internal class EffectsController(private val context: Context, private val host:
     }
     private val cycle = SlotCycle()
     private val indicators = RuntimeIndicators(context, handler) { if(running) { updateCycle();draw() } }
+    private val experience = RuntimeExperience(context,handler,{ if(running){updateCycle();draw()} }) { spotlight(SlotIcon.SCREENSHOT,1800) }
+    private val volumeObserver=VolumeObserver(context,handler) { value -> volumePercent=value;spotlight(SlotIcon.VOLUME,2000) }
+    private val estimator=ChargeEstimator()
+    private var chargeRemaining=-1L
+    private var volumePercent=-1
+    private var compassDegrees=0f
+    private val heading=HeadingObserver(context,handler) { value->compassDegrees=value;if(running&&cycle.frame(now()).icon==SlotIcon.LOCATION)draw() }
+    private var recordingAt=-1L
+    private var temporary:SlotIcon?=null
+    private var temporaryUntil=0L
+    private var temporaryDuration=0L
+    private var lastScreenshot=-100000L
+    private fun spotlight(icon:SlotIcon,duration:Long) = guarded("aviso breve") {
+        if(!running||!screen)return@guarded
+        if(icon==SlotIcon.SCREENSHOT) {
+            val time=SystemClock.uptimeMillis()
+            if(time-lastScreenshot<1500)return@guarded
+            lastScreenshot=time;L.i("Captura de tela: obturador confirmado")
+        }
+        temporary=icon;temporaryDuration=duration;temporaryUntil=0L
+        draw()
+    }
     private var networkText=""
     private var dnd=false
     private var wireless=false
@@ -54,6 +76,11 @@ internal class EffectsController(private val context: Context, private val host:
         override fun run()=guarded("indicadores ativos") {
             if(!running||!screen||pocket)return@guarded
             indicators.refresh();bluetooth=indicators.bluetooth;nfc=indicators.nfc;hotspot=indicators.hotspot
+            experience.refresh()
+            if(charging&&Fx.experience.chargeEstimate) {
+                val estimate=runCatching { context.getSystemService(BatteryManager::class.java)?.computeChargeTimeRemaining() ?: -1 }.getOrDefault(-1)
+                chargeRemaining=estimator.remaining(SystemClock.elapsedRealtime(),estimate)
+            }
             music=audio?.isMusicActive==true;updateCycle();draw()
             handler.postDelayed(this,2000)
         }
@@ -150,6 +177,7 @@ internal class EffectsController(private val context: Context, private val host:
         running = true
         unlockObserver.start(screen)
         indicators.start()
+        experience.start()
         guarded("biometria") { installBiometrics() }
         guarded("monitor de áudio") {
             audio?.registerAudioDeviceCallback(devices, handler)
@@ -167,6 +195,8 @@ internal class EffectsController(private val context: Context, private val host:
         running = false
         unlockObserver.stop()
         indicators.stop()
+        experience.stop();volumeObserver.stop()
+        heading.stop()
         handler.removeCallbacksAndMessages(null)
         guarded("encerrar sensores") { sensors?.unregisterListener(sensorListener) }
         guarded("encerrar áudio") { audio?.unregisterAudioDeviceCallback(devices); audio?.unregisterAudioPlaybackCallback(playback) }
@@ -175,6 +205,9 @@ internal class EffectsController(private val context: Context, private val host:
     }
     fun settingsChanged() = guarded("configuração dos efeitos") {
         if (!running) return@guarded
+        cycle.configure(Fx.experience,now())
+        experience.configure()
+        if(Fx.experience.volume)volumeObserver.start() else volumeObserver.stop()
         if (!enabled(1)) { checkAt = -100000L; restoreClock() }
         if (!enabled(512)) pulseAt = -100000L
         if (!enabled(256)) chargeAt = -100000L
@@ -215,8 +248,11 @@ internal class EffectsController(private val context: Context, private val host:
                 settingsChanged(); host.continuum(true, enabled(128))
             }
             Intent.ACTION_SCREEN_OFF -> {
+                host.dismissSummary()
                 host.continuum(false, enabled(128))
                 screen = false; pulseAt = -100000L; checkAt = -100000L; chargeAt = -100000L
+                temporary=null;cycle.transient(null,now())
+                heading.stop()
                 unlockObserver.screenChanged(false)
                 restoreClock(); camera = false; host.effectsHidden(false)
                 handler.removeCallbacks(tick); handler.removeCallbacks(cameraTick);handler.removeCallbacks(indicatorsTick)
@@ -233,6 +269,8 @@ internal class EffectsController(private val context: Context, private val host:
         val previous = level; level = realLevel
         val justPlugged = plugged && !charging
         charging = plugged
+        estimator.observe(realLevel,plugged,SystemClock.elapsedRealtime())
+        chargeRemaining=estimator.remaining(SystemClock.elapsedRealtime())
         wireless=intent.getIntExtra(BatteryManager.EXTRA_PLUGGED,0)==BatteryManager.BATTERY_PLUGGED_WIRELESS
         if (!charging) fastSeen = false
         L.i("Bateria: nível=$level carregando=$charging tela=$screen")
@@ -282,6 +320,8 @@ internal class EffectsController(private val context: Context, private val host:
         audioAt = now(); L.i("Fones: $reason, aviso 4000 ms"); draw()
     }
     private fun updateCycle() {
+        if(indicators.recording&&recordingAt<0)recordingAt=SystemClock.elapsedRealtime()
+        if(!indicators.recording)recordingAt=-1
         val items=buildList {
             if(Fx.enabled(4)||Fx.enabled(8192)) {
                 if(airplane&&host.showAirplane)add(SlotIcon.AIRPLANE)
@@ -302,23 +342,37 @@ internal class EffectsController(private val context: Context, private val host:
                 if(indicators.location)add(SlotIcon.LOCATION)
                 if(indicators.ringer==AudioManager.RINGER_MODE_SILENT)add(SlotIcon.SILENT)
                 if(indicators.ringer==AudioManager.RINGER_MODE_VIBRATE)add(SlotIcon.VIBRATE)
-                if(music)add(SlotIcon.MEDIA)
+                if(music||experience.playback.playing)add(SlotIcon.MEDIA)
                 if(wireless)add(SlotIcon.WIRELESS)
                 if(indicators.torch)add(SlotIcon.TORCH)
                 if(indicators.recording)add(SlotIcon.RECORD)
             }
-        }
+            if(Fx.experience.chargeEstimate&&charging)add(SlotIcon.CHARGE_TIME)
+            if(Fx.experience.recordingTime&&indicators.recording)add(SlotIcon.RECORD_TIME)
+            if(Fx.experience.music&&experience.playback.playing)add(SlotIcon.MEDIA)
+        }.distinct()
         if(items!=activeIcons) {
             activeIcons=items
             L.i("Ícones ativos (${items.size}): ${items.joinToString()}; BT=$bluetooth GPS=${indicators.location} carga=$charging")
         }
         cycle.update(items, now())
+        if(Fx.experience.compass&&screen&&!pocket&&SlotIcon.LOCATION in items)heading.start() else heading.stop()
+        host.updateSummary(IslandState(level,charging,items.distinct().map { icon ->
+            IslandItem(icon,iconLabel(icon),when(icon) {
+                SlotIcon.CHARGE_TIME->estimateLabel(chargeRemaining)
+                SlotIcon.RECORD,SlotIcon.RECORD_TIME->durationLabel(if(recordingAt<0)0 else SystemClock.elapsedRealtime()-recordingAt)
+                SlotIcon.MEDIA->experience.playback.title.ifBlank { "Reproduzindo" }
+                SlotIcon.AIRPODS->if(indicators.headphoneBattery>=0)"${indicators.headphoneBattery}%" else "Conectados"
+                SlotIcon.NETWORK->networkText
+                else->"Ativo"
+            })
+        }))
     }
     private fun setPocket(value: Boolean) {
         val checkPriority = SystemClock.uptimeMillis()-lastUnlock in 0 until EffectTimeline.UNLOCK_MS
         val next = value && Fx.enabled(64) && screen && !checkPriority
         if (next == pocket) return
-        if (next) { stoppedAt = SystemClock.uptimeMillis(); pocket = true; handler.removeCallbacks(tick); handler.removeCallbacks(cameraTick);handler.removeCallbacks(indicatorsTick) }
+        if (next) { host.dismissSummary(); heading.stop(); stoppedAt = SystemClock.uptimeMillis(); pocket = true; handler.removeCallbacks(tick); handler.removeCallbacks(cameraTick);handler.removeCallbacks(indicatorsTick) }
         else { clockOffset += SystemClock.uptimeMillis() - stoppedAt; pocket = false; if (screen) { if(Fx.enabled(32))handler.post(cameraTick);handler.post(indicatorsTick) } }
         L.i("Bolso/tela pra baixo: pausa=$pocket")
         host.pauseEffects(pocket)
@@ -360,6 +414,7 @@ internal class EffectsController(private val context: Context, private val host:
         if (!enabled(1)) { L.i("Check ignorado: efeito ou animações desativados; origem=$source"); return }
         if (realNow-lastUnlock < EffectTimeline.UNLOCK_MS) return
         screen=true;lastUnlock=realNow
+        host.dismissSummary()
         if(pocket)setPocket(false)
         checkAt=now();audioAt=-100000L;checkWifiRestored=false
         cycle.pause(now());checkCyclePaused=true
@@ -374,6 +429,10 @@ internal class EffectsController(private val context: Context, private val host:
         val time = now()
         fun age(at: Long, duration: Long, bit: Int): Long = EffectTimeline.age(time, at, duration, screen && enabled(bit))
         val check = age(checkAt, EffectTimeline.UNLOCK_MS, 1)
+        if(check<0&&temporary!=null) {
+            if(temporaryUntil==0L){temporaryUntil=time+temporaryDuration;cycle.transient(temporary,time)}
+            if(time>=temporaryUntil){temporary=null;cycle.transient(null,time)}
+        }
         if(check<0&&checkCyclePaused) {
             cycle.resume(time);checkCyclePaused=false
             cycle.preferWifi(time);checkWifiRestored=true
@@ -391,11 +450,18 @@ internal class EffectsController(private val context: Context, private val host:
             slot, (Fx.enabled(8) && hotspot) || (Fx.enabled(4) && airplane),
             Fx.enabled(512) && !charging && level in 0..9,
             Fx.enabled(1024), enabled(2048), time,
-            indicators.headphoneBattery, networkText, Fx.enabled(4)||Fx.enabled(8192)||Fx.enabled(4096), charging&&enabled(256)), camera)
+            indicators.headphoneBattery, networkText, Fx.enabled(4)||Fx.enabled(8192)||Fx.enabled(4096), charging&&enabled(256),
+            musicPlaying=Fx.experience.music&&experience.playback.playing,
+            musicProgress=if(Fx.experience.music)experience.playback.progress(SystemClock.elapsedRealtime()) else -1f,
+            albumColor=if(Fx.experience.albumColors)experience.playback.color else 0,
+            chargeRemainingMs=chargeRemaining,recordElapsedMs=if(recordingAt<0)0 else SystemClock.elapsedRealtime()-recordingAt,
+            volumePercent=volumePercent,drawIcons=Fx.experience.drawIcons&&host.animationsEnabled,
+            iconPercent=Fx.experience.iconPercent,iconRadius=(55.5f-8f*host.thickPercent/100f-2f).coerceAtLeast(12f),
+            compassDegrees=compassDegrees,compass=Fx.experience.compass), camera)
         if (!screen || (camera&&check<0) || !host.animationsEnabled) return
         val selected=cycle.frame(time).icon
-        val active = check >= 0 || pulse >= 0 || charge >= 0 || audioAge >= 0 || charging || selected==SlotIcon.RECORD || selected==SlotIcon.MEDIA
-        val delay = if (active || (Fx.enabled(8) && hotspot)) 16L else cycle.nextDelay(time)
+        val active = check >= 0 || pulse >= 0 || charge >= 0 || audioAge >= 0 || charging || temporary!=null || selected==SlotIcon.RECORD || selected==SlotIcon.RECORD_TIME || selected==SlotIcon.MEDIA
+        val delay = if (active || (Fx.enabled(8) && hotspot)) 16L else if(Fx.experience.music&&experience.playback.playing) minOf(250L,cycle.nextDelay(time)) else cycle.nextDelay(time)
         if (delay != Long.MAX_VALUE) handler.postDelayed(tick, delay)
     }
     companion object {

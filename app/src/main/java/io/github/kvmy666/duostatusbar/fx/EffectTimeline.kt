@@ -55,8 +55,8 @@ internal object EffectTimeline {
     }
 }
 
-internal enum class SlotIcon { WIFI, AIRPLANE, BLUETOOTH, SHARE, NFC, NETWORK, DND, AIRPODS, BOLT, CAMERA, MICROPHONE, ALARM, VPN, LOCATION, SILENT, VIBRATE, MEDIA, WIRELESS, TORCH, RECORD, WIFI_OFFLINE }
-internal data class SlotFrame(val icon: SlotIcon?, val opacity: Float = 1f, val scale: Float = 1f)
+internal enum class SlotIcon { WIFI, AIRPLANE, BLUETOOTH, SHARE, NFC, NETWORK, DND, AIRPODS, BOLT, CAMERA, MICROPHONE, ALARM, VPN, LOCATION, SILENT, VIBRATE, MEDIA, WIRELESS, TORCH, RECORD, WIFI_OFFLINE, CHARGE_TIME, RECORD_TIME, VOLUME, SCREENSHOT, NOTIFICATION }
+internal data class SlotFrame(val icon: SlotIcon?, val opacity: Float = 1f, val scale: Float = 1f, val reveal: Float = 1f)
 
 /** Exit and entry are disjoint; one occupant never costs a periodic callback. */
 internal class SlotCycle {
@@ -65,42 +65,57 @@ internal class SlotCycle {
     private var pausedAt:Long?=null
     private val swap=SequentialSwap()
     private var initialized=false
+    private var period=3000L
+    private var exit=120L
+    private var entry=160L
+    private var temporary:SlotIcon?=null
+    private var temporaryAt=0L
+    private var returnAt=Long.MIN_VALUE
+    fun configure(options:ExperienceOptions,now:Long) {
+        val next=maxOf(options.dwellMs.toLong(),options.exitMs+options.entryMs+400L)
+        if(next!=period) { val pose=frame(now).icon;began=now-items.indexOf(pose).coerceAtLeast(0)*next }
+        period=next;exit=options.exitMs.toLong();entry=options.entryMs.toLong();swap.configure(exit,entry)
+    }
+    fun transient(icon:SlotIcon?,now:Long) {
+        if(icon==temporary)return
+        frame(now);temporary=icon;temporaryAt=now;returnAt=now
+    }
     val size get()=items.size
     fun update(next:List<SlotIcon>,now:Long) {
         val unique=next.distinct()
         if(items==unique)return
         if(!initialized){initialized=true;items=unique;began=now;swap.update(items.firstOrNull()?.ordinal ?: -1,now,false);return}
         val before=frame(now).icon
-        val phase=((pausedAt ?: now)-began).coerceAtLeast(0)%3000L
+        val phase=((pausedAt ?: now)-began).coerceAtLeast(0)%period
         val urgent=unique.firstOrNull { it !in items && it in listOf(SlotIcon.CAMERA,SlotIcon.MICROPHONE,SlotIcon.RECORD) }
         items=unique
         val chosen=urgent ?: before?.takeIf { it in items } ?: items.firstOrNull()
         val index=items.indexOf(chosen).coerceAtLeast(0)
         // Retain elapsed dwell time when the active set changes; polling must not starve later icons.
-        began=(pausedAt ?: now)-index*3000L-if(urgent!=null)0L else phase
-        swap.update(chosen?.ordinal ?: -1,now,true)
+        began=(pausedAt ?: now)-index*period-if(urgent!=null)0L else phase
+        if(temporary==null)swap.update(chosen?.ordinal ?: -1,now,true)
     }
     fun pause(now:Long){if(pausedAt==null)pausedAt=now}
     fun resume(now:Long){pausedAt?.let { began+=now-it;swap.shiftTime(now-it) };pausedAt=null}
     fun preferWifi(now:Long){
         val preferred=items.firstOrNull { it==SlotIcon.WIFI || it==SlotIcon.WIFI_OFFLINE } ?: return
-        began=now-items.indexOf(preferred)*3000L;swap.update(preferred.ordinal,now,false)
+        began=now-items.indexOf(preferred)*period;swap.update(preferred.ordinal,now,false)
     }
     fun frame(now:Long):SlotFrame {
         val time=pausedAt ?: now
         val elapsed=(time-began).coerceAtLeast(0)
-        val index=if(items.isEmpty())0 else ((elapsed/3000L + if(elapsed%3000L>=2880L&&items.size>1)1 else 0)%items.size).toInt()
-        val transitionAt=if(items.size>1)began+(elapsed/3000L)*3000L+if(elapsed%3000L>=2880L)2880L else -120L else time
-        swap.update(items.getOrNull(index)?.ordinal ?: -1,transitionAt,time>=began)
+        val index=if(items.isEmpty())0 else ((elapsed/period + if(elapsed%period>=(period-exit)&&items.size>1)1 else 0)%items.size).toInt()
+        val transitionAt=if(items.size>1)began+(elapsed/period)*period+if(elapsed%period>=(period-exit))(period-exit) else -exit else time
+        swap.update((temporary ?: items.getOrNull(index))?.ordinal ?: -1, if(temporary!=null)temporaryAt else maxOf(transitionAt,returnAt),time>=began)
         val frame=swap.frame(time)
-        return SlotFrame(SlotIcon.entries.getOrNull(frame.key),frame.opacity,.8f+.2f*frame.opacity)
+        return SlotFrame(SlotIcon.entries.getOrNull(frame.key),frame.opacity,.8f+.2f*frame.opacity,frame.reveal)
     }
     fun nextDelay(now:Long):Long {
         if(pausedAt!=null)return Long.MAX_VALUE
         if(swap.moving(now))return 16L
-        if(items.size<=1)return Long.MAX_VALUE
-        val phase=(now-began).coerceAtLeast(0)%3000L
-        return if(phase>=2880L)16L else 2880L-phase
+        if(temporary!=null||items.size<=1)return Long.MAX_VALUE
+        val phase=(now-began).coerceAtLeast(0)%period
+        return if(phase>=(period-exit))16L else (period-exit)-phase
     }
 }
 
@@ -119,28 +134,36 @@ internal data class EffectFrame(
     val headphoneBattery: Int = -1,
     val networkText: String = "",
     val managedSlots: Boolean = false,
-    val charging: Boolean = false
+    val charging: Boolean = false,
+    val musicPlaying: Boolean = false, val musicProgress: Float = -1f, val albumColor: Int = 0,
+    val chargeRemainingMs: Long = -1, val recordElapsedMs: Long = 0, val volumePercent: Int = -1,
+    val drawIcons: Boolean = false, val iconPercent:Int=100, val iconRadius:Float=47.5f,
+    val compassDegrees:Float=0f, val compass:Boolean=false
 )
 
-internal data class SwapFrame(val key: Int, val opacity: Float)
+internal data class SwapFrame(val key: Int, val opacity: Float, val reveal:Float=1f)
 /** A single visible occupant; interruptions finish its exit before the newest requested key enters. */
 internal class SequentialSwap {
+    private var exit=120L
+    private var entry=160L
+    fun configure(exitMs:Long,entryMs:Long){exit=exitMs.coerceIn(60,600);entry=entryMs.coerceIn(60,800)}
     private var current = Int.MIN_VALUE
     private var next = Int.MIN_VALUE
     private var began = 0L
     private var fromOpacity = 1f
+    private var fromReveal = 1f
     private var switching = false
     fun update(key: Int, now: Long, animate: Boolean) {
         if (current == Int.MIN_VALUE || !animate) { current=key; next=key; switching=false; return }
         val pose=frame(now)
         if (next == key) return
-        current=pose.key; next=key; fromOpacity=pose.opacity; began=now; switching=true
+        current=pose.key; next=key; fromOpacity=pose.opacity;fromReveal=pose.reveal; began=now; switching=true
     }
     fun frame(now: Long): SwapFrame {
         if (!switching) return SwapFrame(current,1f)
         val elapsed=(now-began).coerceAtLeast(0)
-        if (elapsed < 120) return SwapFrame(current,fromOpacity * (1f-EffectTimeline.smooth(elapsed/120f)))
-        if (elapsed < 280) return SwapFrame(next,EffectTimeline.smooth((elapsed-120)/160f))
+        if (elapsed < exit) return SwapFrame(current,fromOpacity * (1f-EffectTimeline.smooth(elapsed/exit.toFloat())),fromReveal)
+        if (elapsed < exit+entry) { val amount=EffectTimeline.smooth((elapsed-exit)/entry.toFloat());return SwapFrame(next,amount,amount) }
         current=next; switching=false
         return SwapFrame(current,1f)
     }

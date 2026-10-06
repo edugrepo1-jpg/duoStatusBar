@@ -28,6 +28,7 @@ internal object SettingsBridge {
 
     /** The provider row, serialized as `ArrayList<Any>` (ints, longs, strings). */
     const val EXTRA_VALUES = "values"
+    const val EXTRA_COLUMNS = "columns"
     const val EXTRA_STATUS = "status"
     const val EXTRA_DUMP = "dump"
     const val EXTRA_FALLBACK = "fallback"
@@ -44,8 +45,10 @@ internal object SettingsBridge {
             context.sendBroadcast(
                 Intent(ACTION_SETTINGS_PUSH).setPackage(SYSTEMUI)
                     .putExtra(EXTRA_VALUES, ArrayList<Any>(row.toList()))
+                    .putStringArrayListExtra(EXTRA_COLUMNS,ArrayList(DuoPrefs.COLUMNS.toList()))
             )
             L.i("settings bridge: pushed rev ${DuoPrefs.revision(context)}")
+            context.sendBroadcast(Intent(io.github.kvmy666.duostatusbar.fx.ExperienceRelayService.REFRESH).setPackage(context.packageName))
         } catch (t: Throwable) {
             L.w("settings bridge push: ${t.javaClass.simpleName}: ${t.message}")
         }

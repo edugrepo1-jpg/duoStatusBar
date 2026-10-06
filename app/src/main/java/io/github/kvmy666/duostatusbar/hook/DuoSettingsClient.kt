@@ -72,7 +72,8 @@ internal data class ModuleSettings(
     val edgePadding: Int,
     val thickPercent: Int = 100,
     val featFlags: Int = 0x3FDF,
-    val globalPercent: Int = 100
+    val globalPercent: Int = 100,
+    val experienceJson: String = ""
 ) {
     /** Whether Do Not Disturb may take the middle of the ring. */
     val showDnd: Boolean get() = DuoPrefs.dndInMiddle(dndMode)
@@ -220,7 +221,14 @@ internal object DuoSettingsClient {
                 @Suppress("UNCHECKED_CAST")
                 val values = intent.getSerializableExtra(SettingsBridge.EXTRA_VALUES) as? ArrayList<Any?>
                     ?: return
-                val cursor = MatrixCursor(DuoPrefs.COLUMNS).apply { addRow(values) }
+                val named=intent.getStringArrayListExtra(SettingsBridge.EXTRA_COLUMNS)
+                val legacy=DuoPrefs.COLUMNS.filterNot { it==DuoPrefs.COL_EXPERIENCE||it==DuoPrefs.LAND_PREFIX+DuoPrefs.COL_EXPERIENCE }.toTypedArray()
+                val columns=when {
+                    named!=null&&named.size==values.size&&named.size<=128->named.toTypedArray()
+                    values.size==legacy.size->legacy
+                    else->DuoPrefs.COLUMNS
+                }
+                val cursor = MatrixCursor(columns).apply { addRow(values) }
                 cursor.moveToFirst()
                 bridge = fromCursor(cursor, Configuration.ORIENTATION_PORTRAIT)
                 bridgeLandscape = fromCursor(cursor, Configuration.ORIENTATION_LANDSCAPE)
@@ -416,7 +424,8 @@ internal object DuoSettingsClient {
         thickPercent = cursor.optionalInt(DuoPrefs.COL_THICK_PERCENT, 100).coerceIn(1, 300),
         featFlags = cursor.optionalInt(DuoPrefs.COL_FEAT_FLAGS, 0x3FDF),
         globalPercent = cursor.optionalInt(DuoPrefs.COL_GLOBAL_PERCENT, 100).coerceIn(0, 100)
-            .coerceIn(DuoPrefs.MIN_EDGE_PADDING, DuoPrefs.MAX_EDGE_PADDING)
+            .coerceIn(DuoPrefs.MIN_EDGE_PADDING, DuoPrefs.MAX_EDGE_PADDING),
+        experienceJson = cursor.getColumnIndex(DuoPrefs.COL_EXPERIENCE).let { if(it<0) "" else cursor.getString(it) ?: "" }
         )
     }
 
@@ -477,7 +486,8 @@ internal object DuoSettingsClient {
             thickPercent = int(DuoPrefs.COL_THICK_PERCENT, portrait.thickPercent).coerceIn(1, 300),
             featFlags = int(DuoPrefs.COL_FEAT_FLAGS, portrait.featFlags),
             globalPercent = int(DuoPrefs.COL_GLOBAL_PERCENT, portrait.globalPercent).coerceIn(0, 100)
-                .coerceIn(DuoPrefs.MIN_EDGE_PADDING, DuoPrefs.MAX_EDGE_PADDING)
+                .coerceIn(DuoPrefs.MIN_EDGE_PADDING, DuoPrefs.MAX_EDGE_PADDING),
+            experienceJson = str(DuoPrefs.COL_EXPERIENCE, portrait.experienceJson)
         )
     }
 

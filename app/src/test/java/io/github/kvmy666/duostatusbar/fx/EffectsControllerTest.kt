@@ -112,4 +112,42 @@ class EffectsControllerTest {
         assertFalse(get(controller,"pocket") as Boolean)
         controller.stop();view.teardown()
     }
+    @Test fun `new volume event waits for exclusive unlock then returns to carousel with charge estimate`() {
+        val (controller,view)=fixture();val context=ApplicationProvider.getApplicationContext<Context>()
+        Fx.sync(ModuleSettings.DEFAULT.copy(experienceJson=ExperienceOptions.ALL.encode()),context)
+        try {
+            set(controller,"charging",true);set(controller,"bluetooth",true);call(controller,"updateCycle")
+            controller.broadcast(Intent(Intent.ACTION_USER_PRESENT))
+            val spotlight=controller.javaClass.getDeclaredMethod("spotlight",SlotIcon::class.java,Long::class.javaPrimitiveType).apply {isAccessible=true}
+            spotlight.invoke(controller,SlotIcon.VOLUME,2000L)
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(1500,TimeUnit.MILLISECONDS)
+            assertEquals(1f,EffectTimeline.check(view.effects.checkMs),0f)
+            assertEquals(0f,EffectTimeline.checkNormal(view.effects.checkMs),0f)
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(2000,TimeUnit.MILLISECONDS)
+            assertEquals(-1L,view.effects.checkMs);assertEquals(SlotIcon.VOLUME,view.effects.slot.icon)
+            assertTrue("entry must finish after check and both sequential fades: ${view.effects.slot}",view.effects.slot.opacity>.9f)
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(2300,TimeUnit.MILLISECONDS)
+            assertNotEquals(SlotIcon.VOLUME,view.effects.slot.icon)
+            val seen=mutableSetOf<SlotIcon>()
+            repeat(8) {Shadows.shadowOf(Looper.getMainLooper()).idleFor(3200,TimeUnit.MILLISECONDS);view.effects.slot.icon?.let(seen::add)}
+            assertTrue(seen.containsAll(listOf(SlotIcon.BLUETOOTH,SlotIcon.BOLT,SlotIcon.CHARGE_TIME)))
+        } finally {controller.stop();view.teardown();Fx.sync(ModuleSettings.DEFAULT,context)}
+    }
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    @Test fun `expanded summary uses attached window and closes on screen off`() {
+        val activity=org.robolectric.Robolectric.buildActivity(android.app.Activity::class.java).setup().visible()
+        val (controller,view)=fixture();activity.get().setContentView(view)
+        val decor=activity.get().window.decorView
+        decor.measure(android.view.View.MeasureSpec.makeMeasureSpec(1080,android.view.View.MeasureSpec.EXACTLY),android.view.View.MeasureSpec.makeMeasureSpec(2400,android.view.View.MeasureSpec.EXACTLY))
+        decor.layout(0,0,1080,2400);view.layout(0,0,120,136)
+        val host=get(controller,"host") as DuoIconHost
+        val summary=get(host,"summary") as IslandSummary
+        try {
+            assertTrue(summary.open(view,false));assertTrue(get(host,"summaryOpen") as Boolean)
+            assertEquals(0f,view.alpha,0f)
+            controller.broadcast(Intent(Intent.ACTION_SCREEN_OFF))
+            assertFalse(get(host,"summaryOpen") as Boolean)
+            assertEquals(1f,view.alpha,0f)
+        } finally {controller.stop();view.teardown();activity.pause().stop().destroy()}
+    }
 }

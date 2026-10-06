@@ -18,6 +18,7 @@ internal class EffectPainter {
     private val rotation = Matrix()
     fun tint(base: Int, frame: EffectFrame): Int {
         var color = CanvasMotion.blend(base, 0xFF3DDC84.toInt(), EffectTimeline.unlockColor(frame.checkMs))
+        if(frame.musicPlaying&&frame.albumColor!=0&&!frame.charging&&frame.checkMs<0)color=CanvasMotion.blend(color,frame.albumColor,.8f)
         if(frame.charging)color=CanvasMotion.blend(color,0xFF8CFFBC.toInt(),.16f+.14f*sin(frame.motionMs/500f))
         color = CanvasMotion.blend(color, if (frame.pulseRed) 0xFFFF8A80.toInt() else 0xFFFFB300.toInt(), EffectTimeline.pulse(frame.pulseMs))
         return color
@@ -35,6 +36,13 @@ internal class EffectPainter {
         val save = canvas.save()
         clip.reset(); clip.addCircle(0f, 0f, 55.5f, Path.Direction.CW); canvas.clipPath(clip)
         try {
+            if(ring&&frame.musicPlaying&&frame.musicProgress>=0) {
+                paint.shader=null;paint.style=Paint.Style.STROKE;paint.strokeWidth=1.8f
+                paint.color=if(frame.albumColor!=0)frame.albumColor else 0xFF71E3B1.toInt()
+                paint.alpha=(200*opacity).toInt();val musicRadius=minOf(43f,55.5f-8f*thickPercent.coerceIn(1,300)/100f-3f)
+                bounds.set(-musicRadius,-musicRadius,musicRadius,musicRadius)
+                canvas.drawArc(bounds,150f,240f*frame.musicProgress,false,paint)
+            }
             if (ring && (frame.chargeMs >= 0 || frame.charging)) {
                 val thick = 8f * thickPercent.coerceIn(1,300) / 100f
                 paint.style = Paint.Style.STROKE; paint.strokeWidth = minOf(4f, thick * .85f)
@@ -79,6 +87,7 @@ internal class EffectPainter {
     }
     private fun drawSlot(canvas: Canvas, slot: SlotFrame, fg: Int, opacity: Float, frame: EffectFrame) {
         val icon=slot.icon ?: return
+        if(icon==SlotIcon.WIFI)return // Strength-aware Wi-Fi is owned by DuoCanvasView.
         val save=canvas.save()
         val scale=if(frame.spring) .8f+.2f*EffectTimeline.spring((slot.scale-.8f)/.2f) else slot.scale
         canvas.scale(scale,scale)

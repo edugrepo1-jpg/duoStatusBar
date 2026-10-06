@@ -10,6 +10,8 @@ import io.github.kvmy666.duostatusbar.hook.ModuleSettings
 internal object Fx {
     var flags = 0x3FDF
         private set
+    var experience = ExperienceOptions()
+        private set
     var level = -1
     private var context: Context? = null
     private val handler by lazy { Handler(Looper.getMainLooper()) }
@@ -19,6 +21,7 @@ internal object Fx {
     fun enabled(bit: Int) = flags and BuildConfig.FEATURE_MASK and bit != 0
     fun sync(settings: ModuleSettings, ctx: Context) {
         flags = settings.featFlags
+        experience = ExperienceOptions.decode(settings.experienceJson)
         context = ctx.applicationContext ?: ctx
         Events.changed = ::scheduleLocalLog
     }

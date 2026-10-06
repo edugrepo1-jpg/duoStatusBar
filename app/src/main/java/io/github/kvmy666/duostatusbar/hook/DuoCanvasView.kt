@@ -232,7 +232,12 @@ internal class DuoCanvasView(context: Context, part: DuoPart = DuoPart.ALL) : Vi
         if (slotAlpha > 0f && cycleIcon != null) {
             val saved = canvas.save(); canvas.scale(effects.slot.scale, effects.slot.scale)
             when (cycleIcon) {
-                SlotIcon.WIFI, SlotIcon.WIFI_OFFLINE -> drawWifi(canvas, v, slotAlpha * effects.slot.opacity)
+                SlotIcon.WIFI, SlotIcon.WIFI_OFFLINE -> {
+                    val requested=effects.iconPercent.coerceIn(60,200)/100f
+                    val factor=if(requested<=1)requested else minOf(requested,((55.5f-8f*f-2f)/28f).coerceAtLeast(1f))
+                    canvas.scale(factor,factor)
+                    drawWifi(canvas,v,slotAlpha*effects.slot.opacity)
+                }
                 SlotIcon.AIRPLANE -> Unit
                 else -> Unit
             }
@@ -281,7 +286,7 @@ internal class DuoCanvasView(context: Context, part: DuoPart = DuoPart.ALL) : Vi
             bounds.set(-.5f - r, 17f - r, -.5f + r, 17f + r)
             stroke.strokeWidth = width
             stroke.color = alpha(v.fgColor, opacity * strength)
-            canvas.drawArc(bounds, 270f + offset * 360f, sweep * 360f, false, stroke)
+            canvas.drawArc(bounds, 270f + offset * 360f, sweep * 360f * (if(effects.drawIcons)effects.slot.reveal else 1f), false, stroke)
         }
         wifiArc(62.2f, 7.1f, .88f, .239f, v.wifiOuterOpacity)
         wifiArc(36.3f, 7f, .882f, .237f, v.wifiMidOpacity)

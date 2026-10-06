@@ -83,12 +83,12 @@ class EffectTimelineTest {
     }
     @Test fun `interrupted entry finishes exit from current opacity before latest icon enters`() {
         val swap=SequentialSwap();swap.update(1,0,false);swap.update(2,100,true)
-        assertEquals(SwapFrame(2,0f),swap.frame(220))
-        assertEquals(SwapFrame(2,.5f),swap.frame(300))
+        assertEquals(SwapFrame(2,0f,0f),swap.frame(220))
+        assertEquals(SwapFrame(2,.5f,.5f),swap.frame(300))
         swap.update(3,300,true)
-        assertEquals(SwapFrame(2,.5f),swap.frame(300))
-        assertEquals(SwapFrame(2,.25f),swap.frame(360))
-        assertEquals(SwapFrame(3,0f),swap.frame(420))
+        assertEquals(SwapFrame(2,.5f,.5f),swap.frame(300))
+        assertEquals(SwapFrame(2,.25f,.5f),swap.frame(360))
+        assertEquals(SwapFrame(3,0f,0f),swap.frame(420))
         assertEquals(SwapFrame(3,1f),swap.frame(580))
     }
     @Test fun `empty carousel fades previous occupant to empty then stops callbacks`() {

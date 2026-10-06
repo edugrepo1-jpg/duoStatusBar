@@ -159,7 +159,8 @@ class DuoSettingsProvider : ContentProvider() {
             DuoPrefs.normalizeDndMode(settings.dndMode),
             settings.thickPercent.coerceIn(1, 300),
             settings.featFlags,
-            settings.globalPercent.coerceIn(0, 100)
+            settings.globalPercent.coerceIn(0, 100),
+            settings.experienceJson.take(4096)
         )
     }
 }

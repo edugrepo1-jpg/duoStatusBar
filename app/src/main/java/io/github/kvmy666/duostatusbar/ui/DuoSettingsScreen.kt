@@ -341,8 +341,9 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             if(search("Experimente o movimento","Demonstração","Ícones","Efeitos")) StudioCard {
                 SectionTitle("Experimente o movimento")
                 Text("Veja os ícones e os efeitos com estados simulados.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                EffectsPreview(settings,search)
+                EffectsPreview(settings,search) { onUpdate(settings.copy(experienceJson=it.encode())) }
             }
+            ExperienceSection(settings,onUpdate,search)
             AnimationsSection(settings,onUpdate,search)
             EffectsSection(settings,onUpdate,search)
         }

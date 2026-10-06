@@ -22,17 +22,21 @@ internal class ElementGestures(private val context: Context) {
     private var detector: GestureDetector? = null
     private var active = false
     private var actions: Triple<String, String, String>? = null
+    private var summary: (() -> Boolean)? = null
+    private var summaryInstalled=false
 
     /** Installs (or clears) the detector for the current actions. */
-    fun install(view: View, tap: String, doubleTap: String, longPress: String) {
+    fun install(view: View, tap: String, doubleTap: String, longPress: String, onSummary:(()->Boolean)?=null) {
         val next = Triple(tap, doubleTap, longPress)
-        if (actions == next) {
+        summary=onSummary
+        if (actions == next && summaryInstalled==(onSummary!=null)) {
             view.isClickable = detector != null
             return
         }
         actions = next
+        summaryInstalled=onSummary!=null
         active = false
-        if (tap == AutoExpand.NO_ACTION && doubleTap == AutoExpand.NO_ACTION && longPress == AutoExpand.NO_ACTION) {
+        if (tap == AutoExpand.NO_ACTION && doubleTap == AutoExpand.NO_ACTION && longPress == AutoExpand.NO_ACTION && onSummary==null) {
             detector = null
             view.setOnTouchListener(null)
             view.isClickable = false
@@ -56,7 +60,7 @@ internal class ElementGestures(private val context: Context) {
             }
             override fun onLongPress(e: MotionEvent) {
                 L.i("gesture: long press")
-                AutoExpand.request(context, longPress)
+                if(summary?.invoke()!=true)AutoExpand.request(context, longPress)
             }
         })
         view.setOnTouchListener(null)

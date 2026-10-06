@@ -176,19 +176,30 @@ internal class DuoIconHost(private val context: Context) {
 
     val duo: DuoElement? get() = element
     private var ghost = false
+    private var summaryOpen=false
+    private val summary=io.github.kvmy666.duostatusbar.fx.IslandSummary(context) { opened ->
+        summaryOpen=opened
+        allElements().forEach { it.ui.alpha=if(ghost||opened)0f else 1f;it.setRenderActive(!ghost&&!opened) }
+    }
+    fun updateSummary(state:io.github.kvmy666.duostatusbar.fx.IslandState)=summary.update(state)
+    fun dismissSummary()=summary.dismiss()
+    private fun summaryAction():(()->Boolean)? = if(io.github.kvmy666.duostatusbar.fx.Fx.experience.island) ({
+        element?.ui?.let { summary.open(it,animationsEnabled) } ?: false
+    }) else null
     private var continuumAnimator: android.animation.ValueAnimator? = null
     fun effectClock() = io.github.kvmy666.duostatusbar.fx.Align.clock(root)
     fun effectsHidden(hidden: Boolean) {
         ghost = hidden
+        if(hidden)summary.dismiss()
         for (target in allElements()) {
-            target.ui.alpha = if (hidden) 0f else 1f
+            target.ui.alpha = if (hidden||summaryOpen) 0f else 1f
             target.ui.isEnabled = !hidden
-            target.setRenderActive(!hidden)
+            target.setRenderActive(!hidden&&!summaryOpen)
         }
     }
     fun pauseEffects(paused: Boolean) {
         if (paused) resetContinuum()
-        for (target in allElements()) target.setRenderActive(!paused && !ghost)
+        for (target in allElements()) target.setRenderActive(!paused && !ghost && !summaryOpen)
     }
     fun applyEffects(frame: io.github.kvmy666.duostatusbar.fx.EffectFrame, hidden: Boolean) {
         for (target in allElements()) (target as? DuoCanvasView)?.effects = frame
@@ -496,6 +507,7 @@ internal class DuoIconHost(private val context: Context) {
 
     // The Animations section (FR-25). The master gates the three individual switches.
     val animationsEnabled: Boolean get() = settings.animationsEnabled
+    val thickPercent: Int get() = settings.thickPercent
     val arrivalEnabled: Boolean get() = settings.animationsEnabled && settings.arrivalEnabled
     val departureEnabled: Boolean get() = settings.animationsEnabled && settings.departureEnabled
     val chargingEnabled: Boolean get() = settings.animationsEnabled && settings.chargingEnabled
@@ -510,6 +522,7 @@ internal class DuoIconHost(private val context: Context) {
      * half-drawn.
      */
     fun setElementsVisible(on: Boolean) {
+        if(!on)summary.dismiss()
         if (on) resetContinuum()
         for (target in allElements()) {
             try {
@@ -545,6 +558,7 @@ internal class DuoIconHost(private val context: Context) {
         settings = fresh
         io.github.kvmy666.duostatusbar.fx.Fx.sync(fresh, context)
         if (changed) {
+            if(!io.github.kvmy666.duostatusbar.fx.Fx.experience.island)summary.dismiss()
             resetContinuum()
             L.i("settings rev ${fresh.revision}: size ${fresh.sizePercent}%, offset ${fresh.offsetX}dp, " +
                     "percent=${fresh.showPercent}, percentHeight=${fresh.percentHeight}%, " +
@@ -565,7 +579,7 @@ internal class DuoIconHost(private val context: Context) {
             } else {
                 // The safe path: size and position are saved but wait for the next start. Gestures and
                 // the clock's font are not geometry, so they can still change live.
-                element?.ui?.let { gestures.install(it, settings.tapAction, settings.doubleTapAction, settings.longPressAction) }
+                element?.ui?.let { gestures.install(it, settings.tapAction, settings.doubleTapAction, settings.longPressAction,summaryAction()) }
                 L.i("live apply off - size/position take effect after Restart System UI")
             }
             clock.apply(root, settings.systemClockFont)
@@ -638,7 +652,7 @@ internal class DuoIconHost(private val context: Context) {
     }
 
     private fun installGestures(view: View) {
-        gestures.install(view, settings.tapAction, settings.doubleTapAction, settings.longPressAction)
+        gestures.install(view, settings.tapAction, settings.doubleTapAction, settings.longPressAction,summaryAction())
     }
 
     /** The part the ring's view should draw for the current settings. */
@@ -1057,6 +1071,7 @@ internal class DuoIconHost(private val context: Context) {
 
     /** Removes the element and puts the stock icons back exactly as they were. */
     fun teardown() {
+        summary.dismiss()
         continuumAnimator?.cancel()
         try {
             drop(indicators, host)
