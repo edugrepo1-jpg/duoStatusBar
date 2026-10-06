@@ -10,16 +10,17 @@ internal data class ExperienceOptions(
     val island: Boolean=false, val drawIcons: Boolean=false,
     val dwellMs: Int=3000, val exitMs: Int=120, val entryMs: Int=160,
     val compass:Boolean=false, val iconPercent:Int=100,
-    val iconSeconds:Map<String,Int> = emptyMap(), val networkOnly:Boolean=false, val fadeEnabled:Boolean=true, val language:String="pt-BR"
+    val iconSeconds:Map<String,Int> = emptyMap(), val networkOnly:Boolean=false, val fadeEnabled:Boolean=true, val language:String="pt-BR",
+    val universalTiming:Boolean=true
 ) {
     fun encode(): String = JSONObject().apply {
-        put("v",2);put("language",language.takeIf { it in listOf("pt-BR","en","es") } ?: "pt-BR")
+        put("v",3);put("language",language.takeIf { it in listOf("pt-BR","en","es") } ?: "pt-BR")
         put("music",music);put("album",albumColors);put("charge",chargeEstimate)
         put("shot",screenshot);put("volume",volume);put("record",recordingTime)
         put("island",island);put("draw",drawIcons)
         put("dwell",dwellMs.coerceIn(1000,60000));put("exit",exitMs.coerceIn(60,600));put("entry",entryMs.coerceIn(60,800))
         put("times",JSONObject(iconSeconds.filterKeys { key -> SlotIcon.entries.any { it.name==key } }.mapValues { it.value.coerceIn(1,60) }))
-        put("networkOnly",networkOnly);put("fade",fadeEnabled)
+        put("networkOnly",networkOnly);put("fade",fadeEnabled);put("universal",universalTiming)
         put("compass",compass);put("iconSize",iconPercent.coerceIn(60,200))
     }.toString()
     companion object {
@@ -32,7 +33,8 @@ internal data class ExperienceOptions(
                 j.optBoolean("compass"),j.optInt("iconSize",100).coerceIn(60,200),
                 SlotIcon.entries.mapNotNull { icon -> j.optJSONObject("times")?.let { times ->
                     if(times.has(icon.name)) icon.name to times.optInt(icon.name,3).coerceIn(1,60) else null
-                } }.toMap(),j.optBoolean("networkOnly"),j.optBoolean("fade",true),j.optString("language","pt-BR").takeIf { it in listOf("pt-BR","en","es") } ?: "pt-BR")
+                } }.toMap(),j.optBoolean("networkOnly"),j.optBoolean("fade",true),j.optString("language","pt-BR").takeIf { it in listOf("pt-BR","en","es") } ?: "pt-BR",
+                j.optBoolean("universal",(j.optJSONObject("times")?.length() ?: 0)==0))
         } catch (_:Exception) { ExperienceOptions() }
     }
 }

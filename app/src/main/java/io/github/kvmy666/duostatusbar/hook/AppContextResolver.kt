@@ -24,7 +24,7 @@ internal object AppContextResolver {
      */
     fun resolveAppContext(): Context? {
         try {
-            android.app.AndroidAppHelper.currentApplication()?.let { return it }
+            usableContext(android.app.AndroidAppHelper.currentApplication())?.let { return it }
         } catch (t: Throwable) {
             L.w("currentApplication unreadable: ${t.javaClass.simpleName}: ${t.message}")
         }
@@ -37,21 +37,29 @@ internal object AppContextResolver {
                 // "Given calling package android does not match caller's uid" - which broke both the
                 // Settings.Global override and the settings provider read. Only contexts whose package is
                 // the app are usable here.
-                val field = thread.getDeclaredField("mInitialApplication").also { it.isAccessible = true }
-                (field.get(current) as? Context)?.let { if (it.packageName != "android") return it }
-                val bound = thread.getDeclaredField("mBoundApplication").also { it.isAccessible = true }
-                    .get(current)
-                if (bound != null) {
-                    val app = bound.javaClass.getDeclaredField("appContext").also { it.isAccessible = true }
-                        .get(bound) as? Context
-                    if (app != null && app.packageName != "android") return app
-                }
+                contextFromThread(current)?.let { return it }
             }
         } catch (t: Throwable) {
             L.w("ActivityThread context unreadable: ${t.javaClass.simpleName}: ${t.message}")
         }
         return null
     }
+
+    /** Optional OEM fields are capabilities, not failures. Each fallback is independent. */
+    internal fun contextFromThread(current: Any): Context? {
+        usableContext(optionalField(current, "mInitialApplication") as? Context)?.let { return it }
+        val bound = optionalField(current, "mBoundApplication") ?: return null
+        return usableContext(optionalField(bound, "appContext") as? Context)
+    }
+
+    private fun usableContext(context: Context?): Context? = context?.takeIf {
+        runCatching { it.packageName.isNotBlank() && it.packageName != "android" }.getOrDefault(false)
+    }
+
+    private fun optionalField(owner: Any, name: String): Any? = try {
+        owner.javaClass.getDeclaredField(name).also { it.isAccessible = true }.get(owner)
+    } catch (_: ReflectiveOperationException) { null }
+      catch (_: SecurityException) { null }
 
     /**
      * Adopts a status-bar window that was added before the module was injected.

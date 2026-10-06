@@ -7,6 +7,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.Data
+import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
@@ -40,27 +41,35 @@ class UpdateDownloadWorker(context: Context, params: WorkerParameters) :
         val version = inputData.getString(KEY_VERSION).orEmpty()
         val apkUrl = inputData.getString(KEY_APK_URL).orEmpty()
         val sha = inputData.getString(KEY_SHA).orEmpty().lowercase()
-        if (apkUrl.isBlank()) return Result.failure()
+        if (!UpdateDownloadPolicy.compatibleChannel(io.github.kvmy666.duostatusbar.BuildConfig.VERSION_NAME,version) || apkUrl.isBlank() || !UpdateDownloadPolicy.validVersion(version) || !UpdateDownloadPolicy.validDigest(sha)) {
+            return Result.failure(workDataOf(KEY_ERROR to "invalid_update_metadata"))
+        }
 
         val dir = applicationContext.getExternalFilesDir("updates")
             ?: return Result.failure()
         val file = File(dir, "DuoStatusBar-$version.apk")
+        val partial = File(dir, "DuoStatusBar-$version-$id.part")
 
         return try {
             setForeground(foregroundInfo(version, 0))
-            val actual = withContext(Dispatchers.IO) { download(apkUrl, file) }
-            if (sha.isNotEmpty() && actual != sha) {
+            val actual = withContext(Dispatchers.IO) { download(apkUrl, partial) }
+            if (actual != sha) {
                 L.w("update download: sha mismatch (expected $sha, got $actual) - refusing to install")
-                file.delete()
+                partial.delete()
                 UpdateNotifications.downloadFailed(applicationContext, version)
                 return Result.failure(workDataOf(KEY_ERROR to "sha_mismatch"))
             }
-            L.i("update downloaded: ${file.name} (${file.length()} bytes, sha ok=${sha.isNotEmpty()})")
+            if(file.exists()&&!file.delete())throw java.io.IOException("Cannot replace verified update")
+            if(!partial.renameTo(file))throw java.io.IOException("Cannot commit verified update")
+            L.i("update downloaded: ${file.name} (${file.length()} bytes, sha verified)")
             UpdateNotifications.install(applicationContext, file, version)
             Result.success()
+        } catch (t: kotlinx.coroutines.CancellationException) {
+            partial.delete()
+            throw t
         } catch (t: Throwable) {
             L.w("update download failed: ${t.javaClass.simpleName}: ${t.message}")
-            file.delete()
+            partial.delete()
             UpdateNotifications.downloadFailed(applicationContext, version)
             Result.retry()
         }
@@ -77,7 +86,9 @@ class UpdateDownloadWorker(context: Context, params: WorkerParameters) :
                 dest.outputStream().use { output ->
                     val buffer = ByteArray(64 * 1024)
                     var written = 0L
+                    var lastProgress=-1
                     while (true) {
+                        if(isStopped||Thread.currentThread().isInterrupted)throw java.io.InterruptedIOException("Download stopped")
                         val read = input.read(buffer)
                         if (read <= 0) break
                         digest.update(buffer, 0, read)
@@ -85,7 +96,7 @@ class UpdateDownloadWorker(context: Context, params: WorkerParameters) :
                         written += read
                         if (total > 0) {
                             val pct = ((written * 100) / total).toInt()
-                            setProgressAsync(workDataOf(KEY_PROGRESS to pct))
+                            if(pct!=lastProgress){lastProgress=pct;setProgressAsync(workDataOf(KEY_PROGRESS to pct))}
                         }
                     }
                 }
@@ -131,17 +142,17 @@ class UpdateDownloadWorker(context: Context, params: WorkerParameters) :
         private const val NAME = "duo-update-download"
         private const val NOTIFICATION_ID = 0x5A19
 
-        /** Enqueues one download, replacing any previous request. Sent from the notification's action. */
+        /** One active download. Duplicate taps do not race over the same file. */
         fun enqueue(context: Context, version: String, apkUrl: String, sha256: String) {
             try {
                 // Fall back to the relay proxy only when the feed gave no direct URL.
                 val relay = BuildConfig.TELEGRAM_RELAY_URL.trim().trimEnd('/')
                 val url = apkUrl.ifBlank { if (relay.isNotEmpty()) "$relay/download" else "" }
-                if (url.isBlank()) return
+                if (!UpdateDownloadPolicy.compatibleChannel(io.github.kvmy666.duostatusbar.BuildConfig.VERSION_NAME,version)||url.isBlank()||!UpdateDownloadPolicy.validVersion(version)||!UpdateDownloadPolicy.validDigest(sha256))return
                 val request = OneTimeWorkRequestBuilder<UpdateDownloadWorker>()
                     .setInputData(data(version, url, sha256))
                     .build()
-                WorkManager.getInstance(context).enqueue(request)
+                WorkManager.getInstance(context).enqueueUniqueWork(NAME,ExistingWorkPolicy.KEEP,request)
             } catch (t: Throwable) {
                 L.w("update enqueue: ${t.javaClass.simpleName}: ${t.message}")
             }
@@ -150,4 +161,11 @@ class UpdateDownloadWorker(context: Context, params: WorkerParameters) :
         private fun data(version: String, apkUrl: String, sha256: String): Data =
             workDataOf(KEY_VERSION to version, KEY_APK_URL to apkUrl, KEY_SHA to sha256)
     }
+}
+
+internal object UpdateDownloadPolicy {
+    fun compatibleChannel(installed:String,release:String)=!installed.contains("-canvas-")||release.contains("-canvas-")
+    fun downloadable(info:UpdateInfo)=info.apkUrl.isNotBlank()&&validVersion(info.version)&&validDigest(info.sha256)&&compatibleChannel(io.github.kvmy666.duostatusbar.BuildConfig.VERSION_NAME,info.version)
+    fun validVersion(version:String)=version.matches(Regex("[0-9A-Za-z][0-9A-Za-z._-]{0,79}"))
+    fun validDigest(sha:String)=sha.matches(Regex("(?i)[0-9a-f]{64}"))
 }

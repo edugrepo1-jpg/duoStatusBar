@@ -26,12 +26,12 @@
     <string name="settings_indicators_position">Posição dos ícones</string>
     <string name="settings_indicators_position_hint">Arraste os ícones pra esquerda ou pra direita. O anel fica no lugar.</string>
     <string name="settings_edge_padding">Espaço nas bordas</string>
-    <string name="settings_edge_padding_detail">Espaço entre a borda da tela e os outros ícones. 100% equivale à largura do ícone. Em 0%, eles ficam junto da borda.</string>
+    <string name="settings_edge_padding_detail" formatted="false">Espaço entre a borda da tela e os outros ícones. 100% equivale à largura do ícone. Em 0%, eles ficam junto da borda.</string>
     <string name="settings_position_reset">Redefinir</string>
     <string name="section_animations">Animações</string>
     <string name="settings_animations">Animações</string>
     <string name="settings_animations_detail">A chave geral de todo movimento. Desligue pra deixar o ícone da bateria parado.</string>
-    <string name="settings_anim_speed">Velocidade</string>
+    <string name="settings_anim_speed">Entrada do anel</string>
     <string name="settings_anim_arrival">Aparecer</string>
     <string name="settings_anim_arrival_detail">Um pulinho quando a tela liga.</string>
     <string name="settings_anim_departure">Sumir</string>

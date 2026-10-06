@@ -35,7 +35,7 @@ class StudioBetaTest {
     }
     @Test fun `without fades one second and sixty second slots keep exact boundaries`() {
         val cycle=SlotCycle()
-        cycle.configure(ExperienceOptions(fadeEnabled=false,iconSeconds=mapOf("WIFI" to 1,"BLUETOOTH" to 60)),0)
+        cycle.configure(ExperienceOptions(fadeEnabled=false,universalTiming=false,iconSeconds=mapOf("WIFI" to 1,"BLUETOOTH" to 60)),0)
         cycle.update(listOf(SlotIcon.WIFI,SlotIcon.BLUETOOTH),0)
         assertEquals(SlotIcon.WIFI,cycle.frame(999).icon)
         assertEquals(1L,cycle.nextDelay(999))
@@ -89,15 +89,13 @@ class StudioBetaTest {
     }
     private fun summary(height:Int=1600,actions:MutableList<String> = mutableListOf()):IslandSummary.SummaryCanvas {
         UiText.initialize(context,"pt-BR")
-        return IslandSummary.SummaryCanvas(context,IslandState(72,true,SlotIcon.entries.map {IslandItem(it,iconLabel(it))},PlaybackSnapshot(true,30000,120000,0,color=0xFF526CBB.toInt(),title="Faixa de demonstração"),36*60000L,65),animate=false,action={actions.add(it)}) {}.apply {layout(0,0,1080,height)}
+        return IslandSummary.SummaryCanvas(context,IslandState(72,true,SlotIcon.entries.map {IslandItem(it,iconLabel(it),if(it==SlotIcon.NETWORK)"4G" else io.github.kvmy666.duostatusbar.i18n.UiText.t("Ativo"))},PlaybackSnapshot(true,30000,120000,0,color=0xFF526CBB.toInt(),title="Faixa de demonstração"),36*60000L,65),animate=false,action={actions.add(it)}) {}.apply {layout(0,0,1080,height)}
     }
     private fun draw(view:IslandSummary.SummaryCanvas):Bitmap=Bitmap.createBitmap(view.width,view.height,Bitmap.Config.ARGB_8888).also {view.draw(Canvas(it))}
     private fun tap(view:IslandSummary.SummaryCanvas,x:Float,y:Float) {for(action in listOf(MotionEvent.ACTION_DOWN,MotionEvent.ACTION_UP)){val e=MotionEvent.obtain(0,10,action,x,y,0);view.onTouchEvent(e);e.recycle()}}
     @Test fun `expanded island buttons dispatch media and all four shortcuts separately`() {
         val actions=mutableListOf<String>();val view=summary(actions=actions);draw(view).recycle();val d=context.resources.displayMetrics.density
-        for(i in 0..2)tap(view,1080-115*d+i*34*d,146*d)
-        val unit=(1080-32*d)/4
-        for(i in 0..3)tap(view,16*d+i*unit+unit/2,1600-40*d)
+        for(key in listOf("previous","play","next","wifi","bluetooth","volume","torch")){val rect=view.actionBounds(key)!!;tap(view,rect.centerX(),rect.centerY())}
         assertEquals(listOf("previous","play","next","wifi","bluetooth","volume","torch"),actions)
         val info=AccessibilityNodeInfo.obtain();view.onInitializeAccessibilityNodeInfo(info)
         assertTrue(info.actionList.size>=8)
@@ -105,8 +103,8 @@ class StudioBetaTest {
     }
     @Test fun `compact island retains shortcuts and its complete scrollable state list`() {
         val actions=mutableListOf<String>();val view=summary(740,actions);val before=draw(view);val d=context.resources.displayMetrics.density
-        val unit=(1080-32*d)/4;tap(view,16*d+unit/2,740-40*d);assertEquals(listOf("wifi"),actions)
-        for((a,y) in listOf(MotionEvent.ACTION_DOWN to 580f,MotionEvent.ACTION_MOVE to 260f,MotionEvent.ACTION_UP to 260f)){val e=MotionEvent.obtain(0,10,a,500f,y,0);view.onTouchEvent(e);e.recycle()}
+        val rect=view.actionBounds("wifi")!!;tap(view,rect.centerX(),rect.centerY());assertEquals(listOf("wifi"),actions)
+        assertTrue(view.performAccessibilityAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD,null))
         val after=draw(view);assertFalse(before.sameAs(after));assertEquals(listOf("wifi"),actions)
         before.recycle();after.recycle()
     }

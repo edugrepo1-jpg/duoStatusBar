@@ -1,5 +1,6 @@
 package io.github.kvmy666.duostatusbar.ui
 import io.github.kvmy666.duostatusbar.i18n.UiText
+import io.github.kvmy666.duostatusbar.settings.UpdateDownloadPolicy
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
@@ -109,7 +110,8 @@ internal fun AnimationsSection(
                 checked = settings.animationsEnabled,
                 enabled = settings.enabled
             ) { onUpdate(settings.copy(animationsEnabled = it)) }
-            // The arrival is one Rive timeline at five speeds, so this is a choice, not a number.
+            Text(UiText.t("A entrada do anel controla a expansão da bateria. O tempo de cada ícone e os fades ficam em Experiência expandida."),style=MaterialTheme.typography.bodySmall)
+            // Arrival duration is independent of carousel dwell and the icon fade durations.
             val speedIndex = (DuoPrefs.REVEAL_CHOICES.size - 1 -
                     DuoPrefs.REVEAL_CHOICES.indexOf(settings.revealMs).coerceAtLeast(0))
             LabelledSlider(
@@ -414,14 +416,15 @@ internal fun AboutSection(
     }
     if(matches(UiText.t("Atualizações"),stringResource(R.string.settings_check_updates))) StudioCard {
         SectionTitle(UiText.t("Atualizações"))
+        Text(UiText.t("As buscas mostram lançamentos oficiais. Esta edição Canvas usa assinatura própria: para preservar suas funções, instale apenas atualizações desta edição."),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         SettingSwitch(UiText.t("Buscar automaticamente"),UiText.t("Receba avisos quando uma atualização estiver disponível."),checkUpdates,onChange=onToggleUpdates)
         OutlinedButton(onClick=onCheckNow,enabled=!checkingUpdate,modifier=Modifier.fillMaxWidth()) {
             Text(if(checkingUpdate)UiText.t("Verificando…") else UiText.t("Verificar agora"))
         }
         if(updateMessage.isNotEmpty())Text(updateMessage,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         updateInfo?.let { info ->
-            if(info.apkUrl.isNotBlank())Button(onClick=onDownload,modifier=Modifier.fillMaxWidth()) {Text(stringResource(R.string.settings_update_download))}
-            else Text(stringResource(R.string.settings_update_no_apk),style=MaterialTheme.typography.bodySmall)
+            if(UpdateDownloadPolicy.downloadable(info))Button(onClick=onDownload,modifier=Modifier.fillMaxWidth()) {Text(stringResource(R.string.settings_update_download))}
+            else OutlinedButton(onClick={runCatching{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(info.url)))}}) {Text(UiText.t("Ver lançamento oficial"))}
         }
     }
     if(matches(UiText.t("Sobre"),UiText.t("Contato"),UiText.t("Apoiar"),stringResource(R.string.section_about),stringResource(R.string.settings_contact_developer),stringResource(R.string.settings_donate))) StudioCard {

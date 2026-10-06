@@ -68,7 +68,7 @@ internal class SlotCycle {
     private var period=3000L
     private var durations=emptyMap<String,Int>()
     private var fades=true
-    private fun span(icon:SlotIcon)=maxOf(durations[icon.name]?.times(1000L) ?: period,exit+entry+400L)
+    private fun span(icon:SlotIcon)=durations[icon.name]?.times(1000L) ?: period
     private fun prefix(index:Int)=items.take(index).sumOf { span(it) }
     private data class Position(val index:Int,val phase:Long,val start:Long)
     private fun position(time:Long):Position {
@@ -80,21 +80,41 @@ internal class SlotCycle {
     }
     private var exit=120L
     private var entry=160L
+    private var held:SlotIcon?=null
+    private var heldAt=0L
+    private var heldClock=false
     private var temporary:SlotIcon?=null
     private var temporaryAt=0L
     private var returnAt=Long.MIN_VALUE
     fun configure(options:ExperienceOptions,now:Long) {
         val pose=frame(now).icon;val phase=position(pausedAt ?: now).phase
         val next=options.dwellMs.coerceIn(1000,60000).toLong()
-        val changed=next!=period || durations!=options.iconSeconds || fades!=options.fadeEnabled
-        period=next;durations=options.iconSeconds;fades=options.fadeEnabled
-        exit=options.exitMs.toLong();entry=options.entryMs.toLong();swap.configure(exit,entry)
+        val nextDurations=if(options.universalTiming) emptyMap() else options.iconSeconds
+        val changed=next!=period || durations!=nextDurations || fades!=options.fadeEnabled
+        period=next;durations=nextDurations;fades=options.fadeEnabled
+        // Even a one-second interval must finish both fades before the next handoff.
+        val shortest=minOf(period,durations.values.minOrNull()?.times(1000L) ?: period)
+        val requestedExit=options.exitMs.coerceIn(60,600).toLong()
+        val requestedEntry=options.entryMs.coerceIn(60,800).toLong()
+        val ratio=minOf(1.0,(shortest-200).toDouble()/(requestedExit+requestedEntry))
+        exit=(requestedExit*ratio).toLong().coerceAtLeast(60)
+        entry=(requestedEntry*ratio).toLong().coerceAtLeast(60);swap.configure(exit,entry)
         if(changed&&items.isNotEmpty()) { val index=items.indexOf(pose).coerceAtLeast(0);began=(pausedAt ?: now)-prefix(index)-phase.coerceAtMost(span(items[index])-1) }
         if(!fades)swap.update(pose?.ordinal ?: -1,now,false)
     }
     fun transient(icon:SlotIcon?,now:Long) {
         if(icon==temporary)return
         frame(now);temporary=icon;temporaryAt=now;returnAt=now
+    }
+    /** Foreground ownership changes only on a real start/stop, never on a polling tick. */
+    fun hold(icon:SlotIcon?,now:Long,recordingClock:Boolean=false) {
+        heldClock=recordingClock&&icon==SlotIcon.RECORD
+        if(icon==held)return
+        frame(now);held=icon;heldAt=now;returnAt=now
+        if(icon==null) {
+            val network=items.indexOfFirst { it==SlotIcon.WIFI||it==SlotIcon.WIFI_OFFLINE||it==SlotIcon.NETWORK }.coerceAtLeast(0)
+            began=(pausedAt ?: now)-prefix(network)
+        }
     }
     val size get()=items.size
     fun update(next:List<SlotIcon>,now:Long) {
@@ -109,11 +129,12 @@ internal class SlotCycle {
         val index=items.indexOf(chosen).coerceAtLeast(0)
         // Retain elapsed dwell time when the active set changes; polling must not starve later icons.
         began=(pausedAt ?: now)-prefix(index)-if(urgent!=null||items.isEmpty())0L else phase.coerceAtMost(span(items[index])-1)
-        if(temporary==null)swap.update(chosen?.ordinal ?: -1,now,fades)
+        if(temporary==null&&held==null)swap.update(chosen?.ordinal ?: -1,now,fades)
     }
     fun pause(now:Long){if(pausedAt==null)pausedAt=now}
     fun resume(now:Long){pausedAt?.let { began+=now-it;swap.shiftTime(now-it) };pausedAt=null}
     fun preferWifi(now:Long){
+        if(held!=null)return
         val preferred=items.firstOrNull { it==SlotIcon.WIFI || it==SlotIcon.WIFI_OFFLINE } ?: return
         began=now-prefix(items.indexOf(preferred));swap.update(preferred.ordinal,now,false)
     }
@@ -125,17 +146,53 @@ internal class SlotCycle {
         val changing=items.size>1&&pos.phase>=length-fadeOut
         val index=if(changing)(pos.index+1)%items.size else pos.index
         val transitionAt=if(items.size>1)pos.start+if(changing)length-fadeOut else -fadeOut else time
-        swap.update((temporary ?: items.getOrNull(index))?.ordinal ?: -1, if(temporary!=null)temporaryAt else maxOf(transitionAt,returnAt),fades&&time>=began)
+        val heldStep=if(heldClock)((time-heldAt).coerceAtLeast(0)+fadeOut)/period else 0L
+        val heldTarget=if(heldClock&&heldStep%2==1L)SlotIcon.RECORD_TIME else held
+        val heldTransition=if(heldClock)maxOf(heldAt,heldAt+heldStep*period-fadeOut) else heldAt
+        swap.update((heldTarget ?: temporary ?: items.getOrNull(index))?.ordinal ?: -1,
+            if(held!=null)heldTransition else if(temporary!=null)temporaryAt else maxOf(transitionAt,returnAt),fades&&time>=began)
         val frame=swap.frame(time)
         return SlotFrame(SlotIcon.entries.getOrNull(frame.key),frame.opacity,.8f+.2f*frame.opacity,frame.reveal)
     }
     fun nextDelay(now:Long):Long {
         if(pausedAt!=null)return Long.MAX_VALUE
         if(swap.moving(now))return 16L
+        if(held!=null) {
+            if(!heldClock)return Long.MAX_VALUE
+            val phase=(now-heldAt).coerceAtLeast(0)%period
+            val out=if(fades)exit else 0L
+            return if(phase>=period-out)16L else period-out-phase
+        }
         if(temporary!=null||items.size<=1)return Long.MAX_VALUE
         val pos=position(now);val length=span(items[pos.index])
         val fadeOut=if(fades)exit else 0L
         return if(pos.phase>=length-fadeOut)16L else length-fadeOut-pos.phase
+    }
+}
+
+/** Newest observed active foreground event wins. Repeated state reports never refresh its age.
+ * Android can report several starts together; tie order is deterministic: screen capture, then mic,
+ * then media. We cannot infer an earlier unobserved timestamp from a batch callback. */
+internal class ForegroundEvents {
+    private var serial=0L
+    private val active=mutableMapOf<SlotIcon,Long>()
+    var current:SlotIcon?=null; private set
+    fun update(icons:Collection<SlotIcon>):SlotIcon? {
+        val present=icons.filter { it==SlotIcon.MEDIA||it==SlotIcon.MICROPHONE||it==SlotIcon.RECORD }.toSet()
+        active.keys.retainAll(present)
+        for(icon in listOf(SlotIcon.MEDIA,SlotIcon.MICROPHONE,SlotIcon.RECORD))
+            if(icon in present&&icon !in active)active[icon]=++serial
+        current=active.maxByOrNull { it.value }?.key
+        return current
+    }
+    fun clear(){active.clear();current=null}
+}
+
+/** Draw only changing pixels. Millisecond fades stay smooth, lasting effects use at most 30 fps. */
+internal object EffectCadence {
+    fun delay(cycleDelay:Long,transition:Boolean,continuous:Boolean,seconds:Boolean,deadline:Long=Long.MAX_VALUE):Long {
+        val animation=when { transition->16L;continuous->33L;seconds->1000L;else->Long.MAX_VALUE }
+        return minOf(cycleDelay,animation,deadline.coerceAtLeast(1))
     }
 }
 

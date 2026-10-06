@@ -20,7 +20,7 @@ import io.github.kvmy666.duostatusbar.settings.*
     if(search(UiText.t("Novidades"),UiText.t("Anel musical"),UiText.t("Previsão de carga"),UiText.t("Captura de tela"),UiText.t("Volume"),UiText.t("Gravação"),UiText.t("Dynamic Island"),UiText.t("Resumo"),UiText.t("Desenho dos ícones")))StudioCard {
         SectionTitle(UiText.t("Experiência expandida"))
         Text(UiText.t("As novidades mantêm seu anel e a confirmação do desbloqueio."),style=MaterialTheme.typography.bodySmall)
-        Button(onClick={update(ExperienceOptions.ALL.copy(dwellMs=options.dwellMs,exitMs=options.exitMs,entryMs=options.entryMs,iconPercent=options.iconPercent,iconSeconds=options.iconSeconds,networkOnly=options.networkOnly,fadeEnabled=options.fadeEnabled,language=options.language))},enabled=settings.enabled) { Text(UiText.t("Ativar todas as novidades")) }
+        Button(onClick={update(ExperienceOptions.ALL.copy(dwellMs=options.dwellMs,exitMs=options.exitMs,entryMs=options.entryMs,iconPercent=options.iconPercent,iconSeconds=options.iconSeconds,networkOnly=options.networkOnly,fadeEnabled=options.fadeEnabled,language=options.language,universalTiming=options.universalTiming))},enabled=settings.enabled) { Text(UiText.t("Ativar todas as novidades")) }
         AnimationTimingEditor(options,settings.enabled,::update)
         SettingSwitch(UiText.t("Anel musical"),UiText.t("Ondas durante a reprodução e progresso da faixa."),options.music,settings.enabled){update(options.copy(music=it))}
         SettingSwitch(UiText.t("Cores da capa"),UiText.t("Detalhes do anel acompanham a capa do álbum."),options.albumColors,settings.enabled){update(options.copy(albumColors=it))}

@@ -6,6 +6,8 @@ import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
 import android.os.Bundle
+import android.os.Binder
+import io.github.kvmy666.duostatusbar.DiagnosticPrivacy
 import io.github.kvmy666.duostatusbar.L
 
 /**
@@ -45,17 +47,22 @@ class DuoSettingsProvider : ContentProvider() {
     }
 
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle? = try {
-        when (method) {
+        // Read access remains open for the measured cross-UID settings contract. Only the app
+        // and the installed SystemUI UID may write self-reports; third-party apps cannot forge them.
+        val ctxForCaller = context
+        if (ctxForCaller == null || !trustedReporter(ctxForCaller, Binder.getCallingUid())) {
+            Bundle().apply { putBoolean(EXTRA_OK, false) }
+        } else when (method) {
             METHOD_STATUS -> {
                 val ctx = context
-                val status = extras?.getString(EXTRA_STATUS).orEmpty()
+                val status = DiagnosticPrivacy.clean(extras?.getString(EXTRA_STATUS).orEmpty()).take(4096)
                 if (ctx != null && status.isNotEmpty()) DuoPrefs.writeStatus(ctx, status)
                 L.i("module status: $status")
                 Bundle().apply { putBoolean(EXTRA_OK, true) }
             }
             METHOD_DUMP -> {
                 val ctx = context
-                val dump = extras?.getString(EXTRA_DUMP).orEmpty()
+                val dump = DiagnosticPrivacy.clean(extras?.getString(EXTRA_DUMP).orEmpty())
                 if (ctx != null && dump.isNotEmpty()) DuoPrefs.writeDump(ctx, dump)
                 L.i("module diagnostic dump stored (${dump.length} chars)")
                 Bundle().apply { putBoolean(EXTRA_OK, true) }
@@ -64,7 +71,7 @@ class DuoSettingsProvider : ContentProvider() {
                 // The module had to fall back (e.g. Rive could not draw). Stored so the app can alert the
                 // user to send the log; an empty reason clears it.
                 val ctx = context
-                val reason = extras?.getString(EXTRA_FALLBACK).orEmpty()
+                val reason = DiagnosticPrivacy.clean(extras?.getString(EXTRA_FALLBACK).orEmpty()).take(4096)
                 if (ctx != null) DuoPrefs.writeFallback(ctx, reason)
                 L.i("module fallback: ${reason.ifEmpty { "none (cleared)" }}")
                 Bundle().apply { putBoolean(EXTRA_OK, true) }
@@ -90,6 +97,12 @@ class DuoSettingsProvider : ContentProvider() {
     ): Int = 0
 
     companion object {
+        internal fun trustedReporter(context: android.content.Context, uid: Int): Boolean {
+            if (uid == context.applicationInfo.uid) return true
+            return runCatching {
+                context.packageManager.getApplicationInfo(SettingsBridge.SYSTEMUI, 0).uid == uid
+            }.getOrDefault(false)
+        }
         private const val TAG = "DuoSB"
         const val METHOD_STATUS = "status"
         const val EXTRA_STATUS = "status"

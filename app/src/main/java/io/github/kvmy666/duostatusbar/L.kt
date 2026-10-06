@@ -37,14 +37,17 @@ object L {
      * warning that never arrives is worse than no warning, because it looks like silence.
      */
     private fun both(msg: String) {
-        val safe = DiagnosticPrivacy.clean(msg)
-        io.github.kvmy666.duostatusbar.fx.Events.record(System.currentTimeMillis(), safe)
+        // Bound bytes as well as line count: 600 large exceptions must not retain hundreds of MB.
+        val safe = runCatching { DiagnosticPrivacy.clean(msg).take(4000) }
+            .getOrDefault("diagnostic redaction unavailable")
+        runCatching { io.github.kvmy666.duostatusbar.fx.Events.record(System.currentTimeMillis(), safe) }
         record(safe)
         sinks(safe)
     }
 
     /** Writes to both sinks without keeping the line (used for the bulky diagnostic dump). */
-    fun diag(msg: String) = sinks(DiagnosticPrivacy.clean(msg))
+    fun diag(msg: String) = sinks(runCatching { DiagnosticPrivacy.clean(msg) }
+        .getOrDefault("diagnostic redaction unavailable"))
 
     private fun sinks(msg: String) {
         try {

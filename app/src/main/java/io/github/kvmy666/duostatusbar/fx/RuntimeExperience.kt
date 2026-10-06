@@ -15,8 +15,20 @@ import io.github.kvmy666.duostatusbar.settings.SettingsBridge
 internal class RuntimeExperience(private val context:Context,private val handler:Handler,
     private val changed:()->Unit,private val screenshot:()->Unit) {
     var playback=PlaybackSnapshot();private set
+    var playbackKnown=false;private set
+    private var sessionListenerRegistered=false
+    private var sessionAccessDenied=false
+    private var sessionPollAt=-30000L
+    private var cachedMetadata:MediaMetadata?=null
+    private var cachedToken:MediaSession.Token?=null
+    private var cachedColor=0
+    private var directPlayback:PlaybackSnapshot?=null
+    private var dirty=true
+    private val sessionListener=MediaSessionManager.OnActiveSessionsChangedListener { next ->
+        if(running) { sessionPollAt=SystemClock.elapsedRealtime();replaceControllers(next.orEmpty());refresh() }
+    }
     private var relayedPlayback=PlaybackSnapshot()
-    private var relayAt=0L
+    private var relayAt=-1L
     private var running=false
     private var receiverRegistered=false
     private var observer:ScreenshotObserver?=null
@@ -24,9 +36,9 @@ internal class RuntimeExperience(private val context:Context,private val handler
     private val failures=mutableSetOf<String>()
     private val manager by lazy { context.getSystemService(MediaSessionManager::class.java) }
     private val callback=object:MediaController.Callback() {
-        override fun onPlaybackStateChanged(state:PlaybackState?)=refresh()
-        override fun onMetadataChanged(metadata:MediaMetadata?)=refresh()
-        override fun onSessionDestroyed()=refresh()
+        override fun onPlaybackStateChanged(state:PlaybackState?) { dirty=true;refresh() }
+        override fun onMetadataChanged(metadata:MediaMetadata?) { dirty=true;refresh() }
+        override fun onSessionDestroyed() { dirty=true;sessionPollAt=-30000L;refresh() }
     }
     private val receiver=object:BroadcastReceiver() {
         override fun onReceive(c:Context?,intent:Intent?) {
@@ -49,7 +61,8 @@ internal class RuntimeExperience(private val context:Context,private val handler
     }
     fun configure() {
         if(!running)return
-        val relay=Fx.experience.music||Fx.experience.island||Fx.experience.screenshot
+        dirty=true
+        val relay=Fx.experience.music||Fx.experience.island||Fx.experience.screenshot||Fx.enabled(8192)
         if(relay&&!receiverRegistered)read("canal do app") {
             context.registerReceiver(receiver,IntentFilter(ACTION),SettingsBridge.PERMISSION,handler,Context.RECEIVER_EXPORTED)
             receiverRegistered=true
@@ -58,40 +71,79 @@ internal class RuntimeExperience(private val context:Context,private val handler
         if(Fx.experience.screenshot&&observer==null) {
             observer=ScreenshotObserver(context,handler) { if(running)screenshot() }.also { it.start() }
         } else if(!Fx.experience.screenshot) { observer?.stop();observer=null }
-        if(!Fx.experience.music&&!Fx.experience.island) { controllers.forEach { read("encerrar mídia") { it.unregisterCallback(callback) } };controllers=emptyList();playback=PlaybackSnapshot() }
-        else refresh()
+        if(!Fx.experience.music&&!Fx.experience.island&&!Fx.enabled(8192)) {
+            stopMedia();playback=PlaybackSnapshot();playbackKnown=false
+        } else {
+            if(!sessionListenerRegistered&&!sessionAccessDenied)read("monitor de sessões") {
+                try {
+                    manager?.addOnActiveSessionsChangedListener(sessionListener,null,handler)
+                    sessionListenerRegistered=manager!=null
+                } catch(t:SecurityException) { sessionAccessDenied=true;throw t }
+            }
+            refresh()
+        }
+    }
+    private fun replaceControllers(next:List<MediaController>) {
+        if(controllers.map { it.sessionToken }==next.map { it.sessionToken })return
+        controllers.forEach { read("encerrar mídia") { it.unregisterCallback(callback) } }
+        controllers=next;dirty=true
+        controllers.forEach { read("monitor de mídia") { it.registerCallback(callback,handler) } }
+    }
+    private fun stopMedia() {
+        replaceControllers(emptyList())
+        if(sessionListenerRegistered)read("encerrar sessões") { manager?.removeOnActiveSessionsChangedListener(sessionListener) }
+        sessionListenerRegistered=false;cachedMetadata=null;cachedToken=null;cachedColor=0;directPlayback=null;dirty=true
     }
     fun refresh() {
-        if(!running||(!Fx.experience.music&&!Fx.experience.island))return
-        var direct:PlaybackSnapshot?=null
-        read("sessões de música") {
-            val next=manager?.getActiveSessions(null).orEmpty()
-            val currentTokens=controllers.map { it.sessionToken }
-            if(currentTokens!=next.map { it.sessionToken }) {
-                controllers.forEach { it.unregisterCallback(callback) };controllers=next
-                controllers.forEach { it.registerCallback(callback,handler) }
+        if(!running||(!Fx.experience.music&&!Fx.experience.island&&!Fx.enabled(8192)))return
+        val now=SystemClock.elapsedRealtime()
+        var direct=directPlayback
+        // Session discovery is callback-driven. Permission denial is retried only on a new lifecycle,
+        // not every two seconds on SystemUI's main thread.
+        if(!sessionAccessDenied&&now-sessionPollAt>=30000) {
+            sessionPollAt=now;dirty=true
+            read("sessões de música") {
+                try { replaceControllers(manager?.getActiveSessions(null).orEmpty()) }
+                catch(t:SecurityException) { sessionAccessDenied=true;throw t }
             }
-            val selected=controllers.firstOrNull { it.playbackState?.state==PlaybackState.STATE_PLAYING } ?: controllers.firstOrNull()
-            if(selected!=null)direct=snapshot(selected)
         }
-        val next=direct ?: relayedPlayback.takeIf { SystemClock.elapsedRealtime()-relayAt<6000 } ?: PlaybackSnapshot()
-        if(next!=playback) { playback=next;changed() }
+        if(dirty) {
+            dirty=false;directPlayback=null;direct=null
+            read("estado de música") {
+            val selected=controllers.firstOrNull { it.playbackState?.state==PlaybackState.STATE_PLAYING } ?: controllers.firstOrNull()
+            if(selected!=null&&selected.playbackState!=null) {
+                val metadata=selected.metadata
+                if(cachedToken!=selected.sessionToken||metadata!==cachedMetadata) {
+                    cachedToken=selected.sessionToken;cachedMetadata=metadata;cachedColor=albumColor(metadata)
+                }
+                direct=snapshot(selected,cachedColor)
+            }
+                directPlayback=direct
+            }
+        }
+        val relayFresh=relayAt>=0L&&now-relayAt<35000L
+        // A confirmed pause cannot become "playing" merely because its heartbeat expires.
+        val known=direct!=null||relayFresh||(relayAt>=0L&&!relayedPlayback.playing)
+        val next=direct ?: relayedPlayback.takeIf { relayFresh } ?: PlaybackSnapshot()
+        if(next!=playback||known!=playbackKnown) { playback=next;playbackKnown=known;changed() }
     }
     fun stop() {
         running=false
         observer?.stop();observer=null
-        controllers.forEach { read("encerrar mídia") { it.unregisterCallback(callback) } };controllers=emptyList()
+        stopMedia()
         if(receiverRegistered) { read("encerrar canal") { context.unregisterReceiver(receiver) };receiverRegistered=false }
-        playback=PlaybackSnapshot();relayedPlayback=PlaybackSnapshot()
+        playback=PlaybackSnapshot();relayedPlayback=PlaybackSnapshot();playbackKnown=false;relayAt=-1
+        sessionAccessDenied=false;sessionPollAt=-30000L
     }
     companion object {
         const val ACTION="io.github.kvmy666.duostatusbar.action.EXPERIENCE"
-        fun snapshot(controller:MediaController):PlaybackSnapshot {
+        fun snapshot(controller:MediaController):PlaybackSnapshot=snapshot(controller,null)
+        private fun snapshot(controller:MediaController,color:Int?):PlaybackSnapshot {
             val state=controller.playbackState
             val metadata=controller.metadata
             return PlaybackSnapshot(state?.state==PlaybackState.STATE_PLAYING,state?.position ?: -1,
-                metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0,state?.lastPositionUpdateTime ?: SystemClock.elapsedRealtime(),
-                state?.playbackSpeed ?: 1f,albumColor(metadata),metadata?.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty().take(120))
+                metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0,state?.lastPositionUpdateTime ?: 0L,
+                state?.playbackSpeed ?: 1f,color ?: albumColor(metadata),metadata?.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty().take(120))
         }
         private fun albumColor(metadata:MediaMetadata?):Int {
             val bitmap=metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
@@ -118,8 +170,9 @@ internal class ScreenshotObserver(private val context:Context,private val main:H
     private var worker:Handler?=null
     private var lastId=-1L
     @Volatile private var started=false
+    @Volatile private var generation=0L
     private var failed=false
-    private val scan=Runnable { query(false) }
+    private val scan=Runnable { query(false,generation) }
     private val observer=object:ContentObserver(main) {
         override fun onChange(selfChange:Boolean,uri:Uri?) {
             if(started) { worker?.removeCallbacks(scan);worker?.postDelayed(scan,350) }
@@ -129,13 +182,13 @@ internal class ScreenshotObserver(private val context:Context,private val main:H
         if(started)return
         try {
             thread=HandlerThread("DuoScreenshotNames").also { it.start() };worker=Handler(thread!!.looper)
-            started=true
+            generation++;val activeGeneration=generation;started=true
             context.contentResolver.registerContentObserver(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,true,observer)
-            worker?.post { query(true) }
+            worker?.post { query(true,activeGeneration) }
         } catch(t:Throwable) { L.w("Captura: observador indisponível: ${t.javaClass.simpleName}");stop() }
     }
-    private fun query(baseline:Boolean) {
-        if(!started)return
+    private fun query(baseline:Boolean,expectedGeneration:Long) {
+        if(!started||expectedGeneration!=generation)return
         try {
             val args=Bundle().apply {
                 putStringArray(ContentResolver.QUERY_ARG_SORT_COLUMNS,arrayOf(MediaStore.Images.Media._ID))
@@ -151,14 +204,15 @@ internal class ScreenshotObserver(private val context:Context,private val main:H
                     val age=System.currentTimeMillis()/1000-cursor.getLong(3)
                     if(!baseline&&lastId>=0&&id>lastId&&age in 0..15&&isScreenshot(name,path))shot=true
                 }
+                if(!started||expectedGeneration!=generation)return@use
                 lastId=if(baseline)maxOf(0L,newest) else newest
-                if(shot)main.post { if(started)detected() }
+                if(shot)main.post { if(started&&expectedGeneration==generation)detected() }
             }
         } catch(t:Throwable) { if(!failed){failed=true;L.w("Captura: leitura de nomes indisponível: ${t.javaClass.simpleName}; habilite acesso no app") } }
     }
     fun stop() {
         if(started)runCatching { context.contentResolver.unregisterContentObserver(observer) }
-        started=false;worker?.removeCallbacksAndMessages(null);thread?.quitSafely();worker=null;thread=null;lastId=-1
+        started=false;generation++;worker?.removeCallbacksAndMessages(null);thread?.quitSafely();worker=null;thread=null;lastId=-1
     }
     companion object {
         fun isScreenshot(name:String,path:String):Boolean {

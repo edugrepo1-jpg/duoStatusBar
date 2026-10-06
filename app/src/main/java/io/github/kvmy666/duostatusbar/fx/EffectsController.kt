@@ -46,7 +46,10 @@ internal class EffectsController(private val context: Context, private val host:
         guarded("confirmar desbloqueio") { unlock(source); draw() }
     }
     private val cycle = SlotCycle()
-    private val indicators = RuntimeIndicators(context, handler) { if(running) { updateCycle();draw() } }
+    private val foreground=ForegroundEvents()
+    private var foregroundIcon:SlotIcon?=null
+    private fun mediaPlaying()=if(experience.playbackKnown)experience.playback.playing else music
+    private val indicators = RuntimeIndicators(context, handler) { indicatorsChanged() }
     private val experience = RuntimeExperience(context,handler,{ if(running){updateCycle();draw()} }) { spotlight(SlotIcon.SCREENSHOT,1800) }
     private val volumeObserver=VolumeObserver(context,handler) { value -> volumePercent=value;spotlight(SlotIcon.VOLUME,2000) }
     private val estimator=ChargeEstimator()
@@ -60,7 +63,7 @@ internal class EffectsController(private val context: Context, private val host:
     private var temporaryDuration=0L
     private var lastScreenshot=-100000L
     private fun spotlight(icon:SlotIcon,duration:Long) = guarded("aviso breve") {
-        if(!running||!screen||Fx.experience.networkOnly)return@guarded
+        if(!running||!screen||Fx.experience.networkOnly||foregroundIcon!=null)return@guarded
         if(icon==SlotIcon.SCREENSHOT) {
             val time=SystemClock.uptimeMillis()
             if(time-lastScreenshot<1500)return@guarded
@@ -69,19 +72,27 @@ internal class EffectsController(private val context: Context, private val host:
         temporary=icon;temporaryDuration=duration;temporaryUntil=0L
         draw()
     }
+    private fun indicatorsChanged() {
+        if(!running)return
+        bluetooth=indicators.bluetooth;nfc=indicators.nfc;hotspot=indicators.hotspot
+        updateCycle();draw()
+    }
     private var networkText=""
     private var dnd=false
     private var wireless=false
     private val indicatorsTick=object:Runnable {
         override fun run()=guarded("indicadores ativos") {
             if(!running||!screen||pocket)return@guarded
-            indicators.refresh();bluetooth=indicators.bluetooth;nfc=indicators.nfc;hotspot=indicators.hotspot
+            indicators.refresh();indicators.refreshProjection();bluetooth=indicators.bluetooth;nfc=indicators.nfc;hotspot=indicators.hotspot
             experience.refresh()
             if(charging&&Fx.experience.chargeEstimate) {
                 val estimate=runCatching { context.getSystemService(BatteryManager::class.java)?.computeChargeTimeRemaining() ?: -1 }.getOrDefault(-1)
                 chargeRemaining=estimator.remaining(SystemClock.elapsedRealtime(),estimate)
             }
-            music=audio?.isMusicActive==true;updateCycle();draw()
+            val nextMusic=runCatching { audio?.isMusicActive==true }.getOrDefault(false)
+            val musicChanged=nextMusic!=music;music=nextMusic
+            updateCycle()
+            if(musicChanged||cycle.frame(now()).icon==SlotIcon.CHARGE_TIME)draw()
             handler.postDelayed(this,2000)
         }
     }
@@ -175,6 +186,7 @@ internal class EffectsController(private val context: Context, private val host:
     fun start() = guarded("iniciar efeitos") {
         if (running) return@guarded
         running = true
+        screen=runCatching { context.getSystemService(android.os.PowerManager::class.java)?.isInteractive!=false }.getOrDefault(true)
         unlockObserver.start(screen)
         indicators.start()
         experience.start()
@@ -195,7 +207,7 @@ internal class EffectsController(private val context: Context, private val host:
         running = false
         unlockObserver.stop()
         indicators.stop()
-        experience.stop();volumeObserver.stop()
+        experience.stop();volumeObserver.stop();foreground.clear();foregroundIcon=null;cycle.hold(null,now())
         heading.stop()
         handler.removeCallbacksAndMessages(null)
         guarded("encerrar sensores") { sensors?.unregisterListener(sensorListener) }
@@ -224,13 +236,17 @@ internal class EffectsController(private val context: Context, private val host:
     }
     fun network(wifiOn: Boolean, plane: Boolean, generation: String = "", quiet: Boolean = false) = guarded("conexões") {
         wifi = wifiOn; airplane = plane; networkText=generation; dnd=quiet
-        indicators.refresh()
+        indicators.refresh(force=true)
         guarded("Bluetooth") { bluetooth = context.getSystemService(BluetoothManager::class.java)?.adapter?.isEnabled == true }
         guarded("NFC") { nfc = android.nfc.NfcAdapter.getDefaultAdapter(context)?.isEnabled == true }
         updateCycle(); draw()
     }
     fun broadcast(intent: Intent) = guarded("evento dos efeitos") {
         indicators.bluetoothBattery(intent)
+        if(intent.action in setOf(android.nfc.NfcAdapter.ACTION_ADAPTER_STATE_CHANGED,
+            "android.net.wifi.WIFI_AP_STATE_CHANGED",BluetoothAdapter.ACTION_STATE_CHANGED,
+            "android.net.conn.CONNECTIVITY_CHANGE","android.location.MODE_CHANGED",
+            "android.app.action.NEXT_ALARM_CLOCK_CHANGED"))indicators.refresh(force=true)
         when (intent.action) {
             android.nfc.NfcAdapter.ACTION_ADAPTER_STATE_CHANGED -> {
                 nfc = intent.getIntExtra(android.nfc.NfcAdapter.EXTRA_ADAPTER_STATE, android.nfc.NfcAdapter.STATE_OFF) == android.nfc.NfcAdapter.STATE_ON
@@ -317,7 +333,7 @@ internal class EffectsController(private val context: Context, private val host:
         if (next != headphones) { headphones = next; indicators.refresh();updateCycle();audioEvent(if (next) "conexão" else "desconexão") }
     }
     private fun audioEvent(reason: String) {
-        if (!enabled(16)) return
+        if (!enabled(16)||foregroundIcon!=null) return
         audioAt = now(); L.i("Fones: $reason, aviso 4000 ms"); draw()
     }
     private fun updateCycle() {
@@ -343,14 +359,14 @@ internal class EffectsController(private val context: Context, private val host:
                 if(indicators.location)add(SlotIcon.LOCATION)
                 if(indicators.ringer==AudioManager.RINGER_MODE_SILENT)add(SlotIcon.SILENT)
                 if(indicators.ringer==AudioManager.RINGER_MODE_VIBRATE)add(SlotIcon.VIBRATE)
-                if(music||experience.playback.playing)add(SlotIcon.MEDIA)
+                if(mediaPlaying())add(SlotIcon.MEDIA)
                 if(wireless)add(SlotIcon.WIRELESS)
                 if(indicators.torch)add(SlotIcon.TORCH)
                 if(indicators.recording)add(SlotIcon.RECORD)
             }
             if(Fx.experience.chargeEstimate&&charging)add(SlotIcon.CHARGE_TIME)
             if(Fx.experience.recordingTime&&indicators.recording)add(SlotIcon.RECORD_TIME)
-            if(Fx.experience.music&&experience.playback.playing)add(SlotIcon.MEDIA)
+            if(Fx.experience.music&&mediaPlaying())add(SlotIcon.MEDIA)
         }.distinct()
         if(items!=activeIcons) {
             activeIcons=items
@@ -358,7 +374,9 @@ internal class EffectsController(private val context: Context, private val host:
         }
         val carouselItems=if(Fx.experience.networkOnly)listOfNotNull(items.firstOrNull { it==SlotIcon.WIFI||it==SlotIcon.WIFI_OFFLINE } ?: items.firstOrNull { it==SlotIcon.NETWORK }) else items
         cycle.update(carouselItems, now())
-        if(Fx.experience.compass&&screen&&!pocket&&SlotIcon.LOCATION in items)heading.start() else heading.stop()
+        foregroundIcon=foreground.update(if(Fx.experience.networkOnly)emptyList() else items)
+        cycle.hold(foregroundIcon,now(),Fx.experience.recordingTime)
+        if(foregroundIcon!=null) { temporary=null;cycle.transient(null,now());audioAt=-100000L }
         host.updateSummary(IslandState(level,charging,items.distinct().map { icon ->
             IslandItem(icon,iconLabel(icon),when(icon) {
                 SlotIcon.CHARGE_TIME->estimateLabel(chargeRemaining)
@@ -442,9 +460,10 @@ internal class EffectsController(private val context: Context, private val host:
         }
         val pulse = age(pulseAt, EffectTimeline.PULSE_MS, 512)
         val charge = age(chargeAt, EffectTimeline.CHARGE_MS, 256)
-        val audioAge = if(check>=0)-1L else age(audioAt, EffectTimeline.AUDIO_MS, 16)
+        val audioAge = if(check>=0||foregroundIcon!=null)-1L else age(audioAt, EffectTimeline.AUDIO_MS, 16)
         host.effectsHidden(camera && check<0 && !Fx.experience.networkOnly)
         val slot=cycle.frame(time).let { if(host.animationsEnabled&&Fx.experience.fadeEnabled&&!Fx.experience.networkOnly)it else it.copy(opacity=1f,scale=1f) }
+        if(Fx.experience.compass&&screen&&!pocket&&check<0&&audioAge<0&&slot.icon==SlotIcon.LOCATION)heading.start() else heading.stop()
         if(slot.icon!=loggedSlot) { loggedSlot=slot.icon;L.i("Ícone exibido: ${slot.icon}; check=${check>=0} carga=$charging") }
         if (check >= 0) clockColors?.let { clockView?.setTextColor(CanvasMotion.blend(it.defaultColor, 0xFF3DDC84.toInt(), EffectTimeline.unlockColor(check))) }
         else restoreClock()
@@ -453,7 +472,7 @@ internal class EffectsController(private val context: Context, private val host:
             Fx.enabled(512) && !charging && level in 0..9,
             Fx.enabled(1024), enabled(2048), time,
             indicators.headphoneBattery, networkText, Fx.enabled(4)||Fx.enabled(8192)||Fx.enabled(4096)||Fx.experience.networkOnly, charging&&enabled(256)&&!Fx.experience.networkOnly,
-            musicPlaying=Fx.experience.music&&experience.playback.playing&&!Fx.experience.networkOnly,
+            musicPlaying=Fx.experience.music&&mediaPlaying()&&!Fx.experience.networkOnly,
             musicProgress=if(Fx.experience.music)experience.playback.progress(SystemClock.elapsedRealtime()) else -1f,
             albumColor=if(Fx.experience.albumColors)experience.playback.color else 0,
             chargeRemainingMs=chargeRemaining,recordElapsedMs=if(recordingAt<0)0 else SystemClock.elapsedRealtime()-recordingAt,
@@ -461,9 +480,13 @@ internal class EffectsController(private val context: Context, private val host:
             iconPercent=Fx.experience.iconPercent,iconRadius=(55.5f-8f*host.thickPercent/100f-2f).coerceAtLeast(12f),
             compassDegrees=compassDegrees,compass=Fx.experience.compass), camera)
         if (!screen || Fx.experience.networkOnly || (camera&&check<0) || !host.animationsEnabled) return
-        val selected=cycle.frame(time).icon
-        val active = check >= 0 || pulse >= 0 || charge >= 0 || audioAge >= 0 || (charging&&enabled(256)) || temporary!=null || selected==SlotIcon.RECORD || selected==SlotIcon.RECORD_TIME || selected==SlotIcon.MEDIA
-        val delay = if (active || (Fx.enabled(8) && hotspot)) 16L else if(Fx.experience.music&&experience.playback.playing) minOf(250L,cycle.nextDelay(time)) else cycle.nextDelay(time)
+        val selected=slot.icon
+        val exclusive=check>=0||audioAge>=0
+        val transition=check>=0||pulse>=0||charge>=0||audioAge>=0||slot.opacity<1f
+        val continuous=(charging&&enabled(256))||(!exclusive&&selected in setOf(SlotIcon.MEDIA,SlotIcon.RECORD,SlotIcon.SHARE))
+        val seconds=!exclusive&&(selected==SlotIcon.RECORD_TIME||(Fx.experience.music&&mediaPlaying()))
+        val deadline=if(temporary!=null&&temporaryUntil>time)temporaryUntil-time else Long.MAX_VALUE
+        val delay=EffectCadence.delay(cycle.nextDelay(time),transition,continuous,seconds,deadline)
         if (delay != Long.MAX_VALUE) handler.postDelayed(tick, delay)
     }
     companion object {

@@ -31,7 +31,7 @@
     <string name="section_animations">Animaciones</string>
     <string name="settings_animations">Animaciones</string>
     <string name="settings_animations_detail">Control general de todos los movimientos.</string>
-    <string name="settings_anim_speed">Velocidad</string>
+    <string name="settings_anim_speed">Entrada del anillo</string>
     <string name="settings_anim_arrival">Aparecer</string>
     <string name="settings_anim_arrival_detail">Un pequeño salto al encender la pantalla.</string>
     <string name="settings_anim_departure">Desaparecer</string>

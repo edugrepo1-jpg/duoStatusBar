@@ -56,6 +56,9 @@ class ExperienceUiTest {
             assertEquals(ExperienceOptions.ALL.copy(iconPercent=200),ExperienceOptions.decode(current.experienceJson))
             val toggle=nodes(root).first {it.config.getOrNull(SemanticsProperties.Text)?.any {it.text=="GPS com bússola"}==true&&it.config.getOrNull(SemanticsActions.OnClick)!=null}
             toggle.config[SemanticsActions.OnClick].action!!.invoke();idle()
+            assertTrue("opening the explanation must not commit",ExperienceOptions.decode(current.experienceJson).compass)
+            val dialog=org.robolectric.shadows.ShadowDialog.getLatestDialog()
+            click(dialog.window!!.decorView,"Desativar")
             assertFalse(ExperienceOptions.decode(current.experienceJson).compass)
             assertTrue(ExperienceOptions.decode(current.experienceJson).music)
         } finally {c.pause().stop().destroy();idle()}

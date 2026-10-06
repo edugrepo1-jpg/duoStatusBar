@@ -1,5 +1,6 @@
 package io.github.kvmy666.duostatusbar.ui
 
+import androidx.compose.foundation.layout.fillMaxSize
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -56,10 +57,17 @@ class StudioUiTest {
         val node=nodes(root).first { it.config.getOrNull(SemanticsProperties.TestTag)==tag }
         assertTrue(node.config[SemanticsActions.OnClick].action!!.invoke());idle()
     }
+    private fun confirmFeature(enable:Boolean) {
+        val dialog=org.robolectric.shadows.ShadowDialog.getLatestDialog()
+        val root=dialog.window!!.decorView
+        val label=if(enable)"Ativar" else "Desativar"
+        nodes(root).first {text(it)==label&&it.config.getOrNull(SemanticsActions.OnClick)!=null}.config[SemanticsActions.OnClick].action!!.invoke();idle()
+    }
     private fun capture(root:View,name:String) {
         val metrics=root.resources.displayMetrics
-        val w=(393*metrics.density).toInt();val h=(852*metrics.density).toInt()
-        root.measure(View.MeasureSpec.makeMeasureSpec(w,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(h,View.MeasureSpec.EXACTLY))
+        val w=(393*metrics.density).toInt();val maxH=(852*metrics.density).toInt()
+        root.measure(View.MeasureSpec.makeMeasureSpec(w,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(maxH,if(name=="feature-explanation")View.MeasureSpec.AT_MOST else View.MeasureSpec.EXACTLY))
+        val h=root.measuredHeight
         root.layout(0,0,w,h);idle()
         val bitmap=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888)
         root.draw(Canvas(bitmap))
@@ -102,14 +110,14 @@ class StudioUiTest {
         try {
             val root=activity.findViewById<View>(android.R.id.content);idle();capture(root,"interaction")
             val master=nodes(root).first {text(it).contains("Personalizar a barra")&&it.config.getOrNull(SemanticsActions.OnClick)!=null}
-            master.config[SemanticsActions.OnClick].action!!.invoke();idle()
+            master.config[SemanticsActions.OnClick].action!!.invoke();idle();confirmFeature(false)
             assertFalse(DuoPrefs.read(context,DuoOrientation.PORTRAIT).enabled)
             val newMaster=nodes(root).first {text(it).contains("Personalizar a barra")&&it.config.getOrNull(SemanticsActions.OnClick)!=null}
-            newMaster.config[SemanticsActions.OnClick].action!!.invoke();idle()
+            newMaster.config[SemanticsActions.OnClick].action!!.invoke();idle();confirmFeature(true)
             assertTrue(DuoPrefs.read(context,DuoOrientation.PORTRAIT).enabled)
             val search=nodes(root).first {it.config.getOrNull(SemanticsProperties.TestTag)=="studio-search"}
             search.config[SemanticsActions.SetText].action!!.invoke(AnnotatedString("NFC"));idle()
-            assertTrue(nodes(root).any {text(it).contains("NFC")&&it.config.getOrNull(SemanticsProperties.ToggleableState)!=null})
+            assertTrue(nodes(root).any {text(it).contains("NFC")&&it.config.getOrNull(SemanticsActions.OnClick)!=null})
             click(root,"nav-VISUAL")
             assertTrue(nodes(root).any {text(it).contains("Desenho do anel")})
             val plus=nodes(root).first {it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Aumentar Tamanho do anel")==true}
@@ -122,7 +130,7 @@ class StudioUiTest {
         val controller=Robolectric.buildActivity(ComponentActivity::class.java)
         controller.get().setTheme(R.style.Theme_DuoStatusBar)
         val activity=controller.setup().get();val selected=mutableListOf<String>()
-        activity.setContent {DuoTheme {Surface {LanguagePicker(true) {selected.add(it)}}}}
+        activity.setContent {DuoTheme {Surface(modifier=androidx.compose.ui.Modifier.fillMaxSize()) {androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize(),contentAlignment=androidx.compose.ui.Alignment.Center) {LanguagePicker(true) {selected.add(it)}}}}}
         try {
             val root=activity.findViewById<View>(android.R.id.content);idle();capture(root,"language-picker")
             for(name in listOf("Português","English","Español")) {
@@ -151,6 +159,38 @@ class StudioUiTest {
                 }
             } finally {controller.pause().stop().destroy();idle()}
         }} finally {io.github.kvmy666.duostatusbar.i18n.UiText.initialize(context,"pt-BR")}
+    }
+
+    @Test fun `feature explanation opens without changing preference and cancel has no side effect`() {
+        val context=ApplicationProvider.getApplicationContext<Context>()
+        io.github.kvmy666.duostatusbar.i18n.UiText.initialize(context,"pt-BR")
+        val controller=Robolectric.buildActivity(ComponentActivity::class.java)
+        controller.get().setTheme(R.style.Theme_DuoStatusBar)
+        val activity=controller.setup().get();var changed=0
+        activity.setContent {DuoTheme {Surface {SettingSwitch("NFC","Mostra NFC quando ativo.",false,onChange={changed++})}}}
+        try {
+            val root=activity.findViewById<View>(android.R.id.content);idle();capture(root,"feature-row")
+            nodes(root).first {text(it).contains("NFC")&&it.config.getOrNull(SemanticsActions.OnClick)!=null}.config[SemanticsActions.OnClick].action!!.invoke();idle()
+            assertEquals(0,changed)
+            val dialog=org.robolectric.shadows.ShadowDialog.getLatestDialog()
+            val dialogRoot=dialog.window!!.decorView;capture(dialogRoot,"feature-explanation")
+            assertTrue(nodes(dialogRoot).any {text(it).contains("Como funciona")})
+            nodes(dialogRoot).first {text(it)=="Voltar"&&it.config.getOrNull(SemanticsActions.OnClick)!=null}.config[SemanticsActions.OnClick].action!!.invoke();idle()
+            assertEquals(0,changed)
+        } finally {controller.pause().stop().destroy();idle()}
+    }
+    @Test fun `feature guides follow language changes after their first access`() {
+        val context=ApplicationProvider.getApplicationContext<Context>()
+        try {
+            for(tag in listOf("pt-BR","en","es")) {
+                io.github.kvmy666.duostatusbar.i18n.UiText.initialize(context,tag)
+                val label=io.github.kvmy666.duostatusbar.i18n.UiText.t("NFC")
+                val guide=FeatureGuide.find(label)!!
+                val explanation=io.github.kvmy666.duostatusbar.i18n.UiText.t(guide.explanation)
+                assertTrue(explanation.isNotBlank())
+                if(tag!="pt-BR")assertNotEquals(guide.explanation,explanation)
+            }
+        } finally {io.github.kvmy666.duostatusbar.i18n.UiText.initialize(context,"pt-BR")}
     }
 
 }

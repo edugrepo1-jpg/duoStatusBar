@@ -11,6 +11,7 @@ import android.net.Uri
 import android.os.Bundle
 import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.L
+import io.github.kvmy666.duostatusbar.settings.DuoSettingsProvider
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.SettingsBridge
 
@@ -508,7 +509,7 @@ internal object DuoSettingsClient {
      * release path. Never throws.
      */
     fun reportDump(context: Context, rawDump: String) {
-        val dump = io.github.kvmy666.duostatusbar.fx.Fx.wrapDump(rawDump)
+        val dump = DiagnosticTransport.prepare(io.github.kvmy666.duostatusbar.fx.Fx.wrapDump(rawDump))
         if (!reportViaProvider(context, "dump", "dump", dump)) {
             broadcastToApp(context, SettingsBridge.ACTION_DUMP_PUSH, SettingsBridge.EXTRA_DUMP, dump)
         }
@@ -529,7 +530,7 @@ internal object DuoSettingsClient {
     private fun reportViaProvider(context: Context, method: String, key: String, value: String): Boolean =
         try {
             val extras = Bundle().apply { putString(key, value) }
-            context.contentResolver.call(uri, method, null, extras) != null
+            context.contentResolver.call(uri, method, null, extras)?.getBoolean(DuoSettingsProvider.EXTRA_OK, false) == true
         } catch (t: Throwable) {
             L.w("$method report failed: ${t.javaClass.simpleName}: ${t.message}")
             false

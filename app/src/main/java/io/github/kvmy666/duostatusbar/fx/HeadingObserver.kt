@@ -3,6 +3,7 @@ package io.github.kvmy666.duostatusbar.fx
 import android.content.Context
 import android.hardware.*
 import android.os.Handler
+import android.os.SystemClock
 import android.view.Surface
 import android.view.WindowManager
 import io.github.kvmy666.duostatusbar.L
@@ -13,22 +14,28 @@ internal class HeadingObserver(private val context:Context,private val handler:H
     private var running=false
     private var failed=false
     private var heading=Float.NaN
+    private var lastSample=-1000L
     private val rotation=FloatArray(9)
     private val remapped=FloatArray(9)
     private val orientation=FloatArray(3)
     fun start() {
         if(running)return
         try {
-            val sensor=manager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
-                ?: manager?.getDefaultSensor(Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR)
-            running=sensor!=null&&manager?.registerListener(this,sensor,SensorManager.SENSOR_DELAY_UI,handler)==true
+            // Magnetic heading does not need the gyroscope when a low-power vector exists.
+            val sensor=manager?.getDefaultSensor(Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR)
+                ?: manager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+            lastSample=-1000L
+            running=sensor!=null&&manager?.registerListener(this,sensor,SAMPLE_MS.toInt()*1000,handler)==true
             if(!running&&!failed){failed=true;L.w("Bússola: sensor de orientação indisponível; ícone mantém posição fixa")}
         } catch(t:Throwable) { if(!failed){failed=true;L.w("Bússola: ${t.javaClass.simpleName}")};stop() }
     }
-    fun stop(){if(running)runCatching {manager?.unregisterListener(this)};running=false}
+    fun stop(){if(running)runCatching {manager?.unregisterListener(this)};running=false;lastSample=-1000L}
     override fun onAccuracyChanged(sensor:Sensor?,accuracy:Int)=Unit
     override fun onSensorChanged(event:SensorEvent) {
         if(!running)return
+        val now=SystemClock.uptimeMillis()
+        if(!sampleDue(lastSample,now))return
+        lastSample=now
         try {
             SensorManager.getRotationMatrixFromVector(rotation,event.values)
             val display=runCatching { context.getSystemService(WindowManager::class.java)?.defaultDisplay?.rotation }.getOrNull() ?: Surface.ROTATION_0
@@ -43,8 +50,12 @@ internal class HeadingObserver(private val context:Context,private val handler:H
             val target=((Math.toDegrees(orientation[0].toDouble()).toFloat()+360)%360)
             if(!target.isFinite())return
             val next=if(heading.isNaN())target else heading+shortestDelta(heading,target)*.22f
-            if(heading.isNaN()||kotlin.math.abs(next-heading)>.2f){heading=next;changed(next)}
+            if(heading.isNaN()||kotlin.math.abs(shortestDelta(heading,next))>.5f){heading=(next+360f)%360f;changed(heading)}
         } catch(t:Throwable) { if(!failed){failed=true;L.w("Bússola: leitura indisponível: ${t.javaClass.simpleName}")} }
     }
-    companion object { fun shortestDelta(from:Float,to:Float)=((to-(from%360)+540)%360)-180 }
+    companion object {
+        const val SAMPLE_MS=100L
+        fun sampleDue(previous:Long,now:Long)=now-previous>=SAMPLE_MS
+        fun shortestDelta(from:Float,to:Float)=((to-(from%360)+540)%360)-180
+    }
 }

@@ -26,10 +26,10 @@ import io.github.kvmy666.duostatusbar.hook.*
 import io.github.kvmy666.duostatusbar.settings.*
 
 internal enum class StudioPage(private val labelKey: String, private val headingKey: String, private val subtitleKey: String, val glyph: StudioSymbol) {
-    HOME("Início","Seu jeito.\nSua barra.","Pequenos detalhes. Uma nova experiência.",StudioSymbol.HOME),
-    VISUAL("Visual","Seu desenho.","Ajuste cada detalhe do seu anel.",StudioSymbol.VISUAL),
-    EFFECTS("Efeitos","Em movimento.","Ícones, transições e personalidade.",StudioSymbol.EFFECTS),
-    MORE("Ajustes","Tudo no lugar.","Ativação, gestos e ajuda quando precisar.",StudioSymbol.SETTINGS);
+    HOME("Início","Sua barra de status","Ajuste o anel e escolha os estados que deseja acompanhar.",StudioSymbol.HOME),
+    VISUAL("Visual","Desenho do anel","Ajuste cada detalhe do seu anel.",StudioSymbol.VISUAL),
+    EFFECTS("Efeitos","Ícones e animações","Toque em uma função para entender e ativar.",StudioSymbol.EFFECTS),
+    MORE("Ajustes","Configurações","Conexão, gestos, idiomas e diagnóstico.",StudioSymbol.SETTINGS);
     val label get()=UiText.t(labelKey)
     val heading get()=UiText.t(headingKey)
     val subtitle get()=UiText.t(subtitleKey)
@@ -76,16 +76,16 @@ internal enum class StudioSymbol { HOME,VISUAL,EFFECTS,SETTINGS,SEARCH,ARROW,PLU
 }
 
 @Composable internal fun StudioCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    Card(modifier.fillMaxWidth(),shape=RoundedCornerShape(26.dp),
+    Card(modifier.fillMaxWidth(),shape=RoundedCornerShape(22.dp),
         colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surface),
-        border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant.copy(alpha=.55f))) {
-        Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(14.dp),content=content)
+        border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant.copy(alpha=.30f))) {
+        Column(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp),content=content)
     }
 }
 
 @Composable internal fun StudioHeader(page: StudioPage, landscape: Boolean, searching: Boolean) {
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
-        Text("DUO  /  STATUS BAR",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,letterSpacing=1.8.sp)
+        Text("DUO",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,letterSpacing=1.sp)
         Surface(shape=RoundedCornerShape(50),color=MaterialTheme.colorScheme.surface) {
             Text(if(landscape)UiText.t("Horizontal") else UiText.t("Vertical"),Modifier.padding(horizontal=12.dp,vertical=7.dp),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -97,7 +97,7 @@ internal enum class StudioSymbol { HOME,VISUAL,EFFECTS,SETTINGS,SEARCH,ARROW,PLU
 @Composable internal fun StudioNavigation(page: StudioPage, onSelect: (StudioPage) -> Unit) {
     Surface(Modifier.padding(horizontal=16.dp,vertical=8.dp).fillMaxWidth(),
         shape=RoundedCornerShape(28.dp),color=MaterialTheme.colorScheme.surface,
-        border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant.copy(alpha=.55f)),shadowElevation=3.dp) {
+        border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant.copy(alpha=.30f)),shadowElevation=3.dp) {
         Row(Modifier.padding(6.dp),horizontalArrangement=Arrangement.spacedBy(3.dp)) {
             StudioPage.entries.forEach { item ->
                 val active=page==item
@@ -118,7 +118,7 @@ internal enum class StudioSymbol { HOME,VISUAL,EFFECTS,SETTINGS,SEARCH,ARROW,PLU
     Surface(Modifier.fillMaxWidth().testTag("studio-home"),shape=RoundedCornerShape(30.dp),color=StudioInk) {
         Column(Modifier.padding(22.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
-                Text(UiText.t("SUA ASSINATURA"),style=MaterialTheme.typography.labelSmall,color=Color(0xFFADBBD3),letterSpacing=1.7.sp)
+                Text(UiText.t("PRÉVIA DA BARRA"),style=MaterialTheme.typography.labelSmall,color=Color(0xFFADBBD3),letterSpacing=1.7.sp)
                 Image(painterResource(R.drawable.duo_mark),null,Modifier.size(38.dp))
             }
             Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(16.dp)) {
@@ -127,8 +127,8 @@ internal enum class StudioSymbol { HOME,VISUAL,EFFECTS,SETTINGS,SEARCH,ARROW,PLU
                     view.render(DuoMapping.visual(72,false,false,settings.showPercent,3,4,false,percentHeight=settings.percentHeight,wifiDots=settings.wifiDots))
                 })
                 Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                    Text(UiText.t("Seu anel.\nSua identidade."),style=MaterialTheme.typography.titleLarge,color=Color.White)
-                    Text(UiText.t("Prévia com seus ajustes de desenho."),style=MaterialTheme.typography.bodySmall,color=Color(0xFFB1BED3))
+                    Text(UiText.t("Seu desenho"),style=MaterialTheme.typography.titleLarge,color=Color.White)
+                    Text(UiText.t("Confira o desenho aqui. Em Efeitos, você pode simular os eventos."),style=MaterialTheme.typography.bodySmall,color=Color(0xFFB1BED3))
                     Text(UiText.t("SIMULAÇÃO · 72%"),style=MaterialTheme.typography.labelSmall,color=StudioMint)
                 }
             }

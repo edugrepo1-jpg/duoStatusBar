@@ -55,7 +55,7 @@ internal object UpdateNotifications {
                 .setContentIntent(open)
                 .setAutoCancel(true)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
-            if (info.apkUrl.isNotBlank()) {
+            if (UpdateDownloadPolicy.downloadable(info)) {
                 builder.addAction(
                     android.R.drawable.stat_sys_download,
                     context.getString(R.string.update_action_download),

@@ -125,7 +125,11 @@ class DuoStateMonitorTest {
         try {
             repeat(2) {
                 f.monitor.start(); f.monitor.start()
-                assertEquals(2,f.context.registrations.size)
+                assertEquals(3,f.context.registrations.size)
+                assertEquals(3,f.context.registrations.map {it.receiver}.distinct().size)
+                assertEquals(1,f.context.registrations.count {it.filter.hasAction(Intent.ACTION_BATTERY_CHANGED)})
+                assertEquals(1,f.context.registrations.count {it.filter.hasAction(android.bluetooth.BluetoothAdapter.ACTION_STATE_CHANGED)})
+                assertEquals(1,f.context.registrations.count {it.filter.hasAction(io.github.kvmy666.duostatusbar.fx.RuntimeExperience.ACTION)})
                 assertNotSame(f.context.registrations[0].receiver,f.context.registrations[1].receiver)
                 f.context.dispatch(Intent(android.bluetooth.BluetoothAdapter.ACTION_STATE_CHANGED)
                     .putExtra(android.bluetooth.BluetoothAdapter.EXTRA_STATE,android.bluetooth.BluetoothAdapter.STATE_ON))

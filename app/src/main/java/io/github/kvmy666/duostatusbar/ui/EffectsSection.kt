@@ -8,7 +8,7 @@ import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
 
 private data class EffectOption(val bit: Int,val label: String,val detail: String)
-private val effectOptions=listOf(
+private val effectOptions get()=listOf(
     EffectOption(1,UiText.t("Check no desbloqueio"),UiText.t("Confirmação exclusiva por 3 segundos, com saída suave.")),
     EffectOption(4,UiText.t("Alternância de ícones"),UiText.t("Os estados ativos se alternam. Um sai antes de outro entrar.")),
     EffectOption(8192,UiText.t("Todos os indicadores"),UiText.t("Fones, privacidade, alarme, VPN, GPS, mídia, lanterna e mais.")),

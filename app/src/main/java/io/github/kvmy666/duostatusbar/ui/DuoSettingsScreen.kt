@@ -176,6 +176,7 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
 
     fun update(new: DuoSettings) {
         val wasEnabled = settings.enabled
+        TimingPreferences.publish(context,settings,new,orientation)
         settings = new
         DuoPrefs.write(context, new, orientation)
         context.sendBroadcast(Intent(DuoPrefs.ACTION_SETTINGS_CHANGED))

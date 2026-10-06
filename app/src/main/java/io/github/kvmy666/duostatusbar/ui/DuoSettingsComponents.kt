@@ -2,6 +2,8 @@ package io.github.kvmy666.duostatusbar.ui
 
 import io.github.kvmy666.duostatusbar.i18n.UiText
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
@@ -26,6 +28,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -311,10 +314,11 @@ internal fun SettingSwitch(
     preview: (@Composable () -> Unit)? = null,
     onChange: (Boolean) -> Unit
 ) {
+    var explaining by remember(label) { mutableStateOf(false) }
     Row(
         modifier=Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
-            .toggleable(checked,enabled=enabled,role=Role.Switch,onValueChange=onChange)
-            .heightIn(min=58.dp).padding(vertical=7.dp),
+            .clickable(role=Role.Button) { explaining=true }
+            .heightIn(min=60.dp).padding(vertical=10.dp),
         horizontalArrangement=Arrangement.SpaceBetween,
         verticalAlignment=Alignment.CenterVertically
     ) {
@@ -322,13 +326,28 @@ internal fun SettingSwitch(
         Column(Modifier.weight(1f).padding(start=if(preview==null)0.dp else 12.dp,end=10.dp),
             verticalArrangement=Arrangement.spacedBy(3.dp)) {
             Text(label,style=MaterialTheme.typography.bodyLarge,
-                color=MaterialTheme.colorScheme.onSurface.copy(alpha=if(enabled)1f else .45f))
-            detail?.let { Text(it,style=MaterialTheme.typography.bodySmall,
-                color=MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha=if(enabled)1f else .45f)) }
+                color=MaterialTheme.colorScheme.onSurface)
+            Text(UiText.t(if(checked)"Ativo" else "Desativado"),style=MaterialTheme.typography.bodySmall,
+                color=if(checked)MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Switch(checked=checked,enabled=enabled,onCheckedChange=null,
-            colors=SwitchDefaults.colors(checkedTrackColor=MaterialTheme.colorScheme.primary,checkedThumbColor=Color.White,
-                uncheckedTrackColor=MaterialTheme.colorScheme.surfaceVariant,uncheckedBorderColor=Color.Transparent))
+        StudioGlyph(StudioSymbol.ARROW,MaterialTheme.colorScheme.onSurfaceVariant,Modifier.size(17.dp))
+    }
+    if(explaining) {
+        val guide=FeatureGuide.find(label)
+        AlertDialog(onDismissRequest={explaining=false},shape=RoundedCornerShape(28.dp),containerColor=MaterialTheme.colorScheme.surface,
+            title={Text(label,style=MaterialTheme.typography.titleLarge)},
+            text={Column(Modifier.heightIn(max=420.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                SectionTitle(UiText.t("O que faz"))
+                Text(detail ?: UiText.t("Controla este ajuste da sua barra de status."),style=MaterialTheme.typography.bodyMedium)
+                if(guide!=null) {
+                    SectionTitle(UiText.t("Como funciona"));Text(UiText.t(guide.explanation),style=MaterialTheme.typography.bodyMedium)
+                    SectionTitle(UiText.t("Quando usar"));Text(UiText.t(guide.use),style=MaterialTheme.typography.bodyMedium)
+                }
+                if(!enabled)Text(UiText.t("Este ajuste está indisponível agora. Ative a personalização ou a opção da qual ele depende."),color=MaterialTheme.colorScheme.error)
+                Text(UiText.t(if(checked)"Esta função está ativada." else "Esta função está desativada."),style=MaterialTheme.typography.bodySmall)
+            }},
+            confirmButton={Button(onClick={onChange(!checked);explaining=false},enabled=enabled) {Text(UiText.t(if(checked)"Desativar" else "Ativar"))}},
+            dismissButton={TextButton(onClick={explaining=false}) {Text(UiText.t("Voltar"))}})
     }
 }
 

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.core.content.FileProvider
 import io.github.kvmy666.duostatusbar.L
+import io.github.kvmy666.duostatusbar.DiagnosticPrivacy
 import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
 import io.github.kvmy666.duostatusbar.settings.TelegramLog
@@ -69,7 +70,7 @@ internal fun openGitHubIssue(context: Context, fallback: String, status: String)
         )
         append("Please attach the diagnostics file shared from the app's About section.")
     }
-    val url = "$GITHUB_NEW_ISSUE?body=${Uri.encode(body)}"
+    val url = "$GITHUB_NEW_ISSUE?body=${Uri.encode(DiagnosticPrivacy.clean(body))}"
     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
         .onFailure { L.w("github open: ${it.message}") }
 }
@@ -82,7 +83,7 @@ internal fun buildDiagnostics(
     dump: String,
     moduleLoadAt: Long
 ): String =
-    buildString {
+    DiagnosticPrivacy.clean(buildString {
         appendLine("Diagnóstico do Duo Status Bar")
         appendLine("configurações: $settings")
         appendLine(
@@ -102,7 +103,7 @@ internal fun buildDiagnostics(
             appendLine()
             appendLine(dump)
         }
-    }
+    })
 
 /** The complete bug report: the user's description, the diagnostics, then the device capture. */
 internal fun buildFullReport(
@@ -131,9 +132,9 @@ internal fun formatTimestamp(ms: Long): String =
 internal fun shareText(context: Context, report: String) {
     val send = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
-        putExtra(Intent.EXTRA_TEXT, report)
+        putExtra(Intent.EXTRA_TEXT, DiagnosticPrivacy.clean(report))
     }
-    context.startActivity(Intent.createChooser(send, UiText.t("Compartilhar diagnóstico")))
+    context.startActivity(Intent.createChooser(send, UiText.t("Compartilhar diagnóstico")).apply { if(context !is android.app.Activity)addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
 }
 
 /**
@@ -148,7 +149,7 @@ internal fun shareLog(context: Context, file: Uri) {
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     context.startActivity(
-        Intent.createChooser(share, context.getString(R.string.settings_log_share_title))
+        Intent.createChooser(share, context.getString(R.string.settings_log_share_title)).apply { if(context !is android.app.Activity)addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
     )
 }
 
@@ -162,7 +163,9 @@ internal fun shareLog(context: Context, file: Uri) {
 internal fun writeDiagnostics(context: Context, report: String): File? = try {
     val dir = context.getExternalFilesDir("diagnostics") ?: return null
     val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
-    File(dir, "duo-diagnostics-$stamp.txt").apply { writeText(report) }
+    File.createTempFile("duo-diagnostics-$stamp-", ".txt", dir).apply {
+        writeText(DiagnosticPrivacy.clean(report), Charsets.UTF_8)
+    }
 } catch (t: Throwable) {
     L.w("diagnostics file: ${t.javaClass.simpleName}: ${t.message}")
     null

@@ -46,6 +46,7 @@ import kotlinx.coroutines.isActive
     var temporary by remember { mutableStateOf<SlotIcon?>(null) }
     var temporaryAt by remember { mutableLongStateOf(-100000L) }
     val cycle=remember { SlotCycle() }
+    val foreground=remember { ForegroundEvents() }
     val clock=remember { SimulationClock() }
     val island=remember { IslandSummary(context,interactive=false) {} }
     DisposableEffect(island) { onDispose { island.dismiss() } }
@@ -63,15 +64,18 @@ import kotlinx.coroutines.isActive
         cycle.configure(draft,clock.now())
         if(draft.networkOnly){temporary=null;cycle.transient(null,clock.now())}
         val icons=selected.toMutableList().apply {
+            if(!playing)remove(SlotIcon.MEDIA)
+            if(!recording){remove(SlotIcon.RECORD);remove(SlotIcon.RECORD_TIME)}
             if(charging){add(SlotIcon.BOLT);if(draft.chargeEstimate)add(SlotIcon.CHARGE_TIME)}
             if(playing)add(SlotIcon.MEDIA)
             if(recording){add(SlotIcon.RECORD);if(draft.recordingTime)add(SlotIcon.RECORD_TIME)}
         }.distinct()
         val visibleIcons=if(draft.networkOnly)listOfNotNull(icons.firstOrNull { it==SlotIcon.WIFI||it==SlotIcon.WIFI_OFFLINE } ?: icons.firstOrNull { it==SlotIcon.NETWORK }) else icons
         cycle.update(visibleIcons,clock.now())
+        cycle.hold(foreground.update(if(draft.networkOnly)emptyList() else visibleIcons),clock.now(),draft.recordingTime)
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while(isActive) {
-                if(paused){delay(250);continue}
+                if(paused){delay(Long.MAX_VALUE);continue}
                 withFrameNanos {
                     val time=clock.now()
                     val check=EffectTimeline.age(time,checkAt,EffectTimeline.UNLOCK_MS,!draft.networkOnly)
@@ -97,21 +101,28 @@ import kotlinx.coroutines.isActive
                     island.update(IslandState(phone.toInt(),charging,icons.map { icon->IslandItem(icon,iconLabel(icon),when(icon){
                         SlotIcon.MEDIA->UiText.t("Faixa de demonstração");SlotIcon.CHARGE_TIME->"~36min"
                         SlotIcon.RECORD_TIME->durationLabel((time-recordAt).coerceAtLeast(0));else->UiText.t("Simulado")
-                    }) }))
+                    }) },playback=PlaybackSnapshot(playing,(position*180000).toLong(),180000,android.os.SystemClock.elapsedRealtime(),color=0xFF526CBB.toInt(),title=UiText.t("Faixa de demonstração")),chargeRemainingMs=if(charging)36*60000L else -1,headphoneBattery=headphones.toInt()))
                 }
-                // Yield between frames even if a preview/test frame clock dispatches immediately.
-                delay(1)
+                val time=clock.now()
+                val check=EffectTimeline.age(time,checkAt,EffectTimeline.UNLOCK_MS,!draft.networkOnly)
+                val charge=EffectTimeline.age(time,chargeAt,EffectTimeline.CHARGE_MS,!draft.networkOnly)
+                val pulse=EffectTimeline.age(time,pulseAt,EffectTimeline.PULSE_MS,!draft.networkOnly)
+                val frame=cycle.frame(time)
+                val continuous=!draft.networkOnly&&(charging||playing||recording||frame.icon==SlotIcon.MEDIA||frame.icon==SlotIcon.RECORD||(draft.compass&&frame.icon==SlotIcon.LOCATION))
+                val transition=check>=0||charge>=0||pulse>=0||frame.opacity<1f
+                val deadline=if(temporary!=null&&temporaryAt!=Long.MIN_VALUE)maxOf(1L,temporaryAt+2000-time) else Long.MAX_VALUE
+                delay(EffectCadence.delay(cycle.nextDelay(time),transition,continuous,frame.icon==SlotIcon.RECORD_TIME,deadline))
             }
         }
     }
     Box {
         OutlinedButton(onClick={menu=true}) { Text(UiText.format("Escolher estados ativos ({0})", selected.size)) }
         DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
-            DropdownMenuItem(text={Text(UiText.t("Ativar todos"))},onClick={selected=SlotIcon.entries.toSet()})
-            DropdownMenuItem(text={Text(UiText.t("Limpar seleção"))},onClick={selected=emptySet()})
+            DropdownMenuItem(text={Text(UiText.t("Ativar todos"))},onClick={selected=SlotIcon.entries.toSet();playing=true;recording=true;musicAt=clock.now();recordAt=clock.now()})
+            DropdownMenuItem(text={Text(UiText.t("Limpar seleção"))},onClick={selected=emptySet();playing=false;recording=false})
             SlotIcon.entries.forEach { icon ->
                 DropdownMenuItem(text={Text(iconLabel(icon))},leadingIcon={Checkbox(icon in selected,onCheckedChange=null)},
-                    onClick={selected=if(icon in selected)selected-icon else selected+icon})
+                    onClick={selected=if(icon in selected)selected-icon else selected+icon;if(icon==SlotIcon.MEDIA){playing=icon in selected;musicAt=clock.now()};if(icon==SlotIcon.RECORD||icon==SlotIcon.RECORD_TIME){recording=icon in selected;recordAt=clock.now()}})
             }
         }
     }
@@ -138,11 +149,11 @@ import kotlinx.coroutines.isActive
         OutlinedButton(onClick={draft=draft.copy(dwellMs=3000,exitMs=160,entryMs=240)}) { Text(UiText.t("Fluido")) }
         OutlinedButton(onClick={draft=draft.copy(dwellMs=1600,exitMs=80,entryMs=120)}) { Text(UiText.t("Rápido")) }
     }
-    LabelledSlider(UiText.format("Fade out: {0} ms", draft.exitMs),draft.exitMs.toFloat(),60f..600f){draft=draft.copy(exitMs=it.toInt())}
-    LabelledSlider(UiText.format("Fade in: {0} ms", draft.entryMs),draft.entryMs.toFloat(),60f..800f){draft=draft.copy(entryMs=it.toInt())}
+    LabelledSlider(UiText.format("Saída do ícone: {0} ms", draft.exitMs),draft.exitMs.toFloat(),60f..600f){draft=draft.copy(exitMs=it.toInt())}
+    LabelledSlider(UiText.format("Entrada do ícone: {0} ms", draft.entryMs),draft.entryMs.toFloat(),60f..800f){draft=draft.copy(entryMs=it.toInt())}
     SettingSwitch(UiText.t("Desenho dos traços"),UiText.t("Experimentar a entrada desenhada."),draft.drawIcons,true){draft=draft.copy(drawIcons=it)}
     FlowRow(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-        OutlinedButton(onClick={draft=ExperienceOptions.ALL.copy(dwellMs=draft.dwellMs,exitMs=draft.exitMs,entryMs=draft.entryMs,iconPercent=draft.iconPercent,iconSeconds=draft.iconSeconds,networkOnly=draft.networkOnly,fadeEnabled=draft.fadeEnabled,language=draft.language)}) { Text(UiText.t("Experimentar tudo")) }
+        OutlinedButton(onClick={draft=ExperienceOptions.ALL.copy(dwellMs=draft.dwellMs,exitMs=draft.exitMs,entryMs=draft.entryMs,iconPercent=draft.iconPercent,iconSeconds=draft.iconSeconds,networkOnly=draft.networkOnly,fadeEnabled=draft.fadeEnabled,language=draft.language,universalTiming=draft.universalTiming)}) { Text(UiText.t("Experimentar tudo")) }
         OutlinedButton(onClick={paused=!paused;if(paused){clock.pause();cycle.pause(clock.now())}else{clock.resume();cycle.resume(clock.now())}}) { Text(if(paused)UiText.t("Retomar") else UiText.t("Pausar")) }
         OutlinedButton(onClick={view?.let { island.open(it,settings.animationsEnabled) }}) { Text(UiText.t("Abrir resumo")) }
         Button(onClick={onApply(draft)},enabled=settings.enabled) { Text(UiText.t("Aplicar na barra")) }

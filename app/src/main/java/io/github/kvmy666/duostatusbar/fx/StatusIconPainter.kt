@@ -11,6 +11,21 @@ internal class StatusIconPainter {
     private val paths=SlotIcon.entries.associateWith { create(it) }
     private val measure=PathMeasure()
     private val trace=Path()
+    private val clear=PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+    private val speaker=Path().apply { moveTo(-18f,-6f);lineTo(-10f,-6f);lineTo(0f,-15f);lineTo(0f,15f);lineTo(-10f,6f);lineTo(-18f,6f);close() }
+    private val soundWaves=Path().apply {
+        moveTo(7f,-7f);cubicTo(12f,-3f,12f,3f,7f,7f)
+        moveTo(13f,-13f);cubicTo(23f,-6f,23f,6f,13f,13f)
+    }
+    private val pausedBars=floatArrayOf(5f,10f,15f,10f,5f)
+    private val networkLabels=setOf("2G","3G","4G","4G+","5G","5G+","LTE","H","H+","E","G")
+    /** Shortcut artwork differs from an ephemeral volume-percentage readout in the ring. */
+    fun drawShortcut(canvas:Canvas,icon:SlotIcon,fg:Int,opacity:Float,frame:EffectFrame) {
+        if(icon!=SlotIcon.VOLUME){draw(canvas,icon,fg,opacity,frame);return}
+        paint.xfermode=null;paint.color=fg;paint.alpha=((fg ushr 24)*opacity).toInt().coerceIn(0,255)
+        paint.style=Paint.Style.FILL;canvas.drawPath(speaker,paint)
+        paint.style=Paint.Style.STROKE;paint.strokeWidth=2.6f;canvas.drawPath(soundWaves,paint)
+    }
     private val lengths=paths.mapValues { (_,path) ->
         val m=PathMeasure(path,false);var total=0f
         do { total+=m.length } while(m.nextContour())
@@ -27,26 +42,39 @@ internal class StatusIconPainter {
         if(icon==SlotIcon.AIRPODS){canvas.translate(0f,-5f/factor);canvas.scale(.82f,.82f)}
         if(icon==SlotIcon.LOCATION&&frame.compass)canvas.rotate(-frame.compassDegrees-45f)
         val color=when(icon) { SlotIcon.RECORD->0xFFFF453A.toInt();SlotIcon.BOLT->0xFF3DDC84.toInt();else->fg }
+        // A painter instance is reused by all grid cells: never inherit another icon's blend mode.
+        paint.xfermode=null
         paint.color=color;paint.alpha=((color ushr 24)*opacity).toInt().coerceIn(0,255)
         paint.style=if(icon in outlined)Paint.Style.STROKE else Paint.Style.FILL;paint.strokeWidth=2.6f
         when(icon) {
-            SlotIcon.NETWORK->label(canvas,frame.networkText,0f,1f,28f,fg,opacity)
+            SlotIcon.NETWORK->{
+                if(frame.networkText in networkLabels)label(canvas,frame.networkText,0f,1f,28f,fg,opacity)
+                else { paint.style=Paint.Style.STROKE;paint.strokeWidth=4f
+                    for(i in 0..3)canvas.drawLine(-12f+i*8f,14f,-12f+i*8f,10f-i*8f,paint)
+                }
+            }
             SlotIcon.CHARGE_TIME->{label(canvas,estimateLabel(frame.chargeRemainingMs),0f,0f,if(frame.chargeRemainingMs<0)10.5f else 15f,0xFF71E3B1.toInt(),opacity);label(canvas,UiText.t("até 100%"),0f,19f,8f,fg,opacity)}
-            SlotIcon.RECORD_TIME->{label(canvas,durationLabel(frame.recordElapsedMs),0f,3f,19f,fg,opacity);paint.style=Paint.Style.FILL;paint.color=0xFFFF453A.toInt();canvas.drawCircle(0f,-17f,3f,paint)}
+            SlotIcon.RECORD_TIME->{label(canvas,durationLabel(frame.recordElapsedMs),0f,3f,19f,fg,opacity);paint.style=Paint.Style.FILL;paint.color=0xFFFF453A.toInt();paint.alpha=(255*opacity).toInt();canvas.drawCircle(0f,-17f,3f,paint)}
             SlotIcon.VOLUME->{paint.style=Paint.Style.STROKE;paint.strokeWidth=3f;canvas.drawArc(RectF(-34f,-34f,34f,34f),145f,250f*(frame.volumePercent.coerceIn(0,100)/100f),false,paint);label(canvas,"${frame.volumePercent.coerceIn(0,100)}%",0f,1f,22f,fg,opacity)}
             SlotIcon.SCREENSHOT->{paint.style=Paint.Style.STROKE;paint.strokeWidth=2.8f;canvas.drawCircle(0f,0f,20f,paint);val s=canvas.save();canvas.rotate((1-frame.slot.reveal)*65f);for(i in 0..5){canvas.rotate(60f);canvas.drawLine(0f,-19f,11f,0f,paint)};canvas.restoreToCount(s)}
-            SlotIcon.NOTIFICATION->{paint.style=Paint.Style.FILL;canvas.drawRoundRect(RectF(-20f,-14f,20f,12f),7f,7f,paint);paint.color=Color.BLACK;canvas.drawCircle(-9f,-1f,2f,paint);canvas.drawCircle(0f,-1f,2f,paint);canvas.drawCircle(9f,-1f,2f,paint)}
+            SlotIcon.NOTIFICATION->canvas.drawPath(paths.getValue(icon),paint)
             SlotIcon.WIFI_OFFLINE->{
                 // Clear the central symbol area before drawing the larger, legible warning.
                 val layer=canvas.saveLayer(-28f,-30f,28f,30f,null)
                 paint.style=Paint.Style.STROKE;paint.strokeWidth=3.5f;canvas.drawPath(paths.getValue(SlotIcon.WIFI),paint)
-                paint.style=Paint.Style.FILL;paint.xfermode=PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+                paint.style=Paint.Style.FILL;paint.xfermode=clear
                 canvas.drawRoundRect(RectF(-8f,-25f,8f,25f),3f,3f,paint);paint.xfermode=null
                 label(canvas,"!",0f,0f,44f,0xFFFF453A.toInt(),opacity);canvas.restoreToCount(layer)
             }
             SlotIcon.VPN->{paint.style=Paint.Style.STROKE;canvas.drawRoundRect(RectF(-24f,-12f,24f,12f),4f,4f,paint);label(canvas,"VPN",0f,1f,17f,fg,opacity)}
             SlotIcon.RECORD->{val pulse=.55f+.45f*(.5f+.5f*sin(frame.motionMs/260f));paint.alpha=(255*opacity*pulse).toInt();canvas.drawCircle(0f,0f,8f,paint)}
-            SlotIcon.MEDIA->{paint.style=Paint.Style.STROKE;paint.strokeWidth=3.2f;for(i in 0..4){val h=4f+11f*abs(sin(frame.motionMs/170f+i*.8f));canvas.drawLine(-16f+i*8f,-h,-16f+i*8f,h,paint)}}
+            SlotIcon.MEDIA->{
+                paint.style=Paint.Style.STROKE;paint.strokeWidth=3.8f
+                for(i in 0..4) {
+                    val h=if(frame.musicPlaying)4f+11f*abs(sin(frame.motionMs/210f+i*.8f)) else pausedBars[i]
+                    canvas.drawLine(-16f+i*8f,-h,-16f+i*8f,h,paint)
+                }
+            }
             else->{
                 val path=paths.getValue(icon)
                 val progress=if(frame.drawIcons)frame.slot.reveal else 1f
@@ -83,7 +111,16 @@ internal class StatusIconPainter {
             }
             SlotIcon.DND->{moveTo(8f,-17f);cubicTo(-15f,-18f,-23f,6f,-8f,17f);cubicTo(4f,25f,21f,13f,18f,5f);cubicTo(-1f,10f,-9f,-4f,8f,-17f);close()}
             SlotIcon.BLUETOOTH->{line(0f,-17f,10f,-8f,-10f,9f);line(-10f,-9f,10f,8f,0f,17f,0f,-17f)}
-            SlotIcon.SHARE->{line(-17f,-8f,16f,-8f,9f,-15f);line(16f,-8f,9f,-1f);line(17f,8f,-16f,8f,-9f,1f);line(-16f,8f,-9f,15f)}
+            SlotIcon.SHARE->{
+                // Personal hotspot is represented by connected links, not file-transfer arrows.
+                addRoundRect(RectF(-21f,-9f,2f,9f),8f,8f,Path.Direction.CW)
+                addRoundRect(RectF(-2f,-9f,21f,9f),8f,8f,Path.Direction.CW)
+                transform(Matrix().apply { setRotate(-35f) })
+            }
+            SlotIcon.NOTIFICATION->{
+                fillType=Path.FillType.EVEN_ODD;addRoundRect(RectF(-20f,-14f,20f,12f),7f,7f,Path.Direction.CW)
+                for(x in floatArrayOf(-9f,0f,9f))addCircle(x,-1f,2f,Path.Direction.CCW)
+            }
             SlotIcon.NFC->{
                 // Contactless reader: radiating waves, not the previous stylised letter N.
                 moveTo(-9f,-5f);cubicTo(-6f,-3f,-6f,3f,-9f,5f)

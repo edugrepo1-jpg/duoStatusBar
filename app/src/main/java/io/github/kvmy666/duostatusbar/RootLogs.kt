@@ -93,7 +93,7 @@ internal object RootLogs {
     /** Whether `id` printed uid 0 — the proof that a granted root shell really ran. */
     internal fun looksRooted(idOutput: String): Boolean {
         val text = idOutput.trim()
-        return text.contains("uid=0") || text.substringBefore(' ').trim() == "0"
+        return Regex("^uid=0(?:\\(|\\s|$)").containsMatchIn(text) || text == "0"
     }
 
     /**
@@ -227,7 +227,7 @@ internal object RootLogs {
         appendLine("SDK=${android.os.Build.VERSION.SDK_INT} RELEASE=${android.os.Build.VERSION.RELEASE} DISPLAY=${android.os.Build.DISPLAY}")
         appendLine("selinux=${DeviceFacts.selinux()} abi=${DeviceFacts.abi()}")
         appendLine("rootShell=${findSuBinary()}")
-        append("note=if the report lacks a module log, grant root (Allow root access) or run Shizuku; the module log itself needs no root once the module has loaded.")
+        append("note=module-owned logs need no app root after injection. If absent, check LSPosed scope and module-load evidence first. Optional root or Shizuku may provide additional evidence; neither enables a module that was not injected.")
     }
 
     /**
@@ -235,21 +235,9 @@ internal object RootLogs {
      * its process from inside SystemUI) needs no root, so this is the fallback that still works before
      * LSPosed has injected anything — and it is the root prompt users of other modules expect.
      */
-    fun restartSystemUi(): Boolean = try {
-        // Different ROMs keep different tools, so every spelling is tried in turn: `pkill -f` (AOSP),
-        // `killall` (some vendors) and `pidof` + `kill -9` (the one that survives SELinux-restricted
-        // pkill). `true` makes the script succeed even when the process was already gone.
-        val script = "pkill -f com.android.systemui; " +
-            "killall com.android.systemui 2>/dev/null; " +
-            "kill -9 ${'$'}(pidof com.android.systemui) 2>/dev/null; true"
-        val finished = ProcessBuilder(findSuBinary(), "-c", script).redirectErrorStream(true).start()
-            .waitFor(ROOT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        if (!finished) L.w("root restart timed out after ${ROOT_TIMEOUT_SECONDS}s")
-        finished
-    } catch (t: Throwable) {
-        L.w("root restart failed: ${t.javaClass.simpleName}: ${t.message}")
-        false
-    }
+    fun restartSystemUi(): Boolean = commandSucceeded("restart SystemUI",
+        "pids=${'$'}(pidof com.android.systemui); " +
+        "[ -n \"${'$'}pids\" ] && kill -9 ${'$'}pids")
 
     /**
      * Removes a leftover `duo_statusbar_stage` adb override and clears the Rive crash counter, so a
@@ -258,30 +246,25 @@ internal object RootLogs {
      * Returns true only when the root shell finished (the delete itself is best-effort — `settings`
      * reports nothing useful, so the caller re-reads the value).
      */
-    fun clearStageOverride(): Boolean = try {
-        val script = "settings delete global duo_statusbar_stage; " +
-            "settings put global duo_statusbar_rive_attempts 0; true"
-        val finished = ProcessBuilder(findSuBinary(), "-c", script).redirectErrorStream(true).start()
-            .waitFor(ROOT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        if (!finished) L.w("clear override timed out after ${ROOT_TIMEOUT_SECONDS}s")
-        finished
-    } catch (t: Throwable) {
-        L.w("clear override failed: ${t.javaClass.simpleName}: ${t.message}")
-        false
-    }
+    fun clearStageOverride(): Boolean = commandSucceeded("clear override",
+        "settings delete global duo_statusbar_stage && " +
+        "settings put global duo_statusbar_rive_attempts 0 && " +
+        "[ \"${'$'}(settings get global duo_statusbar_stage)\" = null ]")
 
     /**
      * Reboots the phone through root, for the case a System UI restart alone does not clear (a module
      * update that needs a clean process). Returns whether the root shell was launched; the device then
      * reboots, so a true result does not mean the call completed.
      */
-    fun reboot(): Boolean = try {
-        val finished = ProcessBuilder(findSuBinary(), "-c", "reboot").redirectErrorStream(true).start()
-            .waitFor(ROOT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        if (!finished) L.w("reboot timed out after ${ROOT_TIMEOUT_SECONDS}s")
-        finished
+    fun reboot(): Boolean = commandSucceeded("reboot", "reboot")
+
+    private fun commandSucceeded(label: String, script: String): Boolean = try {
+        val output = runRoot(findSuBinary(), script, ROOT_TIMEOUT_SECONDS, allowEmpty = true)
+        val ok = !output.startsWith(FAILURE_PREFIX)
+        if (!ok) L.w("$label rejected: $output")
+        ok
     } catch (t: Throwable) {
-        L.w("reboot failed: ${t.javaClass.simpleName}: ${t.message}")
+        L.w("$label failed: ${t.javaClass.simpleName}")
         false
     }
 
@@ -295,31 +278,64 @@ internal object RootLogs {
      * read could deadlock on a large log), and the process is bounded by [timeoutSeconds] so a stalled
      * root prompt cannot hang the app. Never throws.
      */
-    private fun runRoot(
+    internal fun runRoot(
         su: String,
         script: String,
-        timeoutSeconds: Long = ROOT_TIMEOUT_SECONDS
+        timeoutSeconds: Long = ROOT_TIMEOUT_SECONDS,
+        allowEmpty: Boolean = false,
+        start: () -> Process = { ProcessBuilder(su, "-c", script).redirectErrorStream(true).start() }
     ): String {
         // The read itself can block forever if the root prompt never answers, so the whole
         // start-and-read runs on a worker that the caller abandons after the timeout.
-        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        val processRef = AtomicReference<Process?>()
+        val cancelled = java.util.concurrent.atomic.AtomicBoolean(false)
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
+            Thread(task, "Duo-diagnostic-capture").apply { isDaemon = true }
+        }
+        var future: java.util.concurrent.Future<String>? = null
         return try {
-            val future = executor.submit<String> {
-                val process = ProcessBuilder(su, "-c", script)
-                    .redirectErrorStream(true)
-                    .start()
-                val out = process.inputStream.bufferedReader().readText()
-                process.waitFor()
-                out.ifBlank { "$FAILURE_PREFIX: root shell ($su) returned no output - root denied?" }
+            future = executor.submit<String> {
+                val process = start()
+                processRef.set(process)
+                if (cancelled.get()) { closeProcess(process); return@submit "$FAILURE_PREFIX: cancelled" }
+                val out = process.inputStream.bufferedReader().use { reader ->
+                    val captured = StringBuilder()
+                    val buffer = CharArray(4096)
+                    var truncated = false
+                    while (true) {
+                        val count = reader.read(buffer)
+                        if (count < 0) break
+                        val room = 512_000 - captured.length
+                        if (count > room) truncated = true
+                        if (room > 0) captured.append(buffer, 0, count.coerceAtMost(room))
+                    }
+                    if (truncated) captured.toString().substringBeforeLast('\n', "") else captured.toString()
+                }
+                val code = process.waitFor()
+                if (code != 0) "$FAILURE_PREFIX: shell exit=$code ${DiagnosticPrivacy.clean(out)}"
+                else if (out.isBlank() && !allowEmpty) "$FAILURE_PREFIX: root shell ($su) returned no output - root denied?"
+                else out
             }
-            future.get(timeoutSeconds, TimeUnit.SECONDS)
+            future!!.get(timeoutSeconds, TimeUnit.SECONDS)
         } catch (_: java.util.concurrent.TimeoutException) {
             "$FAILURE_PREFIX: root shell ($su) timed out after ${timeoutSeconds}s"
         } catch (t: Throwable) {
             "$FAILURE_PREFIX: ${t.javaClass.simpleName}: ${t.message} (tried $su)"
         } finally {
+            cancelled.set(true)
+            future?.cancel(true)
+            processRef.get()?.let(::closeProcess)
             executor.shutdownNow()
         }
+    }
+
+    private fun closeProcess(process: Process) {
+        // Closing the pipe unblocks read(); interrupting a native stream read alone does not.
+        runCatching { process.destroy() }
+        runCatching { process.inputStream.close() }
+        runCatching { process.errorStream.close() }
+        runCatching { process.outputStream.close() }
+        runCatching { if (process.isAlive) process.destroyForcibly() }
     }
 
     /**

@@ -38,8 +38,10 @@ internal class VolumeObserver(private val context:Context,private val handler:Ha
         try {
             val value=audio?.getStreamVolume(stream) ?: return
             val previous=levels.put(stream,value)
-            val max=audio?.getStreamMaxVolume(stream) ?: 0
-            if(previous!=null&&previous!=value&&max>0)changed((100f*value/max).toInt().coerceIn(0,100))
+            if(previous!=null&&previous!=value) {
+                val max=audio?.getStreamMaxVolume(stream) ?: 0
+                if(max>0)changed((100f*value/max).toInt().coerceIn(0,100))
+            }
         } catch(_:Throwable) { }
     }
     fun stop() {

@@ -31,7 +31,7 @@
     <string name="section_animations">Animations</string>
     <string name="settings_animations">Animations</string>
     <string name="settings_animations_detail">Master switch for all motion.</string>
-    <string name="settings_anim_speed">Speed</string>
+    <string name="settings_anim_speed">Ring entry</string>
     <string name="settings_anim_arrival">Appear</string>
     <string name="settings_anim_arrival_detail">Bounce when the screen turns on.</string>
     <string name="settings_anim_departure">Disappear</string>
