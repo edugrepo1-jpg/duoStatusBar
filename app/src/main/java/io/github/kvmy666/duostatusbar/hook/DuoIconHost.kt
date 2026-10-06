@@ -187,14 +187,14 @@ internal class DuoIconHost(private val context: Context) {
         }
     }
     fun pauseEffects(paused: Boolean) {
-        if (paused) continuumAnimator?.cancel()
+        if (paused) resetContinuum()
         for (target in allElements()) target.setRenderActive(!paused && !ghost)
     }
     fun applyEffects(frame: io.github.kvmy666.duostatusbar.fx.EffectFrame, hidden: Boolean) {
         for (target in allElements()) (target as? DuoCanvasView)?.effects = frame
     }
     fun continuum(enter: Boolean, enabled: Boolean) {
-        continuumAnimator?.cancel()
+        resetContinuum()
         val targets = allElements().mapNotNull { it as? DuoCanvasView }
         if (!enabled) { targets.forEach { it.continuumX = 0f; it.continuumY = 0f; it.invalidate() }; return }
         val clock = effectClock() ?: return
@@ -211,7 +211,20 @@ internal class DuoIconHost(private val context: Context) {
                     v.continuumX = offsets[index].first * f; v.continuumY = offsets[index].second * f; v.invalidate()
                 } } catch (t: Throwable) { L.w("Continuum: ${t.message}") }
             }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    targets.forEach { it.continuumX = 0f; it.continuumY = 0f; it.invalidate() }
+                }
+            })
             start()
+        }
+    }
+
+    private fun resetContinuum() {
+        continuumAnimator?.cancel()
+        continuumAnimator = null
+        allElements().filterIsInstance<DuoCanvasView>().forEach {
+            it.continuumX = 0f; it.continuumY = 0f; it.invalidate()
         }
     }
 
@@ -345,6 +358,9 @@ internal class DuoIconHost(private val context: Context) {
         allowOverflow(target)
         val side = geometry.sidePx(target, slot.bar, slot.basePx)
         candidate.ui.layoutParams = layoutParamsFor(target, side)
+        candidate.ui.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            if (slot.element === candidate) { applyExtraLayout(slot); syncExtraIndicators(slot) }
+        }
         target.addView(candidate.ui)
         applyExtraLayout(slot)
         syncExtraIndicators(slot)
@@ -494,6 +510,7 @@ internal class DuoIconHost(private val context: Context) {
      * half-drawn.
      */
     fun setElementsVisible(on: Boolean) {
+        if (on) resetContinuum()
         for (target in allElements()) {
             try {
                 target.ui.visibility = if (on) View.VISIBLE else View.GONE
@@ -528,6 +545,7 @@ internal class DuoIconHost(private val context: Context) {
         settings = fresh
         io.github.kvmy666.duostatusbar.fx.Fx.sync(fresh, context)
         if (changed) {
+            resetContinuum()
             L.i("settings rev ${fresh.revision}: size ${fresh.sizePercent}%, offset ${fresh.offsetX}dp, " +
                     "percent=${fresh.showPercent}, percentHeight=${fresh.percentHeight}%, " +
                     "split=${fresh.splitIndicators}, icons=${fresh.indicatorsOffsetX}dp, " +
@@ -605,6 +623,7 @@ internal class DuoIconHost(private val context: Context) {
             hideOverlayAnchor()
             anchorOnBattery(view, container, side, offsetDp)
             io.github.kvmy666.duostatusbar.fx.Align.adjust(view, windowRoot, offsetDp)
+            BarPlacement.keepInside(view, windowRoot)
             return
         }
         view.translationX = offsetDp * context.resources.displayMetrics.density
@@ -615,6 +634,7 @@ internal class DuoIconHost(private val context: Context) {
         view.translationY = (if (center) geometry.windowCenterShiftY(container, windowRoot) else 0f) +
             RingGeometry.ringAnchorShiftY(side)
         if (center) io.github.kvmy666.duostatusbar.fx.Align.adjust(view, windowRoot, offsetDp)
+        BarPlacement.keepInside(view, windowRoot)
     }
 
     private fun installGestures(view: View) {
@@ -688,6 +708,7 @@ internal class DuoIconHost(private val context: Context) {
     ): DuoElement? {
         val side = geometry.sidePx(container, windowRoot, basePx)
         existing?.let { cluster ->
+            assignBox(cluster.ui, container, side, edgeInsetPx(side, 0))
             place(cluster.ui, container, windowRoot, side, settings.indicatorsOffsetX, center)
             installGestures(cluster.ui)
             return cluster
@@ -856,6 +877,9 @@ internal class DuoIconHost(private val context: Context) {
             val side = geometry.sidePx(target, root)
             allowOverflow(container)
             candidate.ui.layoutParams = layoutParamsFor(container, side)
+            candidate.ui.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                if (element === candidate) { applyLayout(); syncIndicators() }
+            }
             container.addView(candidate.ui)
             host = container
             element = candidate
@@ -948,6 +972,9 @@ internal class DuoIconHost(private val context: Context) {
      * this runs again on layout changes rather than only once.
      */
     fun reapplyHiding() {
+        applyLayout()
+        syncIndicators()
+        extras.forEach { applyExtraLayout(it); syncExtraIndicators(it) }
         // FR-03b: the keyguard bar and the shade header are re-shown on every shade/lock transition,
         // so they get the same pass.
         reapplyExtraHiding()

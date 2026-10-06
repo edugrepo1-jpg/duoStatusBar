@@ -21,9 +21,17 @@ internal class ElementGestures(private val context: Context) {
 
     private var detector: GestureDetector? = null
     private var active = false
+    private var actions: Triple<String, String, String>? = null
 
     /** Installs (or clears) the detector for the current actions. */
     fun install(view: View, tap: String, doubleTap: String, longPress: String) {
+        val next = Triple(tap, doubleTap, longPress)
+        if (actions == next) {
+            view.isClickable = detector != null
+            return
+        }
+        actions = next
+        active = false
         if (tap == AutoExpand.NO_ACTION && doubleTap == AutoExpand.NO_ACTION && longPress == AutoExpand.NO_ACTION) {
             detector = null
             view.setOnTouchListener(null)
@@ -90,6 +98,7 @@ internal class ElementGestures(private val context: Context) {
     }
 
     private fun hit(event: MotionEvent, view: View): Boolean {
+        if (!view.isShown || !view.isEnabled || view.alpha <= .01f) return false
         val location = IntArray(2)
         try {
             view.getLocationOnScreen(location)

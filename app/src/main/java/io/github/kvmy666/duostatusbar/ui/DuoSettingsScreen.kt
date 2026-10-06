@@ -343,7 +343,6 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
 
         EffectsSection(settings, onUpdate, search)
         EffectsPreview(settings,search)
-        LiveEventsSection(search)
         CustomizeSection(
             settings = settings,
             onUpdate = onUpdate,

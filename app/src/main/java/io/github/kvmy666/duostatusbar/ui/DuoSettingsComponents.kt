@@ -1,7 +1,8 @@
 package io.github.kvmy666.duostatusbar.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +32,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import kotlin.math.roundToInt
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -212,7 +215,10 @@ internal fun PositionEditor(
 ) {
     val density = LocalDensity.current
     var drag by remember { mutableFloatStateOf(offsetDp.toFloat()) }
-    LaunchedEffect(offsetDp) { drag = offsetDp.toFloat() }
+    var dragging by remember { mutableStateOf(false) }
+    val latestOffset by rememberUpdatedState(onOffset)
+    val savedOffset by rememberUpdatedState(offsetDp)
+    LaunchedEffect(offsetDp) { if (!dragging) drag = offsetDp.toFloat() }
     val limit = DuoPrefs.MAX_OFFSET.toFloat()
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -225,10 +231,13 @@ internal fun PositionEditor(
                 .background(Color(0xFF101014))
                 .pointerInput(enabled) {
                     if (!enabled) return@pointerInput
-                    detectDragGestures { _, amount ->
-                        val next = (drag + amount.x / density.density).coerceIn(-limit, limit)
-                        drag = next
-                        onOffset(next.toInt())
+                    detectHorizontalDragGestures(
+                        onDragStart = { dragging = true },
+                        onDragEnd = { dragging = false; latestOffset(drag.roundToInt()) },
+                        onDragCancel = { dragging = false; drag = savedOffset.toFloat() }
+                    ) { change, amount ->
+                        change.consume()
+                        drag = (drag + amount / density.density).coerceIn(-limit, limit)
                     }
                 },
             contentAlignment = Alignment.CenterStart
@@ -285,7 +294,7 @@ internal fun SettingSwitch(
     onChange: (Boolean) -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable(enabled = enabled) { onChange(!checked) },
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -376,16 +385,32 @@ internal fun LabelledSlider(
     preview: (@Composable () -> Unit)? = null,
     onChange: (Float) -> Unit
 ) {
+    var draft by remember { mutableStateOf(ControlDraft(value.coerceIn(range.start, range.endInclusive))) }
+    val latestChange by rememberUpdatedState(onChange)
+    LaunchedEffect(value, range, enabled) {
+        draft = if (enabled) draft.external(value.coerceIn(range.start, range.endInclusive))
+            else ControlDraft(value.coerceIn(range.start, range.endInclusive))
+    }
+    val suffix = "${value.toInt()}%"
+    val shownLabel = if (label.endsWith(suffix)) label.removeSuffix(suffix) + "${draft.value.roundToInt()}%" else label
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
             preview?.invoke()
             Text(
-                text = label,
+                text = shownLabel,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(start = if (preview == null) 0.dp else 12.dp)
             )
         }
-        Slider(value = value, onValueChange = onChange, valueRange = range, steps = steps, enabled = enabled)
+        Slider(
+            modifier = Modifier.fillMaxWidth(),
+            value = draft.value, onValueChange = { draft = draft.move(it, range) },
+            onValueChangeFinished = {
+                val result = draft.value.roundToInt().toFloat()
+                draft = draft.finish().copy(value = result)
+                if (result != value) latestChange(result)
+            }, valueRange = range, steps = steps, enabled = enabled
+        )
     }
 }
 

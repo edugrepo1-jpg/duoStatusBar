@@ -29,7 +29,9 @@ internal object RomProfiles {
         synchronized(this) {
             cache?.let { return it }
             val parsed = try {
-                context.assets.open(ASSET).bufferedReader().use { parse(it.readText()) }
+                val module = if (context.packageName == io.github.kvmy666.duostatusbar.BuildConfig.APPLICATION_ID) context
+                    else context.createPackageContext(io.github.kvmy666.duostatusbar.BuildConfig.APPLICATION_ID, 0)
+                module.assets.open(ASSET).bufferedReader().use { parse(it.readText()) }
             } catch (t: Throwable) {
                 L.w("rom profiles unreadable: ${t.javaClass.simpleName}: ${t.message}")
                 emptyList()

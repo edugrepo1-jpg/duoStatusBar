@@ -17,5 +17,5 @@ internal object SystemUiProcess {
     const val PACKAGE = "com.android.systemui"
 
     fun isTarget(packageName: String?, processName: String?): Boolean =
-        packageName == PACKAGE || processName == PACKAGE
+        processName == PACKAGE || (processName.isNullOrBlank() && packageName == PACKAGE)
 }

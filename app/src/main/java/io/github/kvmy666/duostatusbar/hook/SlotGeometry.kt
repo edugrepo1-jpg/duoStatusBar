@@ -63,8 +63,14 @@ internal class SlotGeometry(private val context: Context, private val rom: RomAd
             else -> measuredWidth(container)
         }
         val scaled = measured * appliedSize / 100
-        val height = (windowRoot?.height ?: 0).takeIf { it > 0 } ?: return scaled
-        return scaled.coerceAtMost(height)
+        val maxBarHeight = context.resources.displayMetrics.heightPixels / 3
+        val height = (windowRoot?.height ?: 0).takeIf { it in 1..maxBarHeight }
+            ?: container.height.takeIf { it in 1..maxBarHeight }
+            ?: run {
+                val id = context.resources.getIdentifier("status_bar_height", "dimen", "android")
+                if (id != 0) context.resources.getDimensionPixelSize(id) else (32 * context.resources.displayMetrics.density).toInt()
+            }
+        return scaled.coerceAtMost((height * RingGeometry.ARTBOARD_SIZE / RingGeometry.ARTBOARD_HEIGHT).toInt()).coerceAtLeast(1)
     }
 
     /** The element's width in px, used for the Canvas fallback's layout params. */
@@ -99,7 +105,11 @@ internal class SlotGeometry(private val context: Context, private val rom: RomAd
             return 0f
         }
         val stripCenter = location[1] + container.height / 2f
-        return height / 2f - stripCenter
+        val rootLocation = IntArray(2)
+        try { windowRoot.getLocationInWindow(rootLocation) } catch (_: Throwable) { return 0f }
+        // A full-screen shade window is never a bar-sized placement reference.
+        if (height > context.resources.displayMetrics.heightPixels / 3) return 0f
+        return rootLocation[1] + height / 2f - stripCenter
     }
 }
 

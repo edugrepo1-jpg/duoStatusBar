@@ -32,4 +32,9 @@ class SystemUiProcessTest {
         assertFalse(SystemUiProcess.isTarget("android", "system_server"))
         assertFalse(SystemUiProcess.isTarget(null, null))
     }
+    @Test fun `Samsung edge lighting cannot overwrite the main status bar`() {
+        assertFalse(SystemUiProcess.isTarget("com.android.systemui", "com.android.systemui:edgelighting"))
+        assertFalse(SystemUiProcess.isTarget("com.android.systemui", "com.android.systemui:screenshot"))
+        assertTrue(SystemUiProcess.isTarget("com.android.systemui", null))
+    }
 }

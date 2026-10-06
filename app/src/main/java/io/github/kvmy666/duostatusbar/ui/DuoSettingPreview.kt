@@ -1,21 +1,16 @@
 package io.github.kvmy666.duostatusbar.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.kvmy666.duostatusbar.DuoCanvasPreview
 import io.github.kvmy666.duostatusbar.hook.DuoVisual
 
-/**
- * FR-09: a small, endlessly looping demonstration of what one setting does.
- *
- * It morphs between two snapshots - the setting's off state and its on state - and loops forever, so
- * the row explains itself instead of asking the user to imagine the difference. The demo is built from
- * the same [io.github.kvmy666.duostatusbar.hook.DuoMapping] the status bar uses and drawn by the same
- * **Rive** scene the module ships, so it cannot show something the module does not do. (It used to draw
- * with the Canvas fallback, which is why the previews looked different from the real status bar.)
- */
+/** Static Canvas chip: sliders remain readable while the dedicated effects demo animates. */
 @Composable
 fun DuoSettingPreview(
     off: DuoVisual,
@@ -28,13 +23,11 @@ fun DuoSettingPreview(
     /** For the position setting: how far the element slides, in dp, at the on end. */
     slideDp: Float = 0f
 ) {
-    DuoCanvasPreview(
-        modifier = modifier,
-        size = size,
-        periodMs = periodMs,
-        scaleFrom = scaleFrom,
-        slideDp = slideDp
-    ) { phase -> off.lerp(on, phase) }
+    io.github.kvmy666.duostatusbar.DuoCanvasStill(
+        visual = on,
+        modifier = modifier.size(size).clip(androidx.compose.foundation.shape.CircleShape)
+            .background(androidx.compose.ui.graphics.Color(0xFF101014))
+    )
 }
 
 /**

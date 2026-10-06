@@ -13,7 +13,7 @@ import kotlinx.coroutines.delay
 private data class EffectOption(val bit: Int, val label: String, val detail: String)
 private val effectOptions = listOf(
     EffectOption(1, "Check no desbloqueio", "Confirma o desbloqueio com um check verde no anel."),
-    EffectOption(2, "Alinhamento automático", "Ajusta o anel aos dígitos do relógio e aos recortes da tela."),
+    EffectOption(2, "Alinhamento automático", "Alinha a altura aos dígitos do relógio, mantendo a posição horizontal escolhida."),
     EffectOption(4, "Rotação de ícones", "Alterna os estados ativos a cada 3 segundos, com saída antes da entrada."),
     EffectOption(8, "Indicador de roteador Wi-Fi", "Mostra o compartilhamento quando o hotspot tá ligado."),
     EffectOption(16, "Aviso de fones", "Mostra os fones por 4 segundos e a bateria, quando o sistema fornece a leitura."),
@@ -45,19 +45,4 @@ internal fun EffectsSection(settings: DuoSettings, onUpdate: (DuoSettings) -> Un
             onUpdate(settings.copy(featFlags = if (enabled) settings.featFlags or option.bit else settings.featFlags and option.bit.inv()))
         }
     }
-}
-
-@Composable
-internal fun LiveEventsSection(search: SearchGate) {
-    if (!search("Eventos ao vivo", "Logs do sistema", "Diagnóstico")) return
-    val context = LocalContext.current
-    var events by remember { mutableStateOf("") }
-    LaunchedEffect(context) {
-        while (true) {
-            events = DuoPrefs.dump(context).substringAfter(Events.MARKER, "").trim().lines().takeLast(40).joinToString("\n")
-            delay(2500)
-        }
-    }
-    SectionTitle("Eventos ao vivo")
-    SelectionContainer { Text(events.ifBlank { "Nenhum evento ainda. O relatório salvo inclui até 400 linhas." }) }
 }

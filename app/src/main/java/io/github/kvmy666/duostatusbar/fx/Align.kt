@@ -26,13 +26,8 @@ internal object Align {
                     view.lastAlignment = shift; L.i("align: shift=${shift}px digitCenter=$digit ringCenter=${base + shift}")
                 }
             }
-            if (view.part == io.github.kvmy666.duostatusbar.hook.DuoPart.INDICATORS) return
-            val target = calculateDynamicIslandOffsets(view) ?: return
-            val desired = target.first + offsetDp * view.resources.displayMetrics.density
-            val radius = 55.5f * scale * view.globalPercent / 100f
-            val ring = Rect((desired - radius).toInt(), (digit - radius).toInt(), (desired + radius).toInt(), (digit + radius).toInt())
-            if (overlapsNative(root, view, ring)) return
-            view.translationX = desired - (rp[0] - view.translationX + view.width / 2f)
+            // X belongs to the user's battery slot. A display cutout must never take ownership of it.
+
         } catch (t: Throwable) { L.w("Posição automática: ${t.message}") }
     }
     private fun overlapsNative(node: View?, ours: View, ring: Rect): Boolean {
