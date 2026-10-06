@@ -16,6 +16,7 @@ internal class RuntimeExperience(private val context:Context,private val handler
     private val changed:()->Unit,private val screenshot:()->Unit) {
     var playback=PlaybackSnapshot();private set
     var playbackKnown=false;private set
+    private var mediaEnabled=false
     private var sessionListenerRegistered=false
     private var sessionAccessDenied=false
     private var sessionPollAt=-30000L
@@ -24,8 +25,9 @@ internal class RuntimeExperience(private val context:Context,private val handler
     private var cachedColor=0
     private var directPlayback:PlaybackSnapshot?=null
     private var dirty=true
+    private var metadataDirty=true
     private val sessionListener=MediaSessionManager.OnActiveSessionsChangedListener { next ->
-        if(running) { sessionPollAt=SystemClock.elapsedRealtime();replaceControllers(next.orEmpty());refresh() }
+        if(running&&mediaEnabled) { sessionPollAt=SystemClock.elapsedRealtime();replaceControllers(next.orEmpty());refresh() }
     }
     private var relayedPlayback=PlaybackSnapshot()
     private var relayAt=-1L
@@ -37,17 +39,19 @@ internal class RuntimeExperience(private val context:Context,private val handler
     private val manager by lazy { context.getSystemService(MediaSessionManager::class.java) }
     private val callback=object:MediaController.Callback() {
         override fun onPlaybackStateChanged(state:PlaybackState?) { dirty=true;refresh() }
-        override fun onMetadataChanged(metadata:MediaMetadata?) { dirty=true;refresh() }
+        override fun onMetadataChanged(metadata:MediaMetadata?) { dirty=true;metadataDirty=true;refresh() }
         override fun onSessionDestroyed() { dirty=true;sessionPollAt=-30000L;refresh() }
     }
     private val receiver=object:BroadcastReceiver() {
         override fun onReceive(c:Context?,intent:Intent?) {
             if(!running||intent?.action!=ACTION)return
             if(intent.getBooleanExtra("shot",false)) { if(Fx.experience.screenshot)screenshot();return }
+            if(!mediaEnabled)return
             relayedPlayback=PlaybackSnapshot(intent.getBooleanExtra("playing",false),
                 intent.getLongExtra("position",-1).coerceAtLeast(-1),intent.getLongExtra("duration",0).coerceIn(0,7*86400000L),
                 SystemClock.elapsedRealtime(),intent.getFloatExtra("speed",1f).takeIf { it.isFinite() }?.coerceIn(0f,8f) ?: 1f,
-                intent.getIntExtra("color",0),intent.getStringExtra("title").orEmpty().take(120))
+                intent.getIntExtra("color",0),intent.getStringExtra("title").orEmpty().take(120),
+                sourceIdentity(intent.getStringExtra("source")))
             relayAt=SystemClock.elapsedRealtime();refresh()
         }
     }
@@ -61,7 +65,10 @@ internal class RuntimeExperience(private val context:Context,private val handler
     }
     fun configure() {
         if(!running)return
-        dirty=true
+        val wanted=Fx.experience.music||Fx.experience.island||Fx.enabled(8192)
+        if(wanted&&!mediaEnabled) { sessionPollAt=-30000L;sessionAccessDenied=false }
+        mediaEnabled=wanted
+        dirty=true;metadataDirty=true
         val relay=Fx.experience.music||Fx.experience.island||Fx.experience.screenshot||Fx.enabled(8192)
         if(relay&&!receiverRegistered)read("canal do app") {
             context.registerReceiver(receiver,IntentFilter(ACTION),SettingsBridge.PERMISSION,handler,Context.RECEIVER_EXPORTED)
@@ -71,8 +78,9 @@ internal class RuntimeExperience(private val context:Context,private val handler
         if(Fx.experience.screenshot&&observer==null) {
             observer=ScreenshotObserver(context,handler) { if(running)screenshot() }.also { it.start() }
         } else if(!Fx.experience.screenshot) { observer?.stop();observer=null }
-        if(!Fx.experience.music&&!Fx.experience.island&&!Fx.enabled(8192)) {
+        if(!mediaEnabled) {
             stopMedia();playback=PlaybackSnapshot();playbackKnown=false
+            relayedPlayback=PlaybackSnapshot();relayAt=-1L
         } else {
             if(!sessionListenerRegistered&&!sessionAccessDenied)read("monitor de sessões") {
                 try {
@@ -92,16 +100,16 @@ internal class RuntimeExperience(private val context:Context,private val handler
     private fun stopMedia() {
         replaceControllers(emptyList())
         if(sessionListenerRegistered)read("encerrar sessões") { manager?.removeOnActiveSessionsChangedListener(sessionListener) }
-        sessionListenerRegistered=false;cachedMetadata=null;cachedToken=null;cachedColor=0;directPlayback=null;dirty=true
+        sessionListenerRegistered=false;cachedMetadata=null;cachedToken=null;cachedColor=0;directPlayback=null;dirty=true;metadataDirty=true
     }
     fun refresh() {
-        if(!running||(!Fx.experience.music&&!Fx.experience.island&&!Fx.enabled(8192)))return
+        if(!running||!mediaEnabled)return
         val now=SystemClock.elapsedRealtime()
         var direct=directPlayback
         // Session discovery is callback-driven. Permission denial is retried only on a new lifecycle,
         // not every two seconds on SystemUI's main thread.
         if(!sessionAccessDenied&&now-sessionPollAt>=30000) {
-            sessionPollAt=now;dirty=true
+            sessionPollAt=now;dirty=true;metadataDirty=true
             read("sessões de música") {
                 try { replaceControllers(manager?.getActiveSessions(null).orEmpty()) }
                 catch(t:SecurityException) { sessionAccessDenied=true;throw t }
@@ -110,13 +118,18 @@ internal class RuntimeExperience(private val context:Context,private val handler
         if(dirty) {
             dirty=false;directPlayback=null;direct=null
             read("estado de música") {
-            val selected=controllers.firstOrNull { it.playbackState?.state==PlaybackState.STATE_PLAYING } ?: controllers.firstOrNull()
-            if(selected!=null&&selected.playbackState!=null) {
-                val metadata=selected.metadata
-                if(cachedToken!=selected.sessionToken||metadata!==cachedMetadata) {
-                    cachedToken=selected.sessionToken;cachedMetadata=metadata;cachedColor=albumColor(metadata)
+            // getPlaybackState is a Binder call. Read each controller once, rather than rereading
+            // the selected session several times and re-parceling its cover on every position update.
+            val states=controllers.map { it to it.playbackState }
+            val selected=states.firstOrNull { it.second?.state==PlaybackState.STATE_PLAYING } ?: states.firstOrNull()
+            if(selected!=null&&selected.second!=null) {
+                val controller=selected.first
+                if(cachedToken!=controller.sessionToken||metadataDirty) {
+                    val metadata=controller.metadata
+                    cachedToken=controller.sessionToken;cachedMetadata=metadata;cachedColor=albumColor(metadata)
+                    metadataDirty=false
                 }
-                direct=snapshot(selected,cachedColor)
+                direct=snapshot(controller,selected.second,cachedMetadata,cachedColor)
             }
                 directPlayback=direct
             }
@@ -128,7 +141,7 @@ internal class RuntimeExperience(private val context:Context,private val handler
         if(next!=playback||known!=playbackKnown) { playback=next;playbackKnown=known;changed() }
     }
     fun stop() {
-        running=false
+        running=false;mediaEnabled=false
         observer?.stop();observer=null
         stopMedia()
         if(receiverRegistered) { read("encerrar canal") { context.unregisterReceiver(receiver) };receiverRegistered=false }
@@ -136,15 +149,21 @@ internal class RuntimeExperience(private val context:Context,private val handler
         sessionAccessDenied=false;sessionPollAt=-30000L
     }
     companion object {
-        const val ACTION="io.github.kvmy666.duostatusbar.action.EXPERIENCE"
+        const val ACTION="io.github.RECREATE.statusbar.action.EXPERIENCE"
         fun snapshot(controller:MediaController):PlaybackSnapshot=snapshot(controller,null)
         private fun snapshot(controller:MediaController,color:Int?):PlaybackSnapshot {
             val state=controller.playbackState
             val metadata=controller.metadata
+            return snapshot(controller,state,metadata,color ?: albumColor(metadata))
+        }
+        fun snapshot(controller:MediaController,state:PlaybackState?,metadata:MediaMetadata?,color:Int?=null):PlaybackSnapshot {
             return PlaybackSnapshot(state?.state==PlaybackState.STATE_PLAYING,state?.position ?: -1,
                 metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0,state?.lastPositionUpdateTime ?: 0L,
-                state?.playbackSpeed ?: 1f,color ?: albumColor(metadata),metadata?.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty().take(120))
+                state?.playbackSpeed ?: 1f,color ?: albumColor(metadata),metadata?.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty().take(120),sourceIdentity(controller.packageName))
         }
+        fun sourceIdentity(value:String?):String=value.orEmpty().takeIf {
+            it.length in 1..200&&it.all { c -> c.isLetterOrDigit()||c=='.'||c=='_' }
+        }.orEmpty()
         private fun albumColor(metadata:MediaMetadata?):Int {
             val bitmap=metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
                 ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
@@ -197,15 +216,16 @@ internal class ScreenshotObserver(private val context:Context,private val main:H
             }
             context.contentResolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                 arrayOf(MediaStore.Images.Media._ID,MediaStore.Images.Media.DISPLAY_NAME,MediaStore.Images.Media.RELATIVE_PATH,MediaStore.Images.Media.DATE_ADDED),args,null)?.use { cursor ->
+                val establishBaseline=baseline||lastId<0L
                 var newest=lastId;var shot=false
                 while(cursor.moveToNext()) {
                     val id=cursor.getLong(0);newest=maxOf(newest,id)
                     val name=cursor.getString(1).orEmpty();val path=cursor.getString(2).orEmpty()
                     val age=System.currentTimeMillis()/1000-cursor.getLong(3)
-                    if(!baseline&&lastId>=0&&id>lastId&&age in 0..15&&isScreenshot(name,path))shot=true
+                    if(!establishBaseline&&id>lastId&&age in 0..15&&isScreenshot(name,path))shot=true
                 }
                 if(!started||expectedGeneration!=generation)return@use
-                lastId=if(baseline)maxOf(0L,newest) else newest
+                lastId=if(establishBaseline)maxOf(0L,newest) else newest
                 if(shot)main.post { if(started&&expectedGeneration==generation)detected() }
             }
         } catch(t:Throwable) { if(!failed){failed=true;L.w("Captura: leitura de nomes indisponível: ${t.javaClass.simpleName}; habilite acesso no app") } }

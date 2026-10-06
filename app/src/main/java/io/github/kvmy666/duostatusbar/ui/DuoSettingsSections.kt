@@ -411,12 +411,13 @@ internal fun AboutSection(
             history.takeLast(3).forEach {Text(it.substringAfter(' '),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
         }
     }
+    if(matches(UiText.t("Tema"),UiText.t("Escuro"),UiText.t("Claro"))) StudioCard { ThemePicker() }
     if(matches(UiText.t("Idioma"),UiText.t("Language"),"Español","Português","English")) StudioCard {
         LanguagePicker(false) { tag -> io.github.kvmy666.duostatusbar.i18n.AppLanguage.choose(context,tag) }
     }
     if(matches(UiText.t("Atualizações"),stringResource(R.string.settings_check_updates))) StudioCard {
         SectionTitle(UiText.t("Atualizações"))
-        Text(UiText.t("As buscas mostram lançamentos oficiais. Esta edição Canvas usa assinatura própria: para preservar suas funções, instale apenas atualizações desta edição."),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(UiText.t("As atualizações vêm apenas do nosso fork DUO Recreate. O módulo original tem outro pacote e não substitui esta edição."),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         SettingSwitch(UiText.t("Buscar automaticamente"),UiText.t("Receba avisos quando uma atualização estiver disponível."),checkUpdates,onChange=onToggleUpdates)
         OutlinedButton(onClick=onCheckNow,enabled=!checkingUpdate,modifier=Modifier.fillMaxWidth()) {
             Text(if(checkingUpdate)UiText.t("Verificando…") else UiText.t("Verificar agora"))
@@ -424,20 +425,13 @@ internal fun AboutSection(
         if(updateMessage.isNotEmpty())Text(updateMessage,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         updateInfo?.let { info ->
             if(UpdateDownloadPolicy.downloadable(info))Button(onClick=onDownload,modifier=Modifier.fillMaxWidth()) {Text(stringResource(R.string.settings_update_download))}
-            else OutlinedButton(onClick={runCatching{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(info.url)))}}) {Text(UiText.t("Ver lançamento oficial"))}
+            else OutlinedButton(onClick={runCatching{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(info.url)))}}) {Text(UiText.t("Ver lançamento do fork"))}
         }
     }
     if(matches(UiText.t("Sobre"),UiText.t("Contato"),UiText.t("Apoiar"),stringResource(R.string.section_about),stringResource(R.string.settings_contact_developer),stringResource(R.string.settings_donate))) StudioCard {
-        SectionTitle("Duo Status Bar")
-        Text(UiText.t("Uma assinatura discreta para a sua barra de status."),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-        TextButton(onClick={runCatching{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(TELEGRAM_CHAT_URL)))}}) {
-            Text(stringResource(R.string.settings_contact_developer))
-        }
-        OutlinedButton(onClick={context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(DONATE_URL)))},modifier=Modifier.fillMaxWidth()) {
-            Icon(painterResource(R.drawable.ic_paypal),null,Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.settings_donate))
-        }
+        SectionTitle("DUO Recreate")
+        Text(UiText.t("Inspirado no Duo Status Bar original, de kvmy666. Fork independente com Canvas Android. Licença GPL-3.0."),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        TextButton(onClick={runCatching{context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/edugrepo1-jpg/duoStatusBar")))}}) { Text(UiText.t("Código e histórico do fork")) }
         Text(BuildConfig.VERSION_NAME,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

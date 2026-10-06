@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Duo Status Bar</string>
+    <string name="app_name">DUO Recreate</string>
     <string name="app_tagline">Battery, Wi-Fi and signal in one ring.</string>
     <string name="settings_search">Search settings</string>
     <string name="settings_orientation_portrait">Portrait settings — rotate for landscape.</string>
     <string name="settings_orientation_landscape">Landscape settings — rotate for portrait.</string>
     <string name="section_element">Battery icon</string>
-    <string name="settings_master">Use Duo Status Bar</string>
+    <string name="settings_master">Use DUO Recreate</string>
     <string name="settings_master_detail">Turns the ring on or off.</string>
     <string name="settings_percent">Show battery percentage</string>
     <string name="settings_percent_detail">Show the battery number in the ring.</string>
@@ -96,15 +96,15 @@
     <string name="settings_update_failed">Couldn\'t check for updates.</string>
     <string name="settings_update_download">Download and install</string>
     <string name="settings_update_no_apk">No APK attached; open the release page.</string>
-    <string name="update_notification_title">Duo Status Bar update</string>
+    <string name="update_notification_title">DUO Recreate update</string>
     <string name="update_notification_text">Version %1$s is available — tap to open the release</string>
     <string name="update_action_download">Download</string>
     <string name="update_downloading_title">Downloading update</string>
-    <string name="update_downloading_text">Downloading Duo Status Bar %1$s…</string>
+    <string name="update_downloading_text">Downloading DUO Recreate %1$s…</string>
     <string name="update_ready_title">Update ready to install</string>
-    <string name="update_ready_text">Duo Status Bar %1$s downloaded — tap to install</string>
+    <string name="update_ready_text">DUO Recreate %1$s downloaded — tap to install</string>
     <string name="update_failed_title">Update download failed</string>
-    <string name="update_failed_text">Couldn\'t download Duo Status Bar %1$s.</string>
+    <string name="update_failed_text">Couldn\'t download DUO Recreate %1$s.</string>
     <string name="section_about">About</string>
     <string name="settings_status">Status</string>
     <string name="settings_no_status">Waiting for module contact. Check System UI scope in LSPosed and restart System UI if needed.</string>
@@ -132,7 +132,7 @@
     <string name="settings_history">Recent activity</string>
     <string name="settings_donate">Support the developer</string>
     <string name="settings_log_share_title">Send Duo log</string>
-    <string name="settings_version">Duo Status Bar %1$s</string>
+    <string name="settings_version">DUO Recreate %1$s</string>
     <string name="settings_override_title">An adb override is active</string>
     <string name="settings_override_message">An adb override forces the simple drawing (stage %1$d).</string>
     <string name="settings_override_clear">Clear override</string>
@@ -147,9 +147,9 @@
     <string name="settings_root_checking">Checking root…</string>
     <string name="settings_root_result_ok">Root access granted.</string>
     <string name="settings_root_result_failed">Root not granted. You can use local diagnostics.</string>
-    <string name="settings_root_guide_steps">Root manager (e.g. KernelSU Next) → Superuser → find Duo Status Bar → turn Superuser ON.</string>
+    <string name="settings_root_guide_steps">Root manager (e.g. KernelSU Next) → Superuser → find DUO Recreate → turn Superuser ON.</string>
     <string name="settings_root_guide_note">Use only if additional capture is needed. Duo diagnostics do not require root.</string>
-    <string name="settings_root_guide_image">KernelSU Next Superuser toggle for Duo Status Bar</string>
+    <string name="settings_root_guide_image">KernelSU Next Superuser toggle for DUO Recreate</string>
     <string name="settings_send_need_description">Describe the problem first.</string>
     <string name="settings_send_need_access">Diagnostics may be partial until the module makes contact.</string>
 </resources>

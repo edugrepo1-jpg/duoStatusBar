@@ -20,20 +20,21 @@ import io.github.kvmy666.duostatusbar.L
  */
 internal object SettingsBridge {
 
-    const val ACTION_SETTINGS_PUSH = "io.github.kvmy666.duostatusbar.action.SETTINGS_PUSH"
-    const val ACTION_SETTINGS_REQUEST = "io.github.kvmy666.duostatusbar.action.SETTINGS_REQUEST"
-    const val ACTION_STATUS_PUSH = "io.github.kvmy666.duostatusbar.action.STATUS_PUSH"
-    const val ACTION_DUMP_PUSH = "io.github.kvmy666.duostatusbar.action.DUMP_PUSH"
-    const val ACTION_FALLBACK_PUSH = "io.github.kvmy666.duostatusbar.action.FALLBACK_PUSH"
+    const val ACTION_SETTINGS_PUSH = "io.github.RECREATE.statusbar.action.SETTINGS_PUSH"
+    const val ACTION_SETTINGS_REQUEST = "io.github.RECREATE.statusbar.action.SETTINGS_REQUEST"
+    const val ACTION_STATUS_PUSH = "io.github.RECREATE.statusbar.action.STATUS_PUSH"
+    const val ACTION_DUMP_PUSH = "io.github.RECREATE.statusbar.action.DUMP_PUSH"
+    const val ACTION_FALLBACK_PUSH = "io.github.RECREATE.statusbar.action.FALLBACK_PUSH"
 
     /** The provider row, serialized as `ArrayList<Any>` (ints, longs, strings). */
+    const val EXTRA_REPORT_TOKEN = "report_token"
     const val EXTRA_VALUES = "values"
     const val EXTRA_COLUMNS = "columns"
     const val EXTRA_STATUS = "status"
     const val EXTRA_DUMP = "dump"
     const val EXTRA_FALLBACK = "fallback"
 
-    const val PERMISSION = "io.github.kvmy666.duostatusbar.permission.SETTINGS"
+    const val PERMISSION = "io.github.RECREATE.statusbar.permission.SETTINGS"
     const val SYSTEMUI = "com.android.systemui"
 
     /** Publishes one full settings row to System UI. Never throws. */
@@ -44,6 +45,7 @@ internal object SettingsBridge {
             val row = DuoSettingsProvider.rowFor(portrait, DuoPrefs.revision(context), landscape)
             context.sendBroadcast(
                 Intent(ACTION_SETTINGS_PUSH).setPackage(SYSTEMUI)
+                    .putExtra(EXTRA_REPORT_TOKEN, ReportAuthentication.token(context))
                     .putExtra(EXTRA_VALUES, ArrayList<Any>(row.toList()))
                     .putStringArrayListExtra(EXTRA_COLUMNS,ArrayList(DuoPrefs.COLUMNS.toList()))
             )
@@ -77,6 +79,7 @@ class SettingsRequestReceiver : BroadcastReceiver() {
 class StatusBridgeReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val app = context.applicationContext
+        if (!ReportAuthentication.accepts(app, intent.getStringExtra(SettingsBridge.EXTRA_REPORT_TOKEN))) return
         try {
             when (intent.action) {
                 SettingsBridge.ACTION_STATUS_PUSH ->

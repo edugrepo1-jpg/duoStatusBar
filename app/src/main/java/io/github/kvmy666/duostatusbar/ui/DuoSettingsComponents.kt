@@ -332,23 +332,9 @@ internal fun SettingSwitch(
         }
         StudioGlyph(StudioSymbol.ARROW,MaterialTheme.colorScheme.onSurfaceVariant,Modifier.size(17.dp))
     }
-    if(explaining) {
-        val guide=FeatureGuide.find(label)
-        AlertDialog(onDismissRequest={explaining=false},shape=RoundedCornerShape(28.dp),containerColor=MaterialTheme.colorScheme.surface,
-            title={Text(label,style=MaterialTheme.typography.titleLarge)},
-            text={Column(Modifier.heightIn(max=420.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                SectionTitle(UiText.t("O que faz"))
-                Text(detail ?: UiText.t("Controla este ajuste da sua barra de status."),style=MaterialTheme.typography.bodyMedium)
-                if(guide!=null) {
-                    SectionTitle(UiText.t("Como funciona"));Text(UiText.t(guide.explanation),style=MaterialTheme.typography.bodyMedium)
-                    SectionTitle(UiText.t("Quando usar"));Text(UiText.t(guide.use),style=MaterialTheme.typography.bodyMedium)
-                }
-                if(!enabled)Text(UiText.t("Este ajuste está indisponível agora. Ative a personalização ou a opção da qual ele depende."),color=MaterialTheme.colorScheme.error)
-                Text(UiText.t(if(checked)"Esta função está ativada." else "Esta função está desativada."),style=MaterialTheme.typography.bodySmall)
-            }},
-            confirmButton={Button(onClick={onChange(!checked);explaining=false},enabled=enabled) {Text(UiText.t(if(checked)"Desativar" else "Ativar"))}},
-            dismissButton={TextButton(onClick={explaining=false}) {Text(UiText.t("Voltar"))}})
-    }
+    if(explaining) FeaturePresentation(label,detail,checked,enabled,
+        onDismiss={explaining=false},onChange=onChange)
+
 }
 
 /**

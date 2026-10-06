@@ -1,0 +1,65 @@
+[
+  {
+    "version": "1.4.0-canvas-fx2",
+    "sourceArchiveSha256": "6f234f75203ae29c22394f6988040714dd3f0180f241b1ae0099bec0b7b89781",
+    "commit": "da337522646f0fd04da188c72f143d6c432b98ce",
+    "tree": "9997cad4f8689e739d51e4e0f234897745b10b22",
+    "files": 192
+  },
+  {
+    "version": "1.4.0-canvas-fx3",
+    "sourceArchiveSha256": "cc994817c46d2a88e9b1a6d4c0a34526d03479ef3715ebb336d00e0dbe4efd71",
+    "commit": "28276abcd7e517442afbce87a4bf75916acc901e",
+    "tree": "610ccaee2ec77ddfddac63848adc6ac7697b28d6",
+    "files": 198
+  },
+  {
+    "version": "1.4.0-canvas-fx4",
+    "sourceArchiveSha256": "2c8ed62c3c2ff528b9e29bccfc5a528891660b4dad3eff0ef925d2deb1df546d",
+    "commit": "206c0ecf8bdfa832ed5617fa39d5d2eab34e6386",
+    "tree": "73325be6755259c6775dca2e1d77c350e4d0a38b",
+    "files": 201
+  },
+  {
+    "version": "1.4.0-canvas-fx5",
+    "sourceArchiveSha256": "120acfd04708c18d06799e665b89a163db50f186bad7290e8c0ff74ab7ff0490",
+    "commit": "992e502eb37676015796ea04467c4fd24940f933",
+    "tree": "4c53622cf1d67a59e822f55e7058aa121037604a",
+    "files": 203
+  },
+  {
+    "version": "1.4.0-canvas-studio",
+    "sourceArchiveSha256": "d30381f485a601f190665292de06c0befeef29c25207b2d985f34a3f829a487f",
+    "commit": "877e36b969bf7ca37f8a7b359607b28dec77ab9f",
+    "tree": "0a784b40bc726afdc5534c60c94fea70ab3abb45",
+    "files": 209
+  },
+  {
+    "version": "1.4.0-canvas-studio-fx1",
+    "sourceArchiveSha256": "acfdd8a4b4d5d729a714858617b3909fbe90d95a19710dfea1ec1c32eef0bbac",
+    "commit": "41aff042587da264552416b43ed93feec0e2e902",
+    "tree": "c87334d9988ded74031839ecc050eacaee9ad7e6",
+    "files": 211
+  },
+  {
+    "version": "1.4.0-canvas-experience",
+    "sourceArchiveSha256": "f48e96e1eaa5f1afc921991d9ba1ac41c541b55864f74c5112bbb6c09362a714",
+    "commit": "7687d37ca75db1773ef7357952b1d3af045a21b1",
+    "tree": "2d2a6238f705ed8aacd9e8fea754b87c4b16b4f0",
+    "files": 221
+  },
+  {
+    "version": "1.4.2-canvas-studio",
+    "sourceArchiveSha256": "a3e610e6021097cc31eb2a48d569550a52b67ec0200f08a8c2f9dc9668a3a08f",
+    "commit": "536ea35769616a8e901c0c33e3e41087beee5a59",
+    "tree": "fa18c2ccf232cd3139917b1187b92ca951a523fc",
+    "files": 237
+  },
+  {
+    "version": "1.4.2-canvas-audit",
+    "sourceArchiveSha256": "3c56ac6861513530f76556c41295ae9ca8b94c08ae9c39857e8114bbd430421c",
+    "commit": "9db3330c613c56b72d445c4df93c1b7586d2b505",
+    "tree": "48c1553f6f1752c94ad10d9ad1f41fce7cb4928d",
+    "files": 251
+  }
+]

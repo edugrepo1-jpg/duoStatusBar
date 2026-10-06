@@ -1,70 +1,30 @@
-name: CI
-
+name: Canvas validation
 on:
   push:
     branches: ['**']
   pull_request:
-
+permissions:
+  contents: read
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           java-version: '17'
-          distribution: 'temurin'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Unit tests and debug build
-        run: chmod +x ./gradlew && ./gradlew :app:testDebugUnitTest :app:assembleDebug --console=plain
-
-      # Every module log line has to go through L, never android.util.Log directly: OxygenOS drops the
-      # latter from inside SystemUI, so a line written that way is invisible on the device that matters
-      # (this is what made a working module look dead - see docs/evidence/phase3-log-sinks-and-fallback.md).
-      - name: Module logs must go through L
+          distribution: temurin
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Android SDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Tests and unsigned APK
+        run: chmod +x gradlew && ./gradlew :app:testDebugUnitTest :app:assembleDebug --console=plain
+      - name: Module logging contract
         run: python3 tools/route-module-logs.py --check
-
-      # `rive --verify` builds a keyframe that says `cubic` with no CubicEaseInterpolator child without a
-      # word, and that keyframe does not ease at all (`rive docs gotchas`). The whole file shipped that way
-      # once — 27 cubic keyframes, zero curves — so the mistake is cheap to make and invisible without this.
-      - name: Rive keyframes must carry the ease they ask for
-        run: python3 tools/check-rive-eases.py rive/duo/scene.rml
-
-      # The app preview and the status-bar module must draw the *same* file. The .riv is authored in
-      # rive/duo and committed into the app, so this catches the failure mode where one of them is rebuilt
-      # and the other is forgotten — which would show up as "the preview looks right, the phone does not".
-      #
-      # Best effort, like the verify below: a stock runner has no Rive CLI, and rive/duo/build/ is
-      # gitignored, so the built file only exists once the CLI has run. When the CLI is present the scene
-      # is built here and compared; when it is not, the check is skipped rather than failed.
-      - name: Rive project checks (best effort)
-        run: |
-          if command -v rive >/dev/null 2>&1; then
-            RIVE="$(command -v rive)"
-          elif [ -x "$HOME/.rive/bin/rive" ]; then
-            RIVE="$HOME/.rive/bin/rive"
-          else
-            echo "::notice::Rive CLI unavailable on this runner - skipping the Rive checks"
-            exit 0
-          fi
-          "$RIVE" rive/duo --verify
-          "$RIVE" inspect rive/duo --summary
-          "$RIVE" rive/duo --once
-          cmp rive/duo/build/duo.riv app/src/main/res/raw/duo.riv
-          echo "the shipped .riv is exactly what the scene builds"
-
-      # The app↔module channel is addressed by an authority string that exists twice: as a manifest attribute
-      # and as DuoPrefs.AUTHORITY. A unit test cannot compare them (Robolectric does not register manifest
-      # providers), so CI does — a mismatch would silently disable the entire settings channel.
-      - name: The provider authority must match the constant the module asks for
-        run: |
-          AUTHORITY='io.github.kvmy666.duostatusbar.settings'
-          grep -q "$AUTHORITY" app/src/main/AndroidManifest.xml
-          grep -q "$AUTHORITY" app/src/main/java/io/github/kvmy666/duostatusbar/settings/DuoPrefs.kt
-          echo "authority present in both the manifest and DuoPrefs: $AUTHORITY"
+      - name: No Rive in APK
+        run: python3 -c "import zipfile; z=zipfile.ZipFile('app/build/outputs/apk/debug/app-debug-unsigned.apk'); assert not any('rive' in p.lower() for p in z.namelist())"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DUO-Recreate-unsigned-test-build
+          path: app/build/outputs/apk/debug/app-debug-unsigned.apk

@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Duo Status Bar</string>
+    <string name="app_name">DUO Recreate</string>
     <string name="app_tagline">Batería, Wi-Fi y señal en un solo anillo.</string>
     <string name="settings_search">Buscar ajustes</string>
     <string name="settings_orientation_portrait">Ajustes verticales. Gira para ajustar la vista horizontal.</string>
     <string name="settings_orientation_landscape">Ajustes horizontales. Gira para ajustar la vista vertical.</string>
     <string name="section_element">Icono de batería</string>
-    <string name="settings_master">Usar Duo Status Bar</string>
+    <string name="settings_master">Usar DUO Recreate</string>
     <string name="settings_master_detail">Activa o desactiva el anillo.</string>
     <string name="settings_percent">Mostrar porcentaje de batería</string>
     <string name="settings_percent_detail">Muestra el nivel de batería en el anillo.</string>
@@ -96,15 +96,15 @@
     <string name="settings_update_failed">No se pudieron comprobar las actualizaciones.</string>
     <string name="settings_update_download">Descargar e instalar</string>
     <string name="settings_update_no_apk">No hay un APK adjunto. Abre la página de la publicación.</string>
-    <string name="update_notification_title">Actualización de Duo Status Bar</string>
+    <string name="update_notification_title">Actualización de DUO Recreate</string>
     <string name="update_notification_text">Versión %1$s disponible. Toca para abrir la publicación.</string>
     <string name="update_action_download">Descargar</string>
     <string name="update_downloading_title">Descargando actualización</string>
-    <string name="update_downloading_text">Descargando Duo Status Bar %1$s…</string>
+    <string name="update_downloading_text">Descargando DUO Recreate %1$s…</string>
     <string name="update_ready_title">Actualización lista para instalar</string>
-    <string name="update_ready_text">Duo Status Bar %1$s descargado. Toca para instalar.</string>
+    <string name="update_ready_text">DUO Recreate %1$s descargado. Toca para instalar.</string>
     <string name="update_failed_title">Falló la descarga</string>
-    <string name="update_failed_text">No se pudo descargar Duo Status Bar %1$s.</string>
+    <string name="update_failed_text">No se pudo descargar DUO Recreate %1$s.</string>
     <string name="section_about">Acerca de</string>
     <string name="settings_status">Estado y diagnóstico</string>
     <string name="settings_no_status">Esperando contacto con el módulo. Comprueba el ámbito System UI en LSPosed y reinicia System UI si es necesario.</string>
@@ -132,7 +132,7 @@
     <string name="settings_history">Actividad reciente</string>
     <string name="settings_donate">Apoyar al desarrollador</string>
     <string name="settings_log_share_title">Compartir diagnóstico del Duo</string>
-    <string name="settings_version">Duo Status Bar %1$s</string>
+    <string name="settings_version">DUO Recreate %1$s</string>
     <string name="settings_override_title">Hay un ajuste de prueba activo</string>
     <string name="settings_override_message">Un ajuste de adb fuerza la etapa %1$d. Bórralo para usar los ajustes de la app.</string>
     <string name="settings_override_clear">Borrar ajuste de prueba</string>
@@ -147,9 +147,9 @@
     <string name="settings_root_checking">Comprobando root…</string>
     <string name="settings_root_result_ok">Acceso root concedido.</string>
     <string name="settings_root_result_failed">Root no concedido. Puedes usar el diagnóstico local.</string>
-    <string name="settings_root_guide_steps">Administrador root → Superusuario → Duo Status Bar → permitir acceso.</string>
+    <string name="settings_root_guide_steps">Administrador root → Superusuario → DUO Recreate → permitir acceso.</string>
     <string name="settings_root_guide_note">Usa esta opción solo si necesitas una captura adicional. El diagnóstico del Duo no requiere root.</string>
-    <string name="settings_root_guide_image">Permiso de superusuario para Duo Status Bar</string>
+    <string name="settings_root_guide_image">Permiso de superusuario para DUO Recreate</string>
     <string name="settings_send_need_description">Describe el problema primero.</string>
     <string name="settings_send_need_access">El diagnóstico puede ser parcial mientras no haya contacto con el módulo.</string>
 </resources>

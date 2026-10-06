@@ -146,8 +146,8 @@ enum class DuoOrientation {
 
 object DuoPrefs {
 
-    const val AUTHORITY = "io.github.kvmy666.duostatusbar.settings"
-    const val ACTION_SETTINGS_CHANGED = "io.github.kvmy666.duostatusbar.SETTINGS_CHANGED"
+    const val AUTHORITY = "io.github.RECREATE.statusbar.settings"
+    const val ACTION_SETTINGS_CHANGED = "io.github.RECREATE.statusbar.SETTINGS_CHANGED"
 
     /**
      * Sent by the app when the user taps "Restart System UI". The module lives inside System UI, so it is
@@ -155,14 +155,14 @@ object DuoPrefs {
      * back. Needed because the size only takes effect on a fresh start (resizing it live is what used to
      * take System UI down).
      */
-    const val ACTION_RESTART_SYSTEMUI = "io.github.kvmy666.duostatusbar.RESTART_SYSTEMUI"
+    const val ACTION_RESTART_SYSTEMUI = "io.github.RECREATE.statusbar.RESTART_SYSTEMUI"
 
     /**
      * Sent by the app just before it builds a bug report. The module replies with a fresh diagnostic
      * dump, so the report shows the bar as it is *at that moment* — the one-shot boot dump cannot show
      * the shade expanded, which is exactly what the shade-position report needs (Issue #1).
      */
-    const val ACTION_DIAGNOSTICS_REQUEST = "io.github.kvmy666.duostatusbar.DIAGNOSTICS_REQUEST"
+    const val ACTION_DIAGNOSTICS_REQUEST = "io.github.RECREATE.statusbar.DIAGNOSTICS_REQUEST"
 
     const val COL_ENABLED = "enabled"
     const val COL_USE_RIVE = "use_rive"
@@ -523,7 +523,7 @@ object DuoPrefs {
      * the About screen says which one it is instead of showing a blank report.
      */
     fun moduleLoadTime(context: Context): Long = try {
-        Settings.Global.getLong(context.contentResolver, "duo_statusbar_last_load", 0L)
+        Settings.Global.getLong(context.contentResolver, "duo_recreate_last_load", 0L)
     } catch (_: Throwable) {
         0L
     }

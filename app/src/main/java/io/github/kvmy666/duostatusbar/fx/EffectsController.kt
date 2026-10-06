@@ -25,6 +25,10 @@ import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
 import io.github.kvmy666.duostatusbar.L
+import io.github.kvmy666.duostatusbar.RuntimeTelemetry
+import io.github.kvmy666.duostatusbar.TelemetryCounter
+import io.github.kvmy666.duostatusbar.TelemetryFeature
+import io.github.kvmy666.duostatusbar.TelemetrySampler
 import io.github.kvmy666.duostatusbar.hook.CanvasMotion
 import io.github.kvmy666.duostatusbar.hook.DuoIconHost
 
@@ -83,6 +87,7 @@ internal class EffectsController(private val context: Context, private val host:
     private val indicatorsTick=object:Runnable {
         override fun run()=guarded("indicadores ativos") {
             if(!running||!screen||pocket)return@guarded
+            RuntimeTelemetry.increment(TelemetryCounter.INDICATOR_TICK)
             indicators.refresh();indicators.refreshProjection();bluetooth=indicators.bluetooth;nfc=indicators.nfc;hotspot=indicators.hotspot
             experience.refresh()
             if(charging&&Fx.experience.chargeEstimate) {
@@ -182,11 +187,40 @@ internal class EffectsController(private val context: Context, private val host:
         try { block() } catch (t: Throwable) { L.w("$name: ${t.javaClass.simpleName}: ${t.message}") }
     }
     private fun enabled(bit: Int) = Fx.enabled(bit) && host.animationsEnabled
+    private fun configureTelemetry() {
+        val rich=Fx.enabled(8192)&&!Fx.experience.networkOnly
+        for(icon in SlotIcon.entries) {
+            val wanted=when(icon) {
+                SlotIcon.WIFI,SlotIcon.WIFI_OFFLINE,SlotIcon.NETWORK -> Fx.enabled(4)||Fx.enabled(8192)||Fx.experience.networkOnly
+                SlotIcon.AIRPLANE -> !Fx.experience.networkOnly&&host.showAirplane&&(Fx.enabled(4)||Fx.enabled(8192))
+                SlotIcon.DND -> !Fx.experience.networkOnly&&host.showDnd&&(Fx.enabled(4)||Fx.enabled(8192))
+                SlotIcon.BLUETOOTH -> !Fx.experience.networkOnly&&(Fx.enabled(4)||Fx.enabled(8192))
+                SlotIcon.NFC -> !Fx.experience.networkOnly&&Fx.enabled(4096)
+                SlotIcon.SHARE -> !Fx.experience.networkOnly&&Fx.enabled(8)
+                SlotIcon.MEDIA -> rich||(!Fx.experience.networkOnly&&Fx.experience.music)
+                SlotIcon.CHARGE_TIME -> !Fx.experience.networkOnly&&Fx.experience.chargeEstimate
+                SlotIcon.RECORD_TIME -> !Fx.experience.networkOnly&&Fx.experience.recordingTime
+                SlotIcon.VOLUME -> !Fx.experience.networkOnly&&Fx.experience.volume
+                SlotIcon.SCREENSHOT -> !Fx.experience.networkOnly&&Fx.experience.screenshot
+                SlotIcon.NOTIFICATION -> false // No runtime notification listener: do not certify a preview glyph.
+                else -> rich
+            }
+            RuntimeTelemetry.configure(TelemetryFeature.valueOf(icon.name),wanted)
+        }
+        val extras=arrayOf(TelemetryFeature.UNLOCK_CHECK to enabled(1), TelemetryFeature.CHARGE_EFFECT to enabled(256),
+            TelemetryFeature.CRITICAL_PULSE to enabled(512),TelemetryFeature.FADE to (host.animationsEnabled&&Fx.experience.fadeEnabled),
+            TelemetryFeature.DRAW_ICONS to (host.animationsEnabled&&Fx.experience.drawIcons),TelemetryFeature.COMPASS to Fx.experience.compass,
+            TelemetryFeature.ISLAND to Fx.experience.island,TelemetryFeature.POCKET to Fx.enabled(64),TelemetryFeature.GLASS to Fx.enabled(1024),
+            TelemetryFeature.SPRING to enabled(2048),TelemetryFeature.ALBUM_COLORS to Fx.experience.albumColors)
+        for((feature,wanted) in extras)RuntimeTelemetry.configure(feature,wanted&&!Fx.experience.networkOnly)
+    }
 
     fun start() = guarded("iniciar efeitos") {
         if (running) return@guarded
         running = true
+        RuntimeTelemetry.increment(TelemetryCounter.CONTROLLER_START)
         screen=runCatching { context.getSystemService(android.os.PowerManager::class.java)?.isInteractive!=false }.getOrDefault(true)
+        RuntimeTelemetry.lifecycle(true,screen,pocket)
         unlockObserver.start(screen)
         indicators.start()
         experience.start()
@@ -204,7 +238,9 @@ internal class EffectsController(private val context: Context, private val host:
         settingsChanged()
     }
     fun stop() = guarded("encerrar efeitos") {
+        if(running)RuntimeTelemetry.increment(TelemetryCounter.CONTROLLER_STOP)
         running = false
+        RuntimeTelemetry.lifecycle(false,screen,pocket)
         unlockObserver.stop()
         indicators.stop()
         experience.stop();volumeObserver.stop();foreground.clear();foregroundIcon=null;cycle.hold(null,now())
@@ -217,6 +253,7 @@ internal class EffectsController(private val context: Context, private val host:
     }
     fun settingsChanged() = guarded("configuração dos efeitos") {
         if (!running) return@guarded
+        configureTelemetry()
         cycle.configure(Fx.experience,now())
         if(Fx.experience.networkOnly){temporary=null;cycle.transient(null,now())}
         experience.configure()
@@ -242,6 +279,7 @@ internal class EffectsController(private val context: Context, private val host:
         updateCycle(); draw()
     }
     fun broadcast(intent: Intent) = guarded("evento dos efeitos") {
+        TelemetrySampler.battery(intent)
         indicators.bluetoothBattery(intent)
         if(intent.action in setOf(android.nfc.NfcAdapter.ACTION_ADAPTER_STATE_CHANGED,
             "android.net.wifi.WIFI_AP_STATE_CHANGED",BluetoothAdapter.ACTION_STATE_CHANGED,
@@ -337,6 +375,22 @@ internal class EffectsController(private val context: Context, private val host:
         audioAt = now(); L.i("Fones: $reason, aviso 4000 ms"); draw()
     }
     private fun updateCycle() {
+        val states = arrayOf(
+            TelemetryFeature.WIFI to (wifi&&indicators.wifiConnected&&indicators.wifiValidated),
+            TelemetryFeature.WIFI_OFFLINE to (wifi&&indicators.wifiConnected&&!indicators.wifiValidated),
+            TelemetryFeature.NETWORK to (!airplane&&networkText.isNotBlank()),
+            TelemetryFeature.AIRPLANE to airplane, TelemetryFeature.DND to (if(Fx.enabled(8192))indicators.dnd else dnd),
+            TelemetryFeature.BLUETOOTH to bluetooth, TelemetryFeature.NFC to nfc, TelemetryFeature.SHARE to hotspot,
+            TelemetryFeature.AIRPODS to headphones, TelemetryFeature.BOLT to (charging&&!wireless),
+            TelemetryFeature.CAMERA to indicators.camera, TelemetryFeature.MICROPHONE to indicators.microphone,
+            TelemetryFeature.ALARM to indicators.alarm, TelemetryFeature.VPN to indicators.vpn,
+            TelemetryFeature.LOCATION to indicators.location, TelemetryFeature.SILENT to (indicators.ringer==AudioManager.RINGER_MODE_SILENT),
+            TelemetryFeature.VIBRATE to (indicators.ringer==AudioManager.RINGER_MODE_VIBRATE),
+            TelemetryFeature.MEDIA to mediaPlaying(), TelemetryFeature.WIRELESS to wireless,
+            TelemetryFeature.TORCH to indicators.torch, TelemetryFeature.RECORD to indicators.recording,
+            TelemetryFeature.RECORD_TIME to indicators.recording, TelemetryFeature.CHARGE_TIME to charging)
+        for((feature,active) in states)RuntimeTelemetry.detect(feature,active)
+
         if(indicators.recording&&recordingAt<0)recordingAt=SystemClock.elapsedRealtime()
         if(!indicators.recording)recordingAt=-1
         val items=buildList {
@@ -444,8 +498,10 @@ internal class EffectsController(private val context: Context, private val host:
     }
     private fun restoreClock() { clockColors?.let { clockView?.setTextColor(it) }; clockColors = null; clockView = null }
     private fun draw() {
+        RuntimeTelemetry.lifecycle(running,screen,pocket)
         handler.removeCallbacks(tick)
         if (!running || pocket) return
+        RuntimeTelemetry.increment(TelemetryCounter.EFFECT_TICK)
         val time = now()
         fun age(at: Long, duration: Long, bit: Int): Long = EffectTimeline.age(time, at, duration, screen && enabled(bit) && !Fx.experience.networkOnly)
         val check = age(checkAt, EffectTimeline.UNLOCK_MS, 1)

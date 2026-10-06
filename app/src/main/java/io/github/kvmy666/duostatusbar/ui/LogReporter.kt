@@ -16,11 +16,9 @@ import java.util.Date
 import java.util.Locale
 
 /** FR-28: where the support button goes. */
-internal const val DONATE_URL = "https://paypal.me/kroomfahd"
 
 /** Where a fallback report goes: the developer's Telegram, and the issue tracker. */
-internal const val TELEGRAM_CHAT_URL = "https://t.me/kvmy1"
-internal const val GITHUB_NEW_ISSUE = "https://github.com/kvmy666/duoStatusBar/issues/new"
+internal const val GITHUB_NEW_ISSUE = "https://github.com/edugrepo1-jpg/duoStatusBar/issues/new"
 internal val TELEGRAM_PACKAGES = listOf(
     "org.telegram.messenger",
     "org.telegram.messenger.web",
@@ -33,28 +31,9 @@ internal val TELEGRAM_PACKAGES = listOf(
  * "Save status to a file".
  */
 internal fun sendLogOnTelegram(context: Context, report: String) {
-    val file = writeDiagnostics(context, report)
-    // Preferred: the bot uploads it straight to the developer's chat, no user step.
-    if (file != null &&
-        TelegramLog.send(context, file, "Duo Status Bar fallback report") == TelegramLog.Result.SENT
-    ) return
-    // Bot not configured or offline: hand the file to Telegram if installed, else open the chat.
-    val uri = file?.let { fileUri(context, it) }
-    val telegram = TELEGRAM_PACKAGES.firstOrNull { pkg ->
-        runCatching { context.packageManager.getApplicationInfo(pkg, 0) }.isSuccess
-    }
-    if (uri != null && telegram != null) {
-        val send = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_TEXT, UiText.t("Duo Status Bar log"))
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            setPackage(telegram)
-        }
-        if (runCatching { context.startActivity(send) }.isSuccess) return
-    }
-    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TELEGRAM_CHAT_URL))) }
-        .onFailure { L.w("telegram open: ${it.message}") }
+    val file=writeDiagnostics(context,report)
+    val uri=file?.let {fileUri(context,it)}
+    if(uri!=null)shareLog(context,uri) else shareText(context,report)
 }
 
 /** Opens a new GitHub issue with the device and status pre-filled; the report file can be attached there. */

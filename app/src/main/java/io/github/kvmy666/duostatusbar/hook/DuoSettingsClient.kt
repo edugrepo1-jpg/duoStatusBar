@@ -167,7 +167,7 @@ internal object DuoSettingsClient {
     }
 
     /** Sent by the app after a write, so the module re-reads without polling (NFR-2). */
-    const val ACTION_SETTINGS_CHANGED = "io.github.kvmy666.duostatusbar.SETTINGS_CHANGED"
+    const val ACTION_SETTINGS_CHANGED = "io.github.RECREATE.statusbar.SETTINGS_CHANGED"
 
     private val uri: Uri get() = Uri.parse("content://${DuoPrefs.AUTHORITY}")
 
@@ -209,15 +209,23 @@ internal object DuoSettingsClient {
                     lastGood[orientation] = fresh
                     providerUnreachable = false
                     retryAttempt = 0
-                    context.sendBroadcast(Intent(ACTION_SETTINGS_CHANGED).setPackage(context.packageName))
+                    onProviderRecovered?.invoke()
                 } else retryRead(context)
             } catch (t: Throwable) { L.w("Nova leitura das configurações: ${t.message}") }
         }, delay)
     }
 
+    /** Local recovery stays in-process; SystemUI does not hold our app's signature permission. */
+    internal var onProviderRecovered:(()->Unit)?=null
+
+    private val reportSession = io.github.kvmy666.duostatusbar.settings.BridgeReportSession()
+
     private val bridgeReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context?, intent: Intent?) {
             if (intent?.action != SettingsBridge.ACTION_SETTINGS_PUSH) return
+            if (c != null) reportSession.establish(intent.getStringExtra(SettingsBridge.EXTRA_REPORT_TOKEN)) { action, key, value, token ->
+                sendAuthenticatedReport(c, action, key, value, token)
+            }
             try {
                 @Suppress("UNCHECKED_CAST")
                 val values = intent.getSerializableExtra(SettingsBridge.EXTRA_VALUES) as? ArrayList<Any?>
@@ -538,10 +546,16 @@ internal object DuoSettingsClient {
 
     /** The provider-independent report path: a broadcast the app's receiver stores. Never throws. */
     private fun broadcastToApp(context: Context, action: String, key: String, value: String) {
+        ensureBridge(context)
+        if (!reportSession.send(action, key, value) { a, k, v, token ->
+            sendAuthenticatedReport(context, a, k, v, token)
+        }) requestFromApp(context)
+    }
+
+    private fun sendAuthenticatedReport(context: Context, action: String, key: String, value: String, token: String) {
         try {
-            context.sendBroadcast(
-                Intent(action).setPackage(BuildConfig.APPLICATION_ID).putExtra(key, value)
-            )
+            context.sendBroadcast(Intent(action).setPackage(BuildConfig.APPLICATION_ID)
+                .putExtra(key, value).putExtra(SettingsBridge.EXTRA_REPORT_TOKEN, token))
         } catch (t: Throwable) {
             L.w("bridge report: ${t.javaClass.simpleName}: ${t.message}")
         }

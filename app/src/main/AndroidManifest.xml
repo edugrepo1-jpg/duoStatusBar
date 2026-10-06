@@ -20,20 +20,20 @@
     <!-- The provider-independent app <-> System UI channel. The module registers its receiver with this
          signature permission, so only this app can push settings; the app holds it too. -->
     <permission
-        android:name="io.github.kvmy666.duostatusbar.permission.SETTINGS"
+        android:name="io.github.RECREATE.statusbar.permission.SETTINGS"
         android:protectionLevel="signature" />
-    <uses-permission android:name="io.github.kvmy666.duostatusbar.permission.SETTINGS" />
+    <uses-permission android:name="io.github.RECREATE.statusbar.permission.SETTINGS" />
 
     <application
         android:localeConfig="@xml/locales_config"
-        android:name=".DuoApp"
+        android:name="io.github.kvmy666.duostatusbar.DuoApp"
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/Theme.DuoStatusBar">
 
         <activity
-            android:name=".MainActivity"
+            android:name="io.github.kvmy666.duostatusbar.MainActivity"
             android:exported="true"
             android:label="@string/app_name">
             <intent-filter>
@@ -43,7 +43,7 @@
         </activity>
 
         <!-- ============ app <-> module channel ============ -->
-        <service android:name=".fx.ExperienceRelayService" android:label="Duo — música e captura"
+        <service android:name="io.github.kvmy666.duostatusbar.fx.ExperienceRelayService" android:label="Duo — música e captura"
             android:exported="true" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter><action android:name="android.service.notification.NotificationListenerService" /></intent-filter>
         </service>
@@ -52,8 +52,8 @@
              signature permission of ours, so requiring one would make the channel unusable. What it
              exposes is non-sensitive (on/off, renderer, size, offset). See settings/DuoPrefs.kt. -->
         <provider
-            android:name=".settings.DuoSettingsProvider"
-            android:authorities="io.github.kvmy666.duostatusbar.settings"
+            android:name="io.github.kvmy666.duostatusbar.settings.DuoSettingsProvider"
+            android:authorities="io.github.RECREATE.statusbar.settings"
             android:exported="true"
             android:enabled="true" />
 
@@ -61,7 +61,7 @@
              chat apps truncate. Not exported, and only the diagnostics directory is shared. -->
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="io.github.kvmy666.duostatusbar.files"
+            android:authorities="io.github.RECREATE.statusbar.files"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data
@@ -72,36 +72,36 @@
         <!-- The provider-independent settings channel (see SettingsBridge): System UI asks for the
              settings, and reports its status back. Exported so the System UI uid can reach them. -->
         <receiver
-            android:name=".settings.BootCompletedReceiver"
+            android:name="io.github.kvmy666.duostatusbar.settings.BootCompletedReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
         <receiver
-            android:name=".settings.SettingsRequestReceiver"
+            android:name="io.github.kvmy666.duostatusbar.settings.SettingsRequestReceiver"
             android:exported="true">
             <intent-filter>
-                <action android:name="io.github.kvmy666.duostatusbar.action.SETTINGS_REQUEST" />
+                <action android:name="io.github.RECREATE.statusbar.action.SETTINGS_REQUEST" />
             </intent-filter>
         </receiver>
         <receiver
-            android:name=".settings.StatusBridgeReceiver"
+            android:name="io.github.kvmy666.duostatusbar.settings.StatusBridgeReceiver"
             android:exported="true">
             <intent-filter>
-                <action android:name="io.github.kvmy666.duostatusbar.action.STATUS_PUSH" />
-                <action android:name="io.github.kvmy666.duostatusbar.action.DUMP_PUSH" />
-                <action android:name="io.github.kvmy666.duostatusbar.action.FALLBACK_PUSH" />
+                <action android:name="io.github.RECREATE.statusbar.action.STATUS_PUSH" />
+                <action android:name="io.github.RECREATE.statusbar.action.DUMP_PUSH" />
+                <action android:name="io.github.RECREATE.statusbar.action.FALLBACK_PUSH" />
             </intent-filter>
         </receiver>
 
         <!-- The update notification's Download action bridges here to the download worker. Not exported:
              only this app's own PendingIntent targets it. -->
         <receiver
-            android:name=".settings.UpdateDownloadReceiver"
+            android:name="io.github.kvmy666.duostatusbar.settings.UpdateDownloadReceiver"
             android:exported="false">
             <intent-filter>
-                <action android:name="io.github.kvmy666.duostatusbar.DOWNLOAD_UPDATE" />
+                <action android:name="io.github.RECREATE.statusbar.DOWNLOAD_UPDATE" />
             </intent-filter>
         </receiver>
 
@@ -133,7 +133,7 @@
 
         <meta-data
             android:name="xposeddescription"
-            android:value="Duo Status Bar — bateria, Wi-Fi e sinal desenhados com Canvas Android." />
+            android:value="DUO Recreate — bateria, Wi-Fi e sinal desenhados com Canvas Android." />
 
         <meta-data
             android:name="xposedminversion"

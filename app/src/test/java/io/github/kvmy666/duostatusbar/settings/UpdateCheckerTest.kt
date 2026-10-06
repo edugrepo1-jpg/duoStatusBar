@@ -64,8 +64,8 @@ class UpdateCheckerTest {
         val body = """
             [
               {"tag_name":"16-1.4.0-beta.1","name":"v1.4.0-beta.1","prerelease":true,"draft":false,
-               "html_url":"https://x","assets":[{"name":"DuoStatusBar-1.4.0-beta.1.apk",
-               "browser_download_url":"https://github.com/dl/a.apk","digest":"sha256:$sha"}]},
+               "html_url":"https://github.com/edugrepo1-jpg/duoStatusBar/releases/tag/v1.4.0-beta.1","assets":[{"name":"DuoStatusBar-1.4.0-beta.1.apk",
+               "browser_download_url":"https://github.com/edugrepo1-jpg/duoStatusBar/releases/download/v1.4.0-beta.1/a.apk","digest":"sha256:$sha"}]},
               {"tag_name":"15-1.3.2","name":"v1.3.2","prerelease":false,"draft":true,"assets":[]}
             ]
         """.trimIndent()
@@ -73,7 +73,7 @@ class UpdateCheckerTest {
         assertEquals(1, list.size)
         assertEquals("1.4.0-beta.1", list[0].version)
         assertTrue(list[0].prerelease)
-        assertEquals("https://github.com/dl/a.apk", list[0].apkUrl)
+        assertEquals("https://github.com/edugrepo1-jpg/duoStatusBar/releases/download/v1.4.0-beta.1/a.apk", list[0].apkUrl)
         assertEquals(sha, list[0].sha256)
     }
 

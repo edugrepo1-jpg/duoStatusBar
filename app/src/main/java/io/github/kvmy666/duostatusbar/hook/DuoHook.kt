@@ -311,6 +311,10 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      */
     private fun hookSettingsChanges(ctx: Context) {
         L.guard("DuoHook settings receiver") {
+            DuoSettingsClient.onProviderRecovered={
+                handler.removeCallbacks(settingsApply)
+                handler.postDelayed(settingsApply,SETTINGS_DEBOUNCE_MS)
+            }
             val receiver = object : BroadcastReceiver() {
                 override fun onReceive(receiverContext: Context?, intent: Intent?) {
                     // The size only takes effect on a fresh start, so the app asks for one here. This
@@ -354,7 +358,10 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 IntentFilter().apply {
                     addAction(DuoSettingsClient.ACTION_SETTINGS_CHANGED)
                     addAction(DuoPrefs.ACTION_RESTART_SYSTEMUI)
+                    addAction(DuoPrefs.ACTION_DIAGNOSTICS_REQUEST)
                 },
+                io.github.kvmy666.duostatusbar.settings.SettingsBridge.PERMISSION,
+                null,
                 Context.RECEIVER_EXPORTED
             )
             L.i("listening for app settings changes")

@@ -14,6 +14,9 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
 import io.github.kvmy666.duostatusbar.L
+import io.github.kvmy666.duostatusbar.RuntimeTelemetry
+import io.github.kvmy666.duostatusbar.TelemetryCounter
+import io.github.kvmy666.duostatusbar.TelemetryFeature
 
 /** Reads system state in SystemUI's context. Never starts recording, location or camera access. */
 internal class RuntimeIndicators(private val context: Context, private val handler: Handler, private val changed: () -> Unit) {
@@ -47,12 +50,18 @@ internal class RuntimeIndicators(private val context: Context, private val handl
     private val ops by lazy { context.getSystemService(AppOpsManager::class.java) }
     private val cameras by lazy { context.getSystemService(CameraManager::class.java) }
     private fun read(name: String, action: () -> Unit) {
-        try { action() } catch (t: Throwable) {
+        try { action();evidence(name,true) } catch (t: Throwable) {
+            evidence(name,false)
             when(name){"Bluetooth"->bluetooth=false;"NFC"->nfc=false;"hotspot"->hotspot=false;"alarme"->alarm=false;"rede"->{vpn=false;wifiConnected=false;wifiValidated=false};"localização habilitada"->locationEnabled=false;"captura da tela"->recording=false;"bateria dos fones"->headphoneBattery=-1}
             if (synchronized(failures){failures.add(name)}) L.w("Indicador $name indisponível: ${t.javaClass.simpleName}; estado não confirmado") }
     }
     private val opListener = AppOpsManager.OnOpActiveChangedListener { op, uid, pkg, active ->
         if (started) {
+            when(op) {
+                AppOpsManager.OPSTR_CAMERA -> RuntimeTelemetry.probe(TelemetryFeature.CAMERA,true)
+                AppOpsManager.OPSTR_RECORD_AUDIO -> RuntimeTelemetry.probe(TelemetryFeature.MICROPHONE,true)
+                AppOpsManager.OPSTR_FINE_LOCATION,AppOpsManager.OPSTR_COARSE_LOCATION -> RuntimeTelemetry.probe(TelemetryFeature.LOCATION,true)
+            }
             val key="$op|$uid|$pkg"
             val previous=Triple(camera,microphone,locationInUse)
             if (active) operations.add(key) else operations.remove(key)
@@ -65,6 +74,7 @@ internal class RuntimeIndicators(private val context: Context, private val handl
     private val torchListener = object : CameraManager.TorchCallback() {
         override fun onTorchModeChanged(cameraId: String, enabled: Boolean) {
             if (!started) return
+            RuntimeTelemetry.probe(TelemetryFeature.TORCH,true)
             if (enabled) torches.add(cameraId) else torches.remove(cameraId)
             val next=torches.isNotEmpty();if(next!=torch){torch=next;changed()}
         }
@@ -115,9 +125,10 @@ internal class RuntimeIndicators(private val context: Context, private val handl
     fun refresh(force:Boolean=false) {
         if(!started) { applySnapshot(poll());return }
         if(refreshGate.pending) { if(force)followUp=true;return }
-        if(!refreshGate.begin(SystemClock.uptimeMillis(),force))return
+        if(!refreshGate.begin(SystemClock.uptimeMillis(),force)){RuntimeTelemetry.increment(TelemetryCounter.CACHE_HIT);return}
         val expected=lifecycle
         worker?.post {
+            RuntimeTelemetry.increment(TelemetryCounter.INVENTORY_QUERY)
             val snapshot=poll()
             handler.post apply@ {
                 if(!started||expected!=lifecycle)return@apply
@@ -134,6 +145,7 @@ internal class RuntimeIndicators(private val context: Context, private val handl
         projectionPending=true
         val expected=lifecycle
         worker?.post {
+            RuntimeTelemetry.increment(TelemetryCounter.PROJECTION_QUERY)
             val active=projectionActive()
             handler.post apply@ {
                 if(!started||expected!=lifecycle)return@apply
@@ -150,7 +162,26 @@ internal class RuntimeIndicators(private val context: Context, private val handl
         locationEnabled=s.location;bluetooth=s.bluetooth;nfc=s.nfc;hotspot=s.hotspot;alarm=s.alarm;dnd=s.dnd;ringer=s.ringer
         vpn=s.vpn;wifiConnected=s.wifi;wifiValidated=s.validated;headphoneBattery=s.battery;recording=s.recording
     }
-    private fun <T> probe(name:String,fallback:T,read:()->T):T=try {read()}catch(t:Throwable) {
+    private fun evidence(name:String,success:Boolean) {
+        val features=when(name) {
+            "Bluetooth" -> listOf(TelemetryFeature.BLUETOOTH)
+            "NFC" -> listOf(TelemetryFeature.NFC)
+            "hotspot" -> listOf(TelemetryFeature.SHARE)
+            "alarme" -> listOf(TelemetryFeature.ALARM)
+            "não perturbe" -> listOf(TelemetryFeature.DND)
+            "silencioso" -> listOf(TelemetryFeature.SILENT,TelemetryFeature.VIBRATE)
+            "rede" -> listOf(TelemetryFeature.WIFI,TelemetryFeature.WIFI_OFFLINE,TelemetryFeature.VPN)
+            "localização habilitada" -> listOf(TelemetryFeature.LOCATION)
+            "captura da tela" -> listOf(TelemetryFeature.RECORD,TelemetryFeature.RECORD_TIME)
+            // Successful registrations do not certify an active privacy/torch state.
+            "privacidade","privacidade inicial" -> if(success)emptyList() else listOf(TelemetryFeature.CAMERA,TelemetryFeature.MICROPHONE)
+            "lanterna" -> if(success)emptyList() else listOf(TelemetryFeature.TORCH)
+            else -> emptyList()
+        }
+        features.forEach {RuntimeTelemetry.probe(it,success)}
+    }
+    private fun <T> probe(name:String,fallback:T,read:()->T):T=try {read().also {evidence(name,true)}}catch(t:Throwable) {
+        evidence(name,false)
         val first=synchronized(failures) { failures.add(name) }
         if(first)L.w("Indicador $name indisponível: ${t.javaClass.simpleName}; estado não confirmado")
         fallback

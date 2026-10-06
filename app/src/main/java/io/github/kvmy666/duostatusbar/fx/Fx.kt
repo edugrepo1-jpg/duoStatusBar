@@ -27,8 +27,9 @@ internal object Fx {
         Events.changed = ::scheduleLocalLog
     }
     fun wrapDump(raw: String?): String {
-        baseDump = (raw ?: "").substringBefore(Events.MARKER).trimEnd()
-        return Events.wrap(baseDump)
+        baseDump = io.github.kvmy666.duostatusbar.TelemetryLedger.strip((raw ?: "").substringBefore(Events.MARKER)).trimEnd()
+        io.github.kvmy666.duostatusbar.RuntimeTelemetry.increment(io.github.kvmy666.duostatusbar.TelemetryCounter.DIAGNOSTIC_EXPORT)
+        return Events.wrap(io.github.kvmy666.duostatusbar.RuntimeTelemetry.decorate(baseDump))
     }
     /** Explicitly requested local IPC (spec section 10). Existing provider writes last_dump;
      * fallback broadcast is package-scoped. No upload, external service or log collection here. */

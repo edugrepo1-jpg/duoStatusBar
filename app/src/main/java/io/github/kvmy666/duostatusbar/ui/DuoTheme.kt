@@ -1,9 +1,11 @@
 package io.github.kvmy666.duostatusbar.ui
 
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -53,7 +55,22 @@ private val StudioType = Typography(
     labelSmall=TextStyle(fontFamily=FontFamily.SansSerif,fontWeight=FontWeight.SemiBold,fontSize=11.sp,lineHeight=15.sp,letterSpacing=.4.sp)
 )
 @Composable
-fun DuoTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme=if(dark) StudioDark else StudioLight,typography=StudioType,
+fun DuoTheme(dark: Boolean? = null, content: @Composable () -> Unit) {
+    val context=LocalContext.current
+    var mode by remember {mutableStateOf(ThemePreference.read(context))}
+    DisposableEffect(context) {
+        val preferences=context.getSharedPreferences("duo_app_appearance",android.content.Context.MODE_PRIVATE)
+        val listener=android.content.SharedPreferences.OnSharedPreferenceChangeListener { _,key -> if(key=="mode")mode=ThemePreference.read(context) }
+        preferences.registerOnSharedPreferenceChangeListener(listener)
+        onDispose {preferences.unregisterOnSharedPreferenceChangeListener(listener)}
+    }
+    val night=dark ?: when(mode){AppThemeMode.SYSTEM->isSystemInDarkTheme();AppThemeMode.LIGHT->false;AppThemeMode.DARK->true}
+    SideEffect {
+        (context as? androidx.activity.ComponentActivity)?.let {activity ->
+            val style=if(night) androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT) else androidx.activity.SystemBarStyle.light(android.graphics.Color.TRANSPARENT,android.graphics.Color.TRANSPARENT)
+            activity.enableEdgeToEdge(style,style)
+        }
+    }
+    MaterialTheme(colorScheme=if(night) StudioDark else StudioLight,typography=StudioType,
         shapes=Shapes(small=RoundedCornerShape(12.dp),medium=RoundedCornerShape(20.dp),large=RoundedCornerShape(28.dp)),content=content)
 }

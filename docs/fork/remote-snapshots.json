@@ -1,0 +1,56 @@
+[
+  {
+    "version": "1.4.0-canvas-fx2",
+    "localSha": "da337522646f0fd04da188c72f143d6c432b98ce",
+    "tree": "9997cad4f8689e739d51e4e0f234897745b10b22",
+    "remoteSha": "a78531ae97a754f2c1d1d4b751349ec276e8e151"
+  },
+  {
+    "version": "1.4.0-canvas-fx3",
+    "localSha": "28276abcd7e517442afbce87a4bf75916acc901e",
+    "tree": "610ccaee2ec77ddfddac63848adc6ac7697b28d6",
+    "remoteSha": "638b1a96106648799cddce5d3f2c27036602758b"
+  },
+  {
+    "version": "1.4.0-canvas-fx4",
+    "localSha": "206c0ecf8bdfa832ed5617fa39d5d2eab34e6386",
+    "tree": "73325be6755259c6775dca2e1d77c350e4d0a38b",
+    "remoteSha": "bc0629a1405371c35d321a6f46726fb7199c13dd"
+  },
+  {
+    "version": "1.4.0-canvas-fx5",
+    "localSha": "992e502eb37676015796ea04467c4fd24940f933",
+    "tree": "4c53622cf1d67a59e822f55e7058aa121037604a",
+    "remoteSha": "b20bd8acfa6cee5d07e039cc4209edf69a505de7"
+  },
+  {
+    "version": "1.4.0-canvas-studio",
+    "localSha": "877e36b969bf7ca37f8a7b359607b28dec77ab9f",
+    "tree": "0a784b40bc726afdc5534c60c94fea70ab3abb45",
+    "remoteSha": "8bdbf47f6f99a7164b8207d30196a7b22aa33fed"
+  },
+  {
+    "version": "1.4.0-canvas-studio-fx1",
+    "localSha": "41aff042587da264552416b43ed93feec0e2e902",
+    "tree": "c87334d9988ded74031839ecc050eacaee9ad7e6",
+    "remoteSha": "7555683bfe0665291a9780dc2d43ca62bd1143ae"
+  },
+  {
+    "version": "1.4.0-canvas-experience",
+    "localSha": "7687d37ca75db1773ef7357952b1d3af045a21b1",
+    "tree": "2d2a6238f705ed8aacd9e8fea754b87c4b16b4f0",
+    "remoteSha": "e06c871206325fb9b51b22000354bcfa7133ad53"
+  },
+  {
+    "version": "1.4.2-canvas-studio",
+    "localSha": "536ea35769616a8e901c0c33e3e41087beee5a59",
+    "tree": "fa18c2ccf232cd3139917b1187b92ca951a523fc",
+    "remoteSha": "91f0f4cccb3acde16839c7b226b38ae79d652b21"
+  },
+  {
+    "version": "1.4.2-canvas-audit",
+    "localSha": "9db3330c613c56b72d445c4df93c1b7586d2b505",
+    "tree": "48c1553f6f1752c94ad10d9ad1f41fce7cb4928d",
+    "remoteSha": "624396fed7090ab80d117d8693abc9b19cd0e17b"
+  }
+]

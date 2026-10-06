@@ -1,70 +1,45 @@
-# Duo Status Bar
+# DUO Recreate
 
-[![Downloads](https://img.shields.io/github/downloads/kvmy666/duoStatusBar/total?label=downloads)](https://github.com/kvmy666/duoStatusBar/releases)
-[![Latest release](https://img.shields.io/github/v/release/kvmy666/duoStatusBar)](https://github.com/kvmy666/duoStatusBar/releases)
-[![Android 13+](https://img.shields.io/badge/Android-13%2B-3ddc84)](https://developer.android.com)
+Independent GPL-3.0 fork of [Duo Status Bar](https://github.com/kvmy666/duoStatusBar) by kvmy666. Android Canvas replaces the Rive renderer while preserving the original ring and all features developed in this fork.
 
-Duo Status Bar replaces the battery, Wi-Fi and mobile signal icons in your status bar with one clean,
-animated indicator.
-
-It is an LSPosed module. It does not modify system files. It only hides the icons it replaces and draws
-the new indicator. You can turn it off at any time, and your original icons come back exactly as they
-were.
-
-<p align="center">
-  <img src="https://cdn.jsdelivr.net/gh/kvmy666/duoStatusBar@main/docs/media/status-bar.png" width="360" alt="Duo Status Bar in the status bar">
-</p>
-
-## Requirements
-
-- Android 13 or newer.
-- A custom ROM with root.
-- LSPosed installed.
+Android package: `io.github.RECREATE.statusbar`. Source namespaces retain upstream provenance. Updates come only from this repository. Original developer contact/support and automatic log delivery are disabled; original authorship is preserved.
 
 ## Install
 
-1. Download the APK from [Releases](https://github.com/kvmy666/duoStatusBar/releases) and install it.
-2. Open LSPosed, go to Modules, and enable Duo Status Bar.
-3. In the module's scope, tick **System UI**.
-4. Restart System UI, or reboot the phone.
-5. Open the Duo Status Bar app and turn the main switch on.
+Android 13+ and a working LSPosed environment are required for SystemUI injection. Root is not required **by the app's diagnostic export**; that does not remove LSPosed's environment requirements.
 
-The module is off until you turn it on. Nothing changes before that.
+1. Keep the earlier Canvas app installed for the first launch if you want its preferences imported. Only our locally signed Canvas editions qualify; import is one-time, without logs or privileged grants.
+2. Disable the old Duo module in LSPosed. Install DUO Recreate, open it and choose Portuguese, English or Spanish.
+3. Enable **DUO Recreate**, select System UI as scope and restart the phone. Turn customization on in the app.
+4. Use the visual/effects preview before applying changes. Hold the ring to open a small island, drag down to expand, drag up on the header to collapse.
 
-## Settings
+Do not enable both original and fork modules at once. The new package installs separately; it does not silently replace the original app.
 
-- **Battery icon** - show or hide the percentage, change the size, and move the position.
-- **Animations** - turn animations on or off, and set the speed.
-- **Appearance** - icon colour, smooth graphics, the clock font, and what appears in the middle.
-- **Status bar icons** - keep your other icons visible beside the indicator, or hide them.
-- **Tap actions** - optional. Handled by the Auto Expand module.
-- **About** - see the module status and send a report.
+## Features and evidence
 
-Changing the size needs a System UI restart. The app has a button for it.
+[Complete preserved requirements and history](docs/fork/HISTORICO-COMPLETO.md) · [Ten-perspective audit](docs/fork/AUDITORIA.md) · [Runtime/battery findings](docs/fork/RUNTIME-E-BATERIA.md) · [Validation](docs/fork/VALIDACAO.md).
 
-## Turn it off
+The app groups settings into Home, Visual, Effects and Settings, with explanations in compact cards and system/light/dark themes. Twenty requested status categories and nine approved ideas include sequential fades, persistent newest media/recording event, exclusive 3-second unlock check, music/progress, charge estimate/effects, screenshot shutter, volume, recording timer, GPS compass, earbud battery and interactive preview.
 
-Use the switch in the app, or run one of these commands:
+Rootless reports separate configured, detected, executed, inaccessible and unverified features. Battery percentages describe the whole phone; no unsupported module-specific mAh claim is made. Detailed device facts exclude private hardware identifiers and content. Share/save logs locally; review free-form text before posting it publicly.
 
-```text
-adb shell settings put global duo_statusbar_stage 0   # off
-adb shell settings put global duo_statusbar_stage 1   # simple drawing, no native code
-adb shell settings put global duo_statusbar_stage 2   # full animation
+## Build and maintain
+
+Java 17+, Android SDK 36, Build Tools 36.0.0, Gradle wrapper 8.13. The default settings select `app/build-canvas.gradle` (Kotlin 2.1.0, AGP 8.13.2). Run:
+
+```
+./gradlew :app:testDebugUnitTest :app:assembleDebug
+python3 tools/route-module-logs.py --check
 ```
 
-## If something goes wrong
+The debug APK is unsigned. Sign release artifacts using your own protected release key; never commit a signing key, password or token. The update installer requires package and signer to match the installed app, a higher versionCode and SHA-256 from this repository's release asset. A differently signed build cannot update an installed copy.
 
-- Issues: https://github.com/kvmy666/duoStatusBar/issues
-- Telegram: https://t.me/kvmy1
+Retained Rive project files and upstream documents are historical; they are not packaged or used by the Canvas renderer. Nine archived source deliveries were reconstructed as clearly identified historical commits. The original upstream history remains intact. No private conversations, original device logs or keys belong in Git.
 
-Send a report from the app's **About** section. It includes your device details and the logs, which
-makes the problem much easier to find.
+## Device validation
 
-## Support
-
-If you like the app, you can support the developer:
-[Buy Me a Coffee](https://www.buymeacoffee.com/kroomfahd) or [PayPal](https://paypal.me/kroomfahd).
+Local automated tests and native renders do not certify an OEM phone, sensors, GPU blur or measured battery autonomy. See the validation document for what was actually run and the remaining on-device checks. Do not claim “bug-free” without such evidence.
 
 ## License
 
-GPL-3.0. See [LICENSE](LICENSE).
+GPL-3.0. See [LICENSE](LICENSE), original authors and recovered change history. [Original README](docs/fork/UPSTREAM-README.md) is retained as upstream documentation; its old support/update links do not configure this fork.

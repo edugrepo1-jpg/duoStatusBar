@@ -33,15 +33,15 @@ internal data class UpdateInfo(
  */
 internal object UpdateChecker {
 
-    const val RELEASES_PAGE = "https://github.com/kvmy666/duoStatusBar/releases"
+    const val RELEASES_PAGE = "https://github.com/edugrepo1-jpg/duoStatusBar/releases"
 
     private const val GITHUB_API =
-        "https://api.github.com/repos/kvmy666/duoStatusBar/releases?per_page=20"
+        "https://api.github.com/repos/edugrepo1-jpg/duoStatusBar/releases?per_page=20"
 
     private val SEMVER = Regex("""(\d+)\.(\d+)(?:\.(\d+))?(?:-([0-9A-Za-z.]+))?""")
 
     /** The newest release (stable or pre-release), or null when it cannot be read. */
-    fun check(): UpdateInfo? = relayRelease() ?: githubRelease()
+    fun check(): UpdateInfo? = githubRelease()
 
     /** A strictly newer release than the installed one, or null. */
     fun updateAvailable(): UpdateInfo? {
@@ -85,11 +85,16 @@ internal object UpdateChecker {
             connectTimeout = 8_000
             readTimeout = 8_000
             setRequestProperty("Accept", "application/vnd.github+json")
-            setRequestProperty("User-Agent", "duoStatusBar")
+            setRequestProperty("User-Agent", "DUO-Recreate")
         }
         try {
             if (connection.responseCode != 200) throw IllegalStateException("HTTP ${connection.responseCode}")
-            return connection.inputStream.bufferedReader().use { it.readText() }
+            return connection.inputStream.bufferedReader().use { reader ->
+                val body=StringBuilder();val buffer=CharArray(8192)
+                while(true) {val count=reader.read(buffer);if(count<0)break
+                    require(body.length+count<=1_000_000) {"Release metadata too large"};body.append(buffer,0,count)}
+                body.toString()
+            }
         } finally {
             connection.disconnect()
         }
@@ -120,7 +125,9 @@ internal object UpdateChecker {
 
     /** GitHub's release array, newest-first as returned, mapped to [UpdateInfo]. Pure, unit-tested. */
     fun parseGithubReleases(body: String): List<UpdateInfo>? {
+        require(body.length<=1_000_000) {"Release metadata too large"}
         val array = JSONArray(body)
+        require(array.length()<=100) {"Too many releases"}
         val out = ArrayList<UpdateInfo>(array.length())
         for (i in 0 until array.length()) {
             val r = array.optJSONObject(i) ?: continue
@@ -137,7 +144,7 @@ internal object UpdateChecker {
                 )
             )
         }
-        return out
+        return out.filter { it.url.startsWith(RELEASES_PAGE+"/") && (it.apkUrl.isEmpty() || UpdateDownloadPolicy.trustedAsset(it.apkUrl)) }
     }
 
     private fun apkAssetUrl(release: JSONObject): String {

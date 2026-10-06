@@ -87,6 +87,7 @@ internal object Diag {
             appendLine("version: ${BuildConfig.VERSION_NAME} (code ${BuildConfig.VERSION_CODE}, debug=${BuildConfig.DEBUG})")
 
             appendLine(DeviceFacts.header(context))
+            appendLine(io.github.kvmy666.duostatusbar.RuntimeTelemetry.report())
             appendLine("build:")
             appendLine("  MANUFACTURER=${Build.MANUFACTURER} BRAND=${Build.BRAND} MODEL=${Build.MODEL}")
             appendLine("  DEVICE=${Build.DEVICE} PRODUCT=${Build.PRODUCT} HARDWARE=${Build.HARDWARE}")

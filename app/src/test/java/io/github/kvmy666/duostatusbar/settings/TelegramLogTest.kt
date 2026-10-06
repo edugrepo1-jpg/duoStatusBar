@@ -27,23 +27,14 @@ class TelegramLogTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
 
     @Test
-    fun `a relay url is always baked into the build`() {
-        assertTrue(
-            "TELEGRAM_RELAY_URL must be compiled in, or the report button falls back to the share sheet",
-            BuildConfig.TELEGRAM_RELAY_URL.isNotBlank()
-        )
-        assertTrue(
-            "the relay must be https",
-            BuildConfig.TELEGRAM_RELAY_URL.startsWith("https://")
-        )
-        // A malformed URL would make every upload throw and fall back; parse it here.
-        val parsed = URL(BuildConfig.TELEGRAM_RELAY_URL)
-        assertTrue("the relay needs a host", parsed.host.isNotBlank())
+    fun `fork does not embed the original developer relay or bot`() {
+        assertTrue(BuildConfig.TELEGRAM_RELAY_URL.isEmpty())
+        assertTrue(BuildConfig.TELEGRAM_BOT_TOKEN.isEmpty())
+        assertTrue(BuildConfig.TELEGRAM_CHAT_ID.isEmpty())
     }
-
     @Test
-    fun `the report button is configured on a normal build`() {
-        assertTrue(TelegramLog.configured())
+    fun `fork report delivery remains local until a recipient is chosen`() {
+        assertFalse(TelegramLog.configured())
     }
 
     @Test
@@ -64,13 +55,12 @@ class TelegramLogTest {
     }
 
     @Test
-    fun `a second send inside the cooldown is refused without touching the network`() {
+    fun `unconfigured fork refuses an upload before any network request`() {
         DuoPrefs.writeLogSentAt(context, System.currentTimeMillis())
         val file = File.createTempFile("duo-log", ".txt").apply { writeText("duo") }
         try {
-            // No network is reachable in a unit test, so a SENT/FAILED result would mean the guard was
-            // skipped; RATE_LIMITED proves the cooldown returned before the upload.
-            assertEquals(TelegramLog.Result.RATE_LIMITED, TelegramLog.send(context, file, "test"))
+            // No endpoint is configured; even a report with a recent send cannot leave the app.
+            assertEquals(TelegramLog.Result.FAILED, TelegramLog.send(context, file, "test"))
         } finally {
             file.delete()
         }

@@ -9,13 +9,13 @@ android {
     compileSdk 36
     buildToolsVersion '36.0.0'
     defaultConfig {
-        applicationId 'io.github.kvmy666.duostatusbar'
+        applicationId 'io.github.RECREATE.statusbar'
         minSdk 33
         targetSdk 36
-        versionCode 27
+        versionCode 28
         buildConfigField 'int', 'FEATURE_MASK', (project.findProperty('duoFeatureMask') ?: '16383').toString().toInteger().toString()
-        versionName '1.4.2-canvas-audit'
-        buildConfigField 'String', 'TELEGRAM_RELAY_URL', '"https://duo-log-relay.kvmy-duo-logs.workers.dev"'
+        versionName '1.4.2-canvas-recreate'
+        buildConfigField 'String', 'TELEGRAM_RELAY_URL', '""'
         buildConfigField 'String', 'TELEGRAM_BOT_TOKEN', '""'
         buildConfigField 'String', 'TELEGRAM_CHAT_ID', '""'
         ndk { abiFilters 'arm64-v8a' }

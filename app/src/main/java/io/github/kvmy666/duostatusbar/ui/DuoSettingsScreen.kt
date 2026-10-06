@@ -44,6 +44,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
@@ -249,8 +250,10 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
         }
     }
 
+    var explainingFeature by remember { mutableStateOf(false) }
+    androidx.compose.runtime.CompositionLocalProvider(LocalFeatureBackdrop provides { value -> explainingFeature=value }) {
     Scaffold(
-        modifier = modifier.fillMaxSize().safeDrawingPadding().imePadding(),
+        modifier = modifier.fillMaxSize().safeDrawingPadding().imePadding().then(if(explainingFeature) Modifier.blur(14.dp) else Modifier),
         contentWindowInsets = WindowInsets(0,0,0,0),
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = { StudioNavigation(page) { page = it; query = "" } }
@@ -449,6 +452,7 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             }
         )
         }
+    }
     }
     }
 }

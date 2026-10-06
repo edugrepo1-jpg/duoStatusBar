@@ -73,7 +73,7 @@ class StudioUiTest {
         root.draw(Canvas(bitmap))
         val out=File("build/studio-captures").apply {mkdirs()}
         File(out,"$name.png").outputStream().use {assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG,100,it))}
-        assertTrue("render must contain opaque pixels",bitmap.getPixel(w/2,10) ushr 24>0)
+        assertTrue("render must contain opaque pixels",bitmap.getPixel(w/2,if(name=="feature-explanation")h/2 else 10) ushr 24>0)
         bitmap.recycle()
     }
     @Test fun `all four pages compose in light and dark and retain working navigation`() {

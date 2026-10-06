@@ -359,5 +359,17 @@
   "Use para deixar a área da câmera mais limpa durante o uso.": "Use to keep the camera area clear during use.",
   "PRÉVIA DA BARRA": "STATUS BAR PREVIEW",
   "Seu desenho": "Your design",
-  "Confira o desenho aqui. Em Efeitos, você pode simular os eventos.": "Check your design here. Under Effects, you can simulate events."
+  "Confira o desenho aqui. Em Efeitos, você pode simular os eventos.": "Check your design here. Under Effects, you can simulate events.",
+  "Tema": "Theme",
+  "Escuro": "Dark",
+  "Claro": "Light",
+  "Sistema": "System",
+  "Escolha a aparência do aplicativo. O anel continua seguindo a cor da barra de status.": "Choose the app appearance. The ring still follows the status bar color.",
+  "As atualizações vêm apenas do nosso fork DUO Recreate. O módulo original tem outro pacote e não substitui esta edição.": "Updates come only from our DUO Recreate fork. The original module uses a different package and cannot replace this edition.",
+  "Ver lançamento do fork": "View fork release",
+  "Inspirado no Duo Status Bar original, de kvmy666. Fork independente com Canvas Android. Licença GPL-3.0.": "Inspired by the original Duo Status Bar by kvmy666. Independent fork with Android Canvas. GPL-3.0 license.",
+  "Código e histórico do fork": "Fork source and history",
+  "Expandir": "Expand",
+  "Recolher": "Collapse",
+  "Arraste para baixo": "Drag down"
 }

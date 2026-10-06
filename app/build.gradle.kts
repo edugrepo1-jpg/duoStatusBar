@@ -37,28 +37,24 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "io.github.kvmy666.duostatusbar"
+        applicationId = "io.github.RECREATE.statusbar"
         // Android 13 (API 33) is the floor. Every API the module uses above 33 is guarded
         // (`RECEIVER_EXPORTED`, `POST_NOTIFICATIONS`), and the view probes it depends on exist on 13 as
         // well. Support is best-effort: the ROM adapters were measured on 14+, so 13 attaches through the
         // AOSP path and reports through the diagnostic dump if anything is off. targetSdk stays 36.
         minSdk = 33
         targetSdk = 36
-        versionCode = 27
+        versionCode = 28
         buildConfigField("int", "FEATURE_MASK", providers.gradleProperty("duoFeatureMask").orElse("16383").get().toInt().toString())
-        versionName = "1.4.2-canvas-audit"
+        versionName = "1.4.2-canvas-recreate"
         // Telegram log delivery. Prefer the relay URL (Worker holds the bot token, so no secret is in the
         // APK); otherwise fall back to the direct bot token; otherwise the button opens the share sheet.
         // The relay URL is public (the Worker enforces its own rate limit), so it is baked into every
         // build by default; `.env`/CI can still override it. Without this, a CI-built APK has no URL and
         // the report button silently falls back to the share sheet.
-        buildConfigField(
-            "String",
-            "TELEGRAM_RELAY_URL",
-            "\"${secret("TELEGRAM_RELAY_URL").ifBlank { "https://duo-log-relay.kvmy-duo-logs.workers.dev" }}\""
-        )
-        buildConfigField("String", "TELEGRAM_BOT_TOKEN", "\"${secret("TELEGRAM_BOT_TOKEN")}\"")
-        buildConfigField("String", "TELEGRAM_CHAT_ID", "\"${secret("TELEGRAM_CHAT_ID")}\"")
+        buildConfigField("String", "TELEGRAM_RELAY_URL", "\"\"")
+        buildConfigField("String", "TELEGRAM_BOT_TOKEN", "\"\"")
+        buildConfigField("String", "TELEGRAM_CHAT_ID", "\"\"")
         ndk {
             abiFilters += "arm64-v8a"
         }

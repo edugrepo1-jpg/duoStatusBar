@@ -85,7 +85,7 @@ internal enum class StudioSymbol { HOME,VISUAL,EFFECTS,SETTINGS,SEARCH,ARROW,PLU
 
 @Composable internal fun StudioHeader(page: StudioPage, landscape: Boolean, searching: Boolean) {
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
-        Text("DUO",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,letterSpacing=1.sp)
+        Text("DUO RECREATE",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,letterSpacing=1.sp)
         Surface(shape=RoundedCornerShape(50),color=MaterialTheme.colorScheme.surface) {
             Text(if(landscape)UiText.t("Horizontal") else UiText.t("Vertical"),Modifier.padding(horizontal=12.dp,vertical=7.dp),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }

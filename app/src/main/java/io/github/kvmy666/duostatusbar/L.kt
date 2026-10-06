@@ -30,6 +30,8 @@ object L {
 
     private val ringLock = Any()
     private val ring = ArrayDeque<String>(MAX_RECENT)
+    private const val MAX_RECENT_CHARS = 128 * 1024
+    private var ringChars = 0
 
     /**
      * One entry point for every level. The XposedBridge sink carries no level, so nothing is lost by
@@ -72,7 +74,10 @@ object L {
             val line = System.currentTimeMillis().toString() + " " + msg
             synchronized(ringLock) {
                 ring.addLast(line)
-                while (ring.size > MAX_RECENT) ring.removeFirst()
+                ringChars += line.length + 1
+                while (ring.size > MAX_RECENT || ringChars > MAX_RECENT_CHARS) {
+                    ringChars -= ring.removeFirst().length + 1
+                }
             }
         } catch (_: Throwable) {
         }

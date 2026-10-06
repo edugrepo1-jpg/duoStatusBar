@@ -41,7 +41,7 @@ class UpdateDownloadWorker(context: Context, params: WorkerParameters) :
         val version = inputData.getString(KEY_VERSION).orEmpty()
         val apkUrl = inputData.getString(KEY_APK_URL).orEmpty()
         val sha = inputData.getString(KEY_SHA).orEmpty().lowercase()
-        if (!UpdateDownloadPolicy.compatibleChannel(io.github.kvmy666.duostatusbar.BuildConfig.VERSION_NAME,version) || apkUrl.isBlank() || !UpdateDownloadPolicy.validVersion(version) || !UpdateDownloadPolicy.validDigest(sha)) {
+        if (!UpdateDownloadPolicy.compatibleChannel(io.github.kvmy666.duostatusbar.BuildConfig.VERSION_NAME,version) || !UpdateDownloadPolicy.trustedAsset(apkUrl) || !UpdateDownloadPolicy.validVersion(version) || !UpdateDownloadPolicy.validDigest(sha)) {
             return Result.failure(workDataOf(KEY_ERROR to "invalid_update_metadata"))
         }
 
@@ -58,6 +58,10 @@ class UpdateDownloadWorker(context: Context, params: WorkerParameters) :
                 partial.delete()
                 UpdateNotifications.downloadFailed(applicationContext, version)
                 return Result.failure(workDataOf(KEY_ERROR to "sha_mismatch"))
+            }
+            if(!UpdateArtifactVerifier.trusted(applicationContext,partial)) {
+                partial.delete()
+                return Result.failure(workDataOf(KEY_ERROR to "incompatible_package_or_signature"))
             }
             if(file.exists()&&!file.delete())throw java.io.IOException("Cannot replace verified update")
             if(!partial.renameTo(file))throw java.io.IOException("Cannot commit verified update")
@@ -82,6 +86,7 @@ class UpdateDownloadWorker(context: Context, params: WorkerParameters) :
         try {
             if (connection.responseCode != 200) throw IllegalStateException("HTTP ${connection.responseCode}")
             val total = connection.contentLengthLong
+            require(total<=134_217_728L) {"Update too large"}
             connection.inputStream.use { input ->
                 dest.outputStream().use { output ->
                     val buffer = ByteArray(64 * 1024)
@@ -94,6 +99,7 @@ class UpdateDownloadWorker(context: Context, params: WorkerParameters) :
                         digest.update(buffer, 0, read)
                         output.write(buffer, 0, read)
                         written += read
+                        require(written<=134_217_728L) {"Update too large"}
                         if (total > 0) {
                             val pct = ((written * 100) / total).toInt()
                             if(pct!=lastProgress){lastProgress=pct;setProgressAsync(workDataOf(KEY_PROGRESS to pct))}
@@ -148,7 +154,7 @@ class UpdateDownloadWorker(context: Context, params: WorkerParameters) :
                 // Fall back to the relay proxy only when the feed gave no direct URL.
                 val relay = BuildConfig.TELEGRAM_RELAY_URL.trim().trimEnd('/')
                 val url = apkUrl.ifBlank { if (relay.isNotEmpty()) "$relay/download" else "" }
-                if (!UpdateDownloadPolicy.compatibleChannel(io.github.kvmy666.duostatusbar.BuildConfig.VERSION_NAME,version)||url.isBlank()||!UpdateDownloadPolicy.validVersion(version)||!UpdateDownloadPolicy.validDigest(sha256))return
+                if (!UpdateDownloadPolicy.compatibleChannel(io.github.kvmy666.duostatusbar.BuildConfig.VERSION_NAME,version)||!UpdateDownloadPolicy.trustedAsset(url)||!UpdateDownloadPolicy.validVersion(version)||!UpdateDownloadPolicy.validDigest(sha256))return
                 val request = OneTimeWorkRequestBuilder<UpdateDownloadWorker>()
                     .setInputData(data(version, url, sha256))
                     .build()
@@ -164,8 +170,15 @@ class UpdateDownloadWorker(context: Context, params: WorkerParameters) :
 }
 
 internal object UpdateDownloadPolicy {
+    fun trustedAsset(url:String):Boolean = runCatching {
+        val u=java.net.URI(url)
+        u.scheme=="https" && u.host=="github.com" && u.userInfo==null && u.port==-1 &&
+            u.rawPath.startsWith("/edugrepo1-jpg/duoStatusBar/releases/download/") && !u.rawPath.contains("..") &&
+            !u.rawPath.contains("%",ignoreCase=true) && u.query==null && u.fragment==null
+    }.getOrDefault(false)
+
     fun compatibleChannel(installed:String,release:String)=!installed.contains("-canvas-")||release.contains("-canvas-")
-    fun downloadable(info:UpdateInfo)=info.apkUrl.isNotBlank()&&validVersion(info.version)&&validDigest(info.sha256)&&compatibleChannel(io.github.kvmy666.duostatusbar.BuildConfig.VERSION_NAME,info.version)
+    fun downloadable(info:UpdateInfo)=trustedAsset(info.apkUrl)&&validVersion(info.version)&&validDigest(info.sha256)&&compatibleChannel(io.github.kvmy666.duostatusbar.BuildConfig.VERSION_NAME,info.version)
     fun validVersion(version:String)=version.matches(Regex("[0-9A-Za-z][0-9A-Za-z._-]{0,79}"))
     fun validDigest(sha:String)=sha.matches(Regex("(?i)[0-9a-f]{64}"))
 }

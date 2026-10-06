@@ -16,5 +16,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "DuoStatusBar"
+rootProject.name = "DUO-Recreate"
 include(":app")
+
+project(":app").buildFileName = "build-canvas.gradle"

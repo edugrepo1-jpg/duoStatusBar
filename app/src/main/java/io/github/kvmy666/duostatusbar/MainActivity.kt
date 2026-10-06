@@ -31,10 +31,19 @@ class MainActivity : ComponentActivity() {
         io.github.kvmy666.duostatusbar.i18n.UiText.initialize(this,io.github.kvmy666.duostatusbar.i18n.AppLanguage.selected(this))
         enableEdgeToEdge()
         setContent {
+            var startupReady by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+            androidx.compose.runtime.LaunchedEffect(Unit) {
+                val imported=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    io.github.kvmy666.duostatusbar.settings.LegacySettingsMigration.import(this@MainActivity)
+                }
+                if(imported) io.github.kvmy666.duostatusbar.settings.SettingsBridge.push(this@MainActivity)
+                startupReady=true
+            }
             var needsLanguage by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(!io.github.kvmy666.duostatusbar.i18n.AppLanguage.chosen(this)) }
             DuoTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    if(needsLanguage) androidx.compose.foundation.layout.Box(Modifier.fillMaxSize(),contentAlignment=androidx.compose.ui.Alignment.Center) {
+                    if(!startupReady) androidx.compose.foundation.layout.Box(Modifier.fillMaxSize(),contentAlignment=androidx.compose.ui.Alignment.Center) { androidx.compose.material3.CircularProgressIndicator() }
+                    else if(needsLanguage) androidx.compose.foundation.layout.Box(Modifier.fillMaxSize(),contentAlignment=androidx.compose.ui.Alignment.Center) {
                         io.github.kvmy666.duostatusbar.ui.LanguagePicker(true) { tag ->
                             io.github.kvmy666.duostatusbar.i18n.AppLanguage.choose(this@MainActivity,tag);needsLanguage=false;recreate()
                         }

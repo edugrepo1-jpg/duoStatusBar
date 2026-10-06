@@ -103,3 +103,7 @@ If a change cannot be reconciled with this file, stop and ask; do not "just make
   `JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"`.
 - **Never** release or merge to `main` without the owner's approval; betas are pre-releases and never go
   to the LSPosed store.
+
+
+## DUO Recreate fork contract
+User-authorized fork replaces Rive with Android Canvas entirely. Historical Rive instructions above describe upstream; do not reintroduce its renderer/assets/dependency. Package io.github.RECREATE.statusbar; update/support routes belong to edugrepo1-jpg/duoStatusBar. Keep original GPL credit. Read docs/fork/HISTORICO-COMPLETO.md and AUDITORIA.md before edits. Preserve all effects/preferences and require evidence for device claims. Rootless diagnostics distinguish configuration, detection, execution and access; never attribute whole-phone battery drain to the module without a profiler. Never publish raw logs, screenshots/conversations, secrets or signing material.

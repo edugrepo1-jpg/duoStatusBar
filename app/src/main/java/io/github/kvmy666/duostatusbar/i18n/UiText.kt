@@ -11,8 +11,8 @@ internal object UiText {
     fun initialize(context:Context,tag:String) {
         language=tag
         if(catalogs.isNotEmpty())return
-        val own=if(context.packageName=="io.github.kvmy666.duostatusbar")context else
-            runCatching { context.createPackageContext("io.github.kvmy666.duostatusbar",Context.CONTEXT_IGNORE_SECURITY) }.getOrDefault(context)
+        val own=if(context.packageName=="io.github.RECREATE.statusbar")context else
+            runCatching { context.createPackageContext("io.github.RECREATE.statusbar",Context.CONTEXT_IGNORE_SECURITY) }.getOrDefault(context)
         for(code in listOf("pt-BR","en","es"))runCatching {
             val json=JSONObject(own.assets.open("translations/$code.json").bufferedReader().use { it.readText() })
             catalogs[code]=json.keys().asSequence().associateWith { json.getString(it) }

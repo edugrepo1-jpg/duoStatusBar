@@ -25,9 +25,14 @@ class ExperienceRelayService:NotificationListenerService() {
     private var failed=false
     private var controllers=emptyList<MediaController>()
     private var latest=PlaybackSnapshot()
+    private var sentAt=0L
+    private var metadataDirty=true
+    private var cachedToken:android.media.session.MediaSession.Token?=null
+    private var cachedMetadata:MediaMetadata?=null
+    private var cachedColor=0
     private val callback=object:MediaController.Callback() {
         override fun onPlaybackStateChanged(state:PlaybackState?) { publish() }
-        override fun onMetadataChanged(metadata:MediaMetadata?) { publish() }
+        override fun onMetadataChanged(metadata:MediaMetadata?) { metadataDirty=true;publish() }
         override fun onSessionDestroyed() { readSessions() }
     }
     private val sessionListener=MediaSessionManager.OnActiveSessionsChangedListener { next ->
@@ -90,26 +95,39 @@ class ExperienceRelayService:NotificationListenerService() {
     }
     private fun readSessions(force:Boolean=false) {
         if(!connected||!music)return
+        if(force)metadataDirty=true
         runCatching { replaceControllers(manager?.getActiveSessions(component).orEmpty());publish(force) }
             .onFailure { failure(it);scheduleHeartbeat() }
     }
     private fun publish(force:Boolean=false) {
         if(!connected||!music)return
         runCatching {
-            val selected=controllers.firstOrNull { it.playbackState?.state==PlaybackState.STATE_PLAYING } ?: controllers.firstOrNull()
-            val next=selected?.let(RuntimeExperience::snapshot) ?: PlaybackSnapshot()
+            val states=controllers.map { it to it.playbackState }
+            val selected=states.firstOrNull { it.second?.state==PlaybackState.STATE_PLAYING } ?: states.firstOrNull()
+            val next=if(selected==null)PlaybackSnapshot() else {
+                val controller=selected.first
+                if(metadataDirty||cachedToken!=controller.sessionToken) {
+                    cachedToken=controller.sessionToken;cachedMetadata=controller.metadata
+                    RuntimeExperience.snapshot(controller,selected.second,cachedMetadata).also {
+                        cachedColor=it.color;metadataDirty=false
+                    }
+                } else RuntimeExperience.snapshot(controller,selected.second,cachedMetadata,cachedColor)
+            }
             if(force||next!=latest) { latest=next;sendPlayback(next) }
         }.onFailure(::failure)
         scheduleHeartbeat()
     }
     private fun scheduleHeartbeat() {
         handler.removeCallbacks(heartbeat)
-        if(shouldHeartbeat(connected,music,screen,latest.playing,watching))handler.postDelayed(heartbeat,HEARTBEAT_MS)
+        if(shouldHeartbeat(connected,music,screen,latest.playing,watching))
+            handler.postDelayed(heartbeat,heartbeatDelay(sentAt,SystemClock.elapsedRealtime()))
     }
     private fun sendPlayback(s:PlaybackSnapshot) {
+        sentAt=SystemClock.elapsedRealtime()
         send(Intent(RuntimeExperience.ACTION).putExtra("playing",s.playing)
             .putExtra("position",if(s.positionMs<0)-1 else (s.progress(SystemClock.elapsedRealtime())*s.durationMs).toLong())
-            .putExtra("duration",s.durationMs).putExtra("speed",s.speed).putExtra("color",s.color).putExtra("title",s.title))
+            .putExtra("duration",s.durationMs).putExtra("speed",s.speed).putExtra("color",s.color).putExtra("title",s.title)
+            .putExtra("source",s.sourcePackage))
     }
     private fun send(intent:Intent) {
         runCatching { sendBroadcast(intent.setPackage(SettingsBridge.SYSTEMUI)) }.onFailure(::failure)
@@ -122,6 +140,7 @@ class ExperienceRelayService:NotificationListenerService() {
         controllers.forEach { runCatching { it.unregisterCallback(callback) } };controllers=emptyList()
         if(watching)runCatching { manager?.removeOnActiveSessionsChangedListener(sessionListener) }
         watching=false
+        cachedToken=null;cachedMetadata=null;cachedColor=0;metadataDirty=true
     }
     private fun stop() {
         if(connected&&music)sendPlayback(PlaybackSnapshot())
@@ -133,8 +152,9 @@ class ExperienceRelayService:NotificationListenerService() {
     override fun onListenerDisconnected() { stop();super.onListenerDisconnected() }
     override fun onDestroy() { stop();super.onDestroy() }
     companion object {
-        const val REFRESH="io.github.kvmy666.duostatusbar.action.EXPERIENCE_REFRESH"
+        const val REFRESH="io.github.RECREATE.statusbar.action.EXPERIENCE_REFRESH"
         const val HEARTBEAT_MS=30000L
+        fun heartbeatDelay(sentAt:Long,now:Long)=(HEARTBEAT_MS-(now-sentAt).coerceAtLeast(0L)).coerceIn(0L,HEARTBEAT_MS)
         fun shouldHeartbeat(connected:Boolean,music:Boolean,screen:Boolean,playing:Boolean,watching:Boolean)=
             connected&&music&&screen&&(playing||!watching)
     }

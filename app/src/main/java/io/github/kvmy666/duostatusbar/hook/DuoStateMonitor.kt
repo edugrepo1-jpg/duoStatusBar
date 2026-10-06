@@ -236,7 +236,10 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     private fun readInitialBattery() {
         try {
             val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-            if (intent != null) onBatteryChanged(intent)
+            if (intent != null) {
+                io.github.kvmy666.duostatusbar.TelemetrySampler.battery(intent)
+                onBatteryChanged(intent)
+            }
         } catch (t: Throwable) {
             L.w("initial battery read: ${t.javaClass.simpleName}: ${t.message}")
         }

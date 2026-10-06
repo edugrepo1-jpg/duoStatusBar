@@ -10,6 +10,9 @@ import android.graphics.Typeface
 import android.os.SystemClock
 import android.view.View
 import io.github.kvmy666.duostatusbar.L
+import io.github.kvmy666.duostatusbar.RuntimeTelemetry
+import io.github.kvmy666.duostatusbar.TelemetryCounter
+import io.github.kvmy666.duostatusbar.TelemetryFeature
 import io.github.kvmy666.duostatusbar.fx.*
 import kotlin.math.abs
 
@@ -45,6 +48,13 @@ internal class DuoCanvasView(context: Context, part: DuoPart = DuoPart.ALL) : Vi
     private val effectPainter = EffectPainter()
     private val glass = GlassBackdrop(this)
     private var failed = false
+    private var lastEvidenceFeature: TelemetryFeature? = null
+    private val effectEvidence=BooleanArray(TelemetryFeature.entries.size)
+    private fun effectObserved(feature:TelemetryFeature,active:Boolean) {
+        val index=feature.ordinal
+        if(active&&!effectEvidence[index])RuntimeTelemetry.executed(feature)
+        effectEvidence[index]=active
+    }
     private var active = true
     private var target: DuoVisual? = null
     private var shown: DuoVisual? = null
@@ -180,12 +190,33 @@ internal class DuoCanvasView(context: Context, part: DuoPart = DuoPart.ALL) : Vi
     override fun onDraw(canvas: Canvas) {
         if (failed) return
         val checkpoint = canvas.save()
+        val drawAt = System.nanoTime()
         try {
             drawElement(canvas)
+            if(active && isAttachedToWindow && isShown && shown!=null && width>0 && height>0 && visibilityAmount>=.001f) {
+                RuntimeTelemetry.increment(TelemetryCounter.CANVAS_DRAW)
+                val feature=when {
+                    part!=DuoPart.INDICATORS&&effects.checkMs>=120&&EffectTimeline.check(effects.checkMs)>.01f -> TelemetryFeature.UNLOCK_CHECK
+                    part!=DuoPart.RING&&effects.audioMs>=120&&EffectTimeline.audio(effects.audioMs)>.01f -> TelemetryFeature.AIRPODS
+                    part!=DuoPart.RING&&effects.slot.icon!=null&&effects.slot.opacity>.01f&&effects.checkMs<0&&effects.audioMs<0 -> TelemetryFeature.valueOf(effects.slot.icon!!.name)
+                    else -> null
+                }
+                if(feature!=lastEvidenceFeature) { feature?.let { RuntimeTelemetry.executed(it) };lastEvidenceFeature=feature }
+                effectObserved(TelemetryFeature.CHARGE_EFFECT,effects.charging)
+                effectObserved(TelemetryFeature.CRITICAL_PULSE,effects.pulseMs>=0||effects.criticalDot)
+                effectObserved(TelemetryFeature.FADE,effects.slot.icon!=null&&effects.slot.opacity in .001f.. .999f)
+                effectObserved(TelemetryFeature.DRAW_ICONS,effects.drawIcons&&effects.slot.icon!=null&&effects.slot.reveal in .001f.. .999f)
+                effectObserved(TelemetryFeature.GLASS,effects.glass)
+                effectObserved(TelemetryFeature.SPRING,effects.spring&&effects.slot.icon!=null&&effects.slot.scale<.999f)
+                effectObserved(TelemetryFeature.ALBUM_COLORS,effects.musicPlaying&&effects.albumColor!=0&&!effects.charging&&effects.checkMs<0)
+            }
         } catch (error: Throwable) {
             failed = true
+            RuntimeTelemetry.increment(TelemetryCounter.CANVAS_FAILURE)
+            lastEvidenceFeature?.let { RuntimeTelemetry.probe(it,false) }
             safe("falha no desenho") { L.w("Canvas: ${error.javaClass.simpleName}: ${error.message}") }
         } finally {
+            RuntimeTelemetry.increment(TelemetryCounter.CANVAS_DRAW_NS,(System.nanoTime()-drawAt).coerceAtLeast(0))
             canvas.restoreToCount(checkpoint)
         }
     }

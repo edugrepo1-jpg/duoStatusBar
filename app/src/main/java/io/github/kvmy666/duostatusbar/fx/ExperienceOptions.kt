@@ -41,7 +41,8 @@ internal data class ExperienceOptions(
 
 internal data class PlaybackSnapshot(
     val playing:Boolean=false, val positionMs:Long=-1, val durationMs:Long=0,
-    val updatedAt:Long=0, val speed:Float=1f, val color:Int=0, val title:String=""
+    val updatedAt:Long=0, val speed:Float=1f, val color:Int=0, val title:String="",
+    val sourcePackage:String=""
 ) {
     fun progress(now:Long):Float = if(positionMs<0||durationMs<=0) -1f else
         ((positionMs + if(playing) ((now-updatedAt).coerceAtLeast(0)*speed).toLong() else 0).toDouble()/durationMs).toFloat().coerceIn(0f,1f)

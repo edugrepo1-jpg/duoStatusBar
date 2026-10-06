@@ -190,7 +190,7 @@ internal class DuoGuard(private val context: Context) {
         const val KEY_ATTEMPT_AT = "duo_statusbar_rive_attempt_at"
 
         /** Wall-clock ms of the last time the module ran inside SystemUI; 0 means it never has. */
-        const val KEY_LAST_LOAD = "duo_statusbar_last_load"
+        const val KEY_LAST_LOAD = "duo_recreate_last_load"
         /** How many *processes* may die to Rive before it is given up on. */
         private const val MAX_ATTEMPTS = 2
 
