@@ -4,11 +4,17 @@
 
 Batería y estados del dispositivo en un anillo de la barra de estado. Fork independiente **GPL-3.0** de [Duo Status Bar](https://github.com/kvmy666/duoStatusBar), de **kvmy666**, con Android Canvas.
 
-**[Descargar APK y ZIP de interfaces](https://github.com/edugrepo1-jpg/duoStatusBar/releases/tag/v1.4.3-recreate)** · [Galería completa](GALERIA.md) · [Versiones](https://github.com/edugrepo1-jpg/duoStatusBar/releases)
+**[Descargar APK](https://github.com/edugrepo1-jpg/duoStatusBar/releases/tag/v1.4.3-recreate)** · [ZIP de interfaces](downloads/DUO-Recreate-interfaces.zip) · [Galería completa](GALERIA.md) · [Versiones](https://github.com/edugrepo1-jpg/duoStatusBar/releases)
 
 Requiere **Android 13+, arm64 y un entorno LSPosed funcional**. Paquete: `io.github.RECREATE.statusbar`. Es una versión preliminar; las pruebas locales no certifican tu dispositivo OEM.
 
 <img src="images/home-es-claro-01.png" width="240" alt="Inicio en español" /> <img src="images/nfc-es.png" width="240" alt="Explicación de NFC e interruptor" />
+
+## El anillo en acción
+
+<img src="images/demo-animacoes.gif" width="720" alt="Anillo: desbloqueo, transiciones, carga, música y grabación" />
+
+Demostración simulada: el Canvas de producción dibuja el anillo y los efectos en Android 15 (API 35) simulado. La carcasa y las pantallas del sistema son ilustrativas; no es una grabación de Samsung ni una validación de integración en One UI.
 
 ## Funciones
 

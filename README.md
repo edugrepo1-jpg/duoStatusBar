@@ -4,9 +4,15 @@
 
 Sua bateria e os estados do aparelho em um anel na barra de status. Um fork independente do [Duo Status Bar](https://github.com/kvmy666/duoStatusBar), de **kvmy666**, redesenhado com Android Canvas.
 
-**[Baixar APK e ZIP das interfaces](https://github.com/edugrepo1-jpg/duoStatusBar/releases/tag/v1.4.3-recreate)** · [Todas as versões](https://github.com/edugrepo1-jpg/duoStatusBar/releases) · [Galeria completa](docs/GALERIA.md)
+**[Baixar APK](https://github.com/edugrepo1-jpg/duoStatusBar/releases/tag/v1.4.3-recreate)** · [ZIP das interfaces e demonstração](docs/downloads/DUO-Recreate-interfaces.zip) · [Todas as versões](https://github.com/edugrepo1-jpg/duoStatusBar/releases) · [Galeria completa](docs/GALERIA.md)
 
 Android **13+**, aparelho **arm64** e um ambiente **LSPosed** funcionando. Pacote: `io.github.RECREATE.statusbar`. Esta distribuição é uma prévia: os testes locais não substituem a confirmação na sua ROM.
+
+## Veja o anel em ação
+
+<img src="docs/images/demo-animacoes.gif" width="720" alt="Demonstração do anel na barra: desbloqueio, carrossel, carga, música e gravação" />
+
+**Demonstração simulada:** o anel e os efeitos são desenhados pelo Canvas de produção em Android 15 (API 35) simulado. A moldura e as telas do telefone são ilustrativas; não é uma gravação de Samsung nem validação da integração na One UI. [Imagens dos painéis e detalhes](docs/GALERIA.md) · [Como reproduzir](tools/demo/README.md).
 
 ## Conheça a interface
 

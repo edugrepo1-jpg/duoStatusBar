@@ -4,7 +4,28 @@
 
 **97 capturas nativas**: todas as seções roláveis de Início, Visual, Efeitos e Ajustes, cartões explicativos, prévia, idiomas, temas e ilha. Capturas em Android simulado; blur/GPU e encaixe na One UI precisam de verificação no aparelho. Não inclui dados pessoais.
 
-[Baixar todas em ZIP](https://github.com/edugrepo1-jpg/duoStatusBar/releases/download/v1.4.3-recreate/DUO-Recreate-interfaces.zip) · [Manifesto](images/manifest.json)
+[Baixar todas em ZIP](downloads/DUO-Recreate-interfaces.zip) · [Manifesto](images/manifest.json)
+
+## Anel em uma tela de telefone
+
+<img src="images/demo-animacoes.gif" width="720" alt="Anel Canvas com efeitos de desbloqueio, carrossel, carga, música e gravação" />
+
+O GIF tem 22 segundos e usa o renderizador Canvas de produção. A tela inicial, as notificações e os ajustes rápidos ao redor dele são ilustrações com dados simulados, sem captura pessoal. Não demonstram a anexação real aos cabeçalhos da One UI. O anel pequeno está no topo; ao lado aparece o mesmo desenho ampliado. [Manifesto da demonstração](images/demo-manifest.json) · [Reprodução](../tools/demo/README.md).
+
+<details>
+<summary>Telefone, desbloqueio, carga e painéis — cinco imagens</summary>
+
+<img src="images/demo-dispositivo.png" width="480" alt="Demonstração simulada: dispositivo" />
+
+<img src="images/demo-desbloqueio.png" width="480" alt="Demonstração simulada: desbloqueio" />
+
+<img src="images/demo-carga.png" width="480" alt="Demonstração simulada: carga" />
+
+<img src="images/demo-notificacoes.png" width="480" alt="Demonstração simulada: notificacoes" />
+
+<img src="images/demo-ajustes-rapidos.png" width="480" alt="Demonstração simulada: ajustes-rapidos" />
+
+</details>
 
 <details>
 <summary>Telas principais em português — temas claro e escuro (42)</summary>

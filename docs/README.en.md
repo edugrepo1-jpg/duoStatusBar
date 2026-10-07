@@ -4,11 +4,17 @@
 
 Battery and device states in a status bar ring. An independent **GPL-3.0** fork of [Duo Status Bar](https://github.com/kvmy666/duoStatusBar) by **kvmy666**, using Android Canvas throughout.
 
-**[Download APK and interface ZIP](https://github.com/edugrepo1-jpg/duoStatusBar/releases/tag/v1.4.3-recreate)** · [Full gallery](GALERIA.md) · [All releases](https://github.com/edugrepo1-jpg/duoStatusBar/releases)
+**[Download APK](https://github.com/edugrepo1-jpg/duoStatusBar/releases/tag/v1.4.3-recreate)** · [Interface ZIP](downloads/DUO-Recreate-interfaces.zip) · [Full gallery](GALERIA.md) · [All releases](https://github.com/edugrepo1-jpg/duoStatusBar/releases)
 
 Requires **Android 13+, arm64 and a working LSPosed environment**. Package: `io.github.RECREATE.statusbar`. This is a preview release; local tests do not certify your OEM device.
 
 <img src="images/home-en-claro-01.png" width="240" alt="Home in English" /> <img src="images/nfc-en.png" width="240" alt="NFC explanation and switch" />
+
+## See the ring in action
+
+<img src="images/demo-animacoes.gif" width="720" alt="Ring demo: unlock, sequential fades, charging, music and recording" />
+
+Simulated demonstration: the production Canvas renderer draws the ring and effects in a native Android 15 (API 35) test environment. The phone shell and system screens are illustrative, not a Samsung recording or proof of One UI integration.
 
 ## What it does
 

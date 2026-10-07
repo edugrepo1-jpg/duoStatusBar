@@ -1,0 +1,44 @@
+{
+  "renderer": "Production DuoCanvasView + SlotCycle + EffectTimeline; Robolectric native SDK 35",
+  "device_capture": false,
+  "system_screens": "Illustrative Canvas phone shell; not actual SystemUI or evidence of OEM integration",
+  "personal_data": false,
+  "animation": {
+    "source_frames": 220,
+    "gif_frames": 132,
+    "duration_ms": 22000,
+    "sequential_fades": true
+  },
+  "assets": [
+    {
+      "file": "demo-dispositivo.png",
+      "sha256": "c2af456a87eb16582bcb143f9427accb01f57212cf0d0f967f346de0cb123e7b",
+      "bytes": 187745
+    },
+    {
+      "file": "demo-desbloqueio.png",
+      "sha256": "2a2db9d3ee3fde9eacb4e25481d20d23898c93be08c0d962704d1119a8249fd9",
+      "bytes": 194043
+    },
+    {
+      "file": "demo-carga.png",
+      "sha256": "2a7057963f434d758e9e31ccdbdae50a496304f89ce3496fa5b80e9e007c03b5",
+      "bytes": 189028
+    },
+    {
+      "file": "demo-notificacoes.png",
+      "sha256": "00f00adee9e0de9aef0af2e810556cd6f6421289efa17049472c7d3317880aee",
+      "bytes": 151943
+    },
+    {
+      "file": "demo-ajustes-rapidos.png",
+      "sha256": "3ce8e8f0e56f4a60d3e6fe24372ba163d716994908e3d8972614492d99cbbeb7",
+      "bytes": 158220
+    },
+    {
+      "file": "demo-animacoes.gif",
+      "sha256": "bd13c4ef58fbd252b81175564c3f94e211211c3e87866a9ab425297c01331acc",
+      "bytes": 382813
+    }
+  ]
+}
