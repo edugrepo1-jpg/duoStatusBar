@@ -1,5 +1,7 @@
 # DUO Recreate
 
+[![Downloads](https://img.shields.io/github/downloads/edugrepo1-jpg/duoStatusBar/total?label=downloads)](https://github.com/edugrepo1-jpg/duoStatusBar/releases) [![Release](https://img.shields.io/github/v/release/edugrepo1-jpg/duoStatusBar?display_name=tag&label=release)](https://github.com/edugrepo1-jpg/duoStatusBar/releases/latest) [![Android 13+](https://img.shields.io/badge/Android-13%2B-3DDC84)](INSTALL.en.md)
+
 [Português](../README.md) · **English** · [Español](README.es.md)
 
 Battery and device states in a status bar ring. An independent **GPL-3.0** fork of [Duo Status Bar](https://github.com/kvmy666/duoStatusBar) by **kvmy666**, using Android Canvas throughout.
@@ -9,6 +11,8 @@ Battery and device states in a status bar ring. An independent **GPL-3.0** fork 
 Requires **Android 13+, arm64 and a working LSPosed environment**. Package: `io.github.RECREATE.statusbar`. This is a preview release; local tests do not certify your OEM device.
 
 <img src="images/v1.4.4/home-en-claro-01.png" width="240" alt="Home in English" /> <img src="images/v1.4.4/nfc-en.png" width="240" alt="NFC explanation and switch" />
+
+**[LSPosed installation guide](INSTALL.en.md)**
 
 ## See the ring in action
 

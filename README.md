@@ -1,5 +1,7 @@
 # DUO Recreate
 
+[![Downloads](https://img.shields.io/github/downloads/edugrepo1-jpg/duoStatusBar/total?label=downloads)](https://github.com/edugrepo1-jpg/duoStatusBar/releases) [![Release](https://img.shields.io/github/v/release/edugrepo1-jpg/duoStatusBar?display_name=tag&label=release)](https://github.com/edugrepo1-jpg/duoStatusBar/releases/latest) [![Android 13+](https://img.shields.io/badge/Android-13%2B-3DDC84)](docs/INSTALL.pt-BR.md)
+
 [Português](README.md) · [English](docs/README.en.md) · [Español](docs/README.es.md)
 
 Sua bateria e os estados do aparelho em um anel na barra de status. Um fork independente do [Duo Status Bar](https://github.com/kvmy666/duoStatusBar), de **kvmy666**, redesenhado com Android Canvas.
@@ -7,6 +9,8 @@ Sua bateria e os estados do aparelho em um anel na barra de status. Um fork inde
 **[Baixar APK](https://github.com/edugrepo1-jpg/duoStatusBar/releases/tag/v1.4.4-recreate)** · [ZIP das interfaces e demonstração](docs/downloads/DUO-Recreate-interfaces.zip) · [Todas as versões](https://github.com/edugrepo1-jpg/duoStatusBar/releases) · [Galeria completa](docs/GALERIA.md)
 
 Android **13+**, aparelho **arm64** e um ambiente **LSPosed** funcionando. Pacote: `io.github.RECREATE.statusbar`. Esta distribuição é uma prévia: os testes locais não substituem a confirmação na sua ROM.
+
+**[Tutorial de instalação com LSPosed](docs/INSTALL.pt-BR.md)**
 
 ## Veja o anel em ação
 

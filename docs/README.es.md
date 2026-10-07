@@ -1,5 +1,7 @@
 # DUO Recreate
 
+[![Downloads](https://img.shields.io/github/downloads/edugrepo1-jpg/duoStatusBar/total?label=downloads)](https://github.com/edugrepo1-jpg/duoStatusBar/releases) [![Release](https://img.shields.io/github/v/release/edugrepo1-jpg/duoStatusBar?display_name=tag&label=release)](https://github.com/edugrepo1-jpg/duoStatusBar/releases/latest) [![Android 13+](https://img.shields.io/badge/Android-13%2B-3DDC84)](INSTALL.es.md)
+
 [Português](../README.md) · [English](README.en.md) · **Español**
 
 Batería y estados del dispositivo en un anillo de la barra de estado. Fork independiente **GPL-3.0** de [Duo Status Bar](https://github.com/kvmy666/duoStatusBar), de **kvmy666**, con Android Canvas.
@@ -9,6 +11,8 @@ Batería y estados del dispositivo en un anillo de la barra de estado. Fork inde
 Requiere **Android 13+, arm64 y un entorno LSPosed funcional**. Paquete: `io.github.RECREATE.statusbar`. Es una versión preliminar; las pruebas locales no certifican tu dispositivo OEM.
 
 <img src="images/v1.4.4/home-es-claro-01.png" width="240" alt="Inicio en español" /> <img src="images/v1.4.4/nfc-es.png" width="240" alt="Explicación de NFC e interruptor" />
+
+**[Guía de instalación con LSPosed](INSTALL.es.md)**
 
 ## El anillo en acción
 
