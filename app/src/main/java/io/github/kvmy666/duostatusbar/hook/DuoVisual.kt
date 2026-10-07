@@ -82,7 +82,10 @@ data class DuoVisual(
      * Whether the charging *journey* plays. False shows the bolt instantly, which is the user's
      * "charging animation" switch (FR-25).
      */
-    val animateCharge: Boolean = true
+    val animateCharge: Boolean = true,
+    /** Retained while the phone charges, so the headphone source can restore the number. */
+    val percentEnabled:Boolean=true,
+    val batteryLevel:Int=50
 ) {
     /**
      * Interpolates between two snapshots, for the FR-09 setting demos that morph one setting between
@@ -128,6 +131,8 @@ data class DuoVisual(
             wifiLevel = if (past) other.wifiLevel else wifiLevel,
             cellLevel = if (past) other.cellLevel else cellLevel,
             charging = if (past) other.charging else charging,
+            batteryLevel = if (past) other.batteryLevel else batteryLevel,
+            percentEnabled = if (past) other.percentEnabled else percentEnabled,
             visible = if (past) other.visible else visible,
             animateCharge = if (past) other.animateCharge else animateCharge
         )

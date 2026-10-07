@@ -215,7 +215,8 @@ internal data class EffectFrame(
     val musicPlaying: Boolean = false, val musicProgress: Float = -1f, val albumColor: Int = 0,
     val chargeRemainingMs: Long = -1, val recordElapsedMs: Long = 0, val volumePercent: Int = -1,
     val drawIcons: Boolean = false, val iconPercent:Int=100, val iconRadius:Float=47.5f,
-    val compassDegrees:Float=0f, val compass:Boolean=false
+    val compassDegrees:Float=0f, val compass:Boolean=false, val motionEnabled:Boolean=true,
+    val batteryColors:BatteryBandColors?=null
 )
 
 internal data class SwapFrame(val key: Int, val opacity: Float, val reveal:Float=1f)
@@ -246,4 +247,12 @@ internal class SequentialSwap {
     }
     fun moving(now: Long): Boolean { frame(now); return switching }
     fun shiftTime(delta:Long){began+=delta}
+}
+
+/** Two smooth pulses per second. Uses the existing visible-slot cadence; no separate timer. */
+internal object OfflineWifiPulse {
+    fun opacity(time:Long,enabled:Boolean):Float = if(!enabled)1f else
+        .45f+.55f*(.5f+.5f*kotlin.math.cos((time%500L)*2.0*Math.PI/500.0).toFloat())
+    fun active(icon:SlotIcon?,exclusive:Boolean,motionEnabled:Boolean)=
+        motionEnabled&&!exclusive&&icon==SlotIcon.WIFI_OFFLINE
 }

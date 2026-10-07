@@ -39,10 +39,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
     private val handler = Handler(Looper.getMainLooper())
-    private val attaching = AtomicBoolean(false)
+    private val layoutWindows = java.util.WeakHashMap<View, Boolean>()
+    private val shadeLayoutWindows = java.util.WeakHashMap<View, Boolean>()
 
-    /** The status-bar touch hook is installed once per process. */
-    private val touchHooked = AtomicBoolean(false)
+    /** Hook each dispatch implementation once; register replacement windows separately. */
+    private val touchWindows = TouchWindows()
 
     /**
      * A context to read the settings and register the settings receiver with. It is the [Application]
@@ -460,15 +461,18 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     val layoutParams = view.layoutParams ?: return
                     when (XposedHelpers.getIntField(layoutParams, "type")) {
                         AppContextResolver.TYPE_STATUS_BAR -> {
-                            if (statusBarRoot != null) return
+                            if (statusBarRoot === view) return
+                            if (view.display?.displayId?.let {it!=android.view.Display.DEFAULT_DISPLAY}==true)return
                             statusBarRoot = view
                             L.i("status bar window found: ${view.javaClass.name}")
                             scheduleAttach(attempt = 0)
                         }
                         AppContextResolver.TYPE_NOTIFICATION_SHADE -> {
-                            if (shadeRoot != null) return
+                            if (shadeRoot === view) return
+                            if (view.display?.displayId?.let {it!=android.view.Display.DEFAULT_DISPLAY}==true)return
                             shadeRoot = view
                             L.i("keyguard/shade window found: ${view.javaClass.name} (FR-03b)")
+                            view.post {L.guard("shade replacement") {attachExtraBars(view)}}
                         }
                     }
                 }
@@ -508,10 +512,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 if (attached) {
                     if (monitor == null) {
                         monitor = DuoStateMonitor(ctx, host!!).also { it.start() }
-                        // Keep the state fresh without polling: a cheap re-read on every layout pass.
-                        attachLayoutListener(root)
-                    }
-                    if (!attaching.compareAndSet(false, true)) return@guard
+                    } else monitor?.refresh()
+                    attachLayoutListener(root)
                     // The keyguard and the shade header may already be on screen (the element attaches
                     // at boot, they come later, but a re-attach after rotation can land either way).
                     shadeRoot?.let { shade -> attachExtraBars(shade) }
@@ -538,22 +540,19 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      * `ViewGroup.dispatchTouchEvent` would intercept every touch in the process.
      */
     private fun hookStatusBarTouch(root: View) {
-        if (!touchHooked.compareAndSet(false, true)) return
         L.guard("DuoHook status bar touch") {
             // `dispatchTouchEvent` is inherited from ViewGroup, so this hooks the base method and the
             // identity guard below keeps it to the status-bar window only (hooking without the guard
             // would run for every touch in the process).
             val method = try {
-                XposedHelpers.findMethodExact(
-                    root.javaClass, "dispatchTouchEvent", android.view.MotionEvent::class.java
-                )
+                touchWindows.register(root) ?: return@guard
             } catch (t: Throwable) {
                 L.w("no dispatchTouchEvent on ${root.javaClass.simpleName}: ${t.message}")
                 return@guard
             }
             XposedBridge.hookMethod(method, object : XC_MethodHook() {
                 override fun beforeHookedMethod(param: MethodHookParam) {
-                    if (param.thisObject !== root) return
+                    if (!touchWindows.accepts(method, param.thisObject)) return
                     try {
                         val event = param.args.getOrNull(0) as? android.view.MotionEvent ?: return
                         host?.handleElementTouch(event)
@@ -568,6 +567,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
     private fun attachLayoutListener(root: View) {
         L.guard("DuoHook layout listener") {
+            if (layoutWindows.put(root,true)!=null)return@guard
             root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
                 L.guard("DuoHook onLayout") {
                     // Hide pass only. Do NOT re-read system state here: the status bar re-lays out on
@@ -582,8 +582,13 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             // The keyguard's bar is inflated into the shade window when the lock screen appears, and the
             // shade window is the one that changes then - so its layout pass is the trigger for the
             // second hiding pass (FR-03b).
-            val shade = shadeRoot
-            shade?.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            shadeRoot?.let {attachShadeLayoutListener(it)}
+        }
+    }
+
+    private fun attachShadeLayoutListener(shade:View) {
+            if (shadeLayoutWindows.put(shade,true)!=null)return
+            shade.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
                 L.guard("DuoHook onShadeLayout") {
                     attachExtraBars(shade)
                     // Opening the shade re-shows the main bar's icon views, so the hide pass has to run
@@ -604,7 +609,6 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     }, SHADE_SETTLE_MS)
                 }
             }
-        }
     }
 
     /**
@@ -616,6 +620,8 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      */
     private fun attachExtraBars(shade: View) {
         val host = host ?: return
+        attachShadeLayoutListener(shade)
+        hookStatusBarTouch(shade)
         host.attachExtra("keyguard bar", shade, "system_icons")
         host.attachShadePanels(shade)
         // The shade header is not in this window; it arrives through hookShadeHeader. It is built early,

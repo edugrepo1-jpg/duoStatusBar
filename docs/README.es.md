@@ -4,29 +4,29 @@
 
 Batería y estados del dispositivo en un anillo de la barra de estado. Fork independiente **GPL-3.0** de [Duo Status Bar](https://github.com/kvmy666/duoStatusBar), de **kvmy666**, con Android Canvas.
 
-**[Descargar APK](https://github.com/edugrepo1-jpg/duoStatusBar/releases/tag/v1.4.3-recreate)** · [ZIP de interfaces](downloads/DUO-Recreate-interfaces.zip) · [Galería completa](GALERIA.md) · [Versiones](https://github.com/edugrepo1-jpg/duoStatusBar/releases)
+**[Descargar APK](https://github.com/edugrepo1-jpg/duoStatusBar/releases/tag/v1.4.4-recreate)** · [ZIP de interfaces](downloads/DUO-Recreate-interfaces.zip) · [Galería completa](GALERIA.md) · [Versiones](https://github.com/edugrepo1-jpg/duoStatusBar/releases)
 
 Requiere **Android 13+, arm64 y un entorno LSPosed funcional**. Paquete: `io.github.RECREATE.statusbar`. Es una versión preliminar; las pruebas locales no certifican tu dispositivo OEM.
 
-<img src="images/home-es-claro-01.png" width="240" alt="Inicio en español" /> <img src="images/nfc-es.png" width="240" alt="Explicación de NFC e interruptor" />
+<img src="images/v1.4.4/home-es-claro-01.png" width="240" alt="Inicio en español" /> <img src="images/v1.4.4/nfc-es.png" width="240" alt="Explicación de NFC e interruptor" />
 
 ## El anillo en acción
 
-<img src="images/demo-animacoes.gif" width="720" alt="Anillo: desbloqueo, transiciones, carga, música y grabación" />
+<img src="images/v1.4.4/demo-animacoes.gif" width="720" alt="Anillo: desbloqueo, transiciones, carga, música y grabación" />
 
 Demostración simulada: el Canvas de producción dibuja el anillo y los efectos en Android 15 (API 35) simulado. La carcasa y las pantallas del sistema son ilustrativas; no es una grabación de Samsung ni una validación de integración en One UI.
 
 ## Funciones
 
 - Anillo Canvas con porcentaje, puntos de señal e iconos internos. Tamaño, posición, grosor y escala de iconos hasta 200%, con ajustes independientes por orientación.
-- Veinte categorías solicitadas: Wi-Fi/datos, avión, No molestar, Bluetooth, NFC, punto de acceso, auriculares/batería, confirmación, carga, cámara y micrófono separados, alarma, VPN, GPS/brújula, silencio/vibración, música, inducción, linterna, grabación y Wi-Fi sin internet con `!` rojo.
+- Veinte categorías solicitadas: Wi-Fi/datos, avión, No molestar, Bluetooth, NFC, punto de acceso, auriculares/batería, confirmación, carga, cámara y micrófono separados, alarma, VPN, GPS/brújula, silencio/vibración, música, inducción, linterna, grabación y Wi-Fi sin internet con una línea roja diagonal y pulso rápido.
 - Primero termina la salida y luego entra el siguiente icono; confirmación exclusiva al desbloquear durante tres segundos; brillo de carga, ondas/progreso/color musical, estimación de carga, captura, volumen y tiempo de grabación. El evento musical/de grabación más reciente ocupa el centro hasta terminar; pausar la música lo libera.
 - De 1 a 60 segundos por icono secundario, tiempo universal o individual, entrada/salida ajustables, dibujo de trazos y modo solo red.
 - Mantén pulsado el anillo para abrir una isla compacta; desliza hacia abajo para expandir estados, batería, música y accesos. Desliza hacia arriba en la cabecera para contraer.
 - **Visual → Paneles del sistema:** activación independiente en notificaciones y ajustes rápidos, cada uno con tamaño de 50–200%, limitado por el espacio físico.
 - Simulación interactiva antes de aplicar, temas sistema/claro/oscuro y traducciones al portugués, inglés y español.
 
-Los estados desconocidos no se inventan. La batería de auriculares solo se muestra si se informa: más de 15% verde; 15% o menos rojo. Sensores, música, capturas y privacidad dependen de las API y permisos de la ROM.
+Los estados desconocidos no se inventan. Cuando los auriculares Bluetooth ocupan el centro, el anillo y el número superior muestran su batería y luego vuelven a la del teléfono. No hay porcentaje duplicado debajo del icono. Sin un nivel válido, permanece la batería del teléfono. Personaliza los colores **0–20%, 21–80% y 81–100%** en **Visual → Colores de batería**. Sensores, música, capturas y privacidad dependen de las API y permisos de la ROM.
 
 ## Instalación y uso
 

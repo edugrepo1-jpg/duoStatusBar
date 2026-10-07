@@ -99,7 +99,8 @@ import kotlinx.coroutines.isActive
                         albumColor=if(draft.albumColors)0xFF8BAAFF.toInt() else 0,chargeRemainingMs=36*60000L,
                         recordElapsedMs=(time-recordAt).coerceAtLeast(0),volumePercent=volume.toInt(),drawIcons=draft.drawIcons&&!draft.networkOnly,iconPercent=draft.iconPercent,
                         iconRadius=(55.5f-8f*settings.thickPercent/100f-2f).coerceAtLeast(12f),
-                        compass=draft.compass,compassDegrees=(time/40f)%360)
+                        compass=draft.compass,compassDegrees=(time/40f)%360,
+                        batteryColors=draft.takeIf {it.customBatteryColors}?.let {BatteryBandColors(it.batteryLow,it.batteryMid,it.batteryHigh)})
                     island.update(IslandState(phone.toInt(),charging,icons.map { icon->IslandItem(icon,iconLabel(icon),when(icon){
                         SlotIcon.MEDIA->UiText.t("Faixa de demonstração");SlotIcon.CHARGE_TIME->"~36min"
                         SlotIcon.RECORD_TIME->durationLabel((time-recordAt).coerceAtLeast(0));else->UiText.t("Simulado")
@@ -155,7 +156,7 @@ import kotlinx.coroutines.isActive
     LabelledSlider(UiText.format("Entrada do ícone: {0} ms", draft.entryMs),draft.entryMs.toFloat(),60f..800f){draft=draft.copy(entryMs=it.toInt())}
     SettingSwitch(UiText.t("Desenho dos traços"),UiText.t("Experimentar a entrada desenhada."),draft.drawIcons,true){draft=draft.copy(drawIcons=it)}
     FlowRow(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-        OutlinedButton(onClick={draft=ExperienceOptions.ALL.copy(dwellMs=draft.dwellMs,exitMs=draft.exitMs,entryMs=draft.entryMs,iconPercent=draft.iconPercent,iconSeconds=draft.iconSeconds,networkOnly=draft.networkOnly,fadeEnabled=draft.fadeEnabled,language=draft.language,universalTiming=draft.universalTiming)}) { Text(UiText.t("Experimentar tudo")) }
+        OutlinedButton(onClick={draft=ExperienceOptions.ALL.copy(dwellMs=draft.dwellMs,exitMs=draft.exitMs,entryMs=draft.entryMs,iconPercent=draft.iconPercent,iconSeconds=draft.iconSeconds,networkOnly=draft.networkOnly,fadeEnabled=draft.fadeEnabled,language=draft.language,universalTiming=draft.universalTiming,customBatteryColors=draft.customBatteryColors,batteryLow=draft.batteryLow,batteryMid=draft.batteryMid,batteryHigh=draft.batteryHigh)}) { Text(UiText.t("Experimentar tudo")) }
         OutlinedButton(onClick={paused=!paused;if(paused){clock.pause();cycle.pause(clock.now())}else{clock.resume();cycle.resume(clock.now())}}) { Text(if(paused)UiText.t("Retomar") else UiText.t("Pausar")) }
         OutlinedButton(onClick={view?.let { island.open(it,settings.animationsEnabled) }}) { Text(UiText.t("Abrir resumo")) }
         Button(onClick={onApply(draft)},enabled=settings.enabled) { Text(UiText.t("Aplicar na barra")) }

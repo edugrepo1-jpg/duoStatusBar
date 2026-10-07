@@ -57,3 +57,7 @@ Os SHAs locais de reconstrução ficam em snapshots.json; o mapeamento das mesma
 ## Entrega 1.4.3 / código 29
 
 Atualização cumulativa: mantém integralmente o contrato acima. Acrescenta controles independentes de notificações e QS, responsável separado por restauração dos originais, anexação em cabeçalhos reconhecidos, limites físicos e limpeza de slots re-inflados. Troca o controle do cartão pelo switch pedido, explicita ações clicáveis, mantém blur durante sobreposição e remove ao fechar, mantém Fechar acessível. São 329 testes executados e 97 capturas nativas documentadas. Corrigida classificação booleana das novas chaves na migração; isolado cache no teste de boot para não confundir fallback válido com desligamento. Shizuku mantém os mesmos três slots e a remoção local passa a cobrir os cabeçalhos. Consulte [validação](VALIDACAO.md) e [UI/painéis](UI-E-PAINEIS.md).
+
+## Entrega 1.4.4 / código 30
+
+Entrega cumulativa: continuidade horizontal, gestos em janelas substituídas, cabeçalhos sem duplicação e dimensionamento por painel, design anterior organizado, fones redesenhados, geometria compartilhada de Wi-Fi e aviso pulsante. Bateria do fone assume anel/número apenas enquanto o ícone está visível; três cores configuráveis, sem número duplicado. 348 testes passaram. [Auditoria](../AUDITORIA-1.4.4.md) · [Validação](../VALIDACAO-1.4.4.md).

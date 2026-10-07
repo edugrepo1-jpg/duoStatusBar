@@ -4,29 +4,29 @@
 
 Battery and device states in a status bar ring. An independent **GPL-3.0** fork of [Duo Status Bar](https://github.com/kvmy666/duoStatusBar) by **kvmy666**, using Android Canvas throughout.
 
-**[Download APK](https://github.com/edugrepo1-jpg/duoStatusBar/releases/tag/v1.4.3-recreate)** · [Interface ZIP](downloads/DUO-Recreate-interfaces.zip) · [Full gallery](GALERIA.md) · [All releases](https://github.com/edugrepo1-jpg/duoStatusBar/releases)
+**[Download APK](https://github.com/edugrepo1-jpg/duoStatusBar/releases/tag/v1.4.4-recreate)** · [Interface ZIP](downloads/DUO-Recreate-interfaces.zip) · [Full gallery](GALERIA.md) · [All releases](https://github.com/edugrepo1-jpg/duoStatusBar/releases)
 
 Requires **Android 13+, arm64 and a working LSPosed environment**. Package: `io.github.RECREATE.statusbar`. This is a preview release; local tests do not certify your OEM device.
 
-<img src="images/home-en-claro-01.png" width="240" alt="Home in English" /> <img src="images/nfc-en.png" width="240" alt="NFC explanation and switch" />
+<img src="images/v1.4.4/home-en-claro-01.png" width="240" alt="Home in English" /> <img src="images/v1.4.4/nfc-en.png" width="240" alt="NFC explanation and switch" />
 
 ## See the ring in action
 
-<img src="images/demo-animacoes.gif" width="720" alt="Ring demo: unlock, sequential fades, charging, music and recording" />
+<img src="images/v1.4.4/demo-animacoes.gif" width="720" alt="Ring demo: unlock, sequential fades, charging, music and recording" />
 
 Simulated demonstration: the production Canvas renderer draws the ring and effects in a native Android 15 (API 35) test environment. The phone shell and system screens are illustrative, not a Samsung recording or proof of One UI integration.
 
 ## What it does
 
 - Canvas battery ring with percentage, signal dots and internal icons. Adjust size, position, thickness and icon scale up to 200%, independently for portrait/landscape.
-- Twenty requested state categories: connectivity, airplane/DND/Bluetooth/NFC/hotspot, earbuds and their battery, unlock confirmation, charging, separate camera/microphone, alarm/VPN/GPS, silent/vibrate, media, wireless charging, flashlight, recording and offline Wi-Fi with a red exclamation mark.
+- Twenty requested state categories: connectivity, airplane/DND/Bluetooth/NFC/hotspot, earbuds and their battery, unlock confirmation, charging, separate camera/microphone, alarm/VPN/GPS, silent/vibrate, media, wireless charging, flashlight, recording and offline Wi-Fi using the connected symbol with a red diagonal slash and fast pulse.
 - Sequential fade out then fade in; exclusive three-second unlock check; charging glow, music waves/progress/color, charge estimate, screenshot shutter, volume and recording timer. The most recent music/recording event holds the center until it ends; paused music releases it.
 - One to sixty seconds per secondary icon, universal or individual timing, separate entry/exit times, stroke reveal and network-only mode.
 - Hold the ring for a compact island, drag down to expand states/media/battery/shortcuts, drag up on the header to collapse.
 - **Visual → System panels:** independent notification and quick settings switches, each with a 50–200% size setting bounded by the actual header space.
 - Interactive simulation before applying; system/light/dark themes; Portuguese, English and Spanish.
 
-Unknown states are not invented. Earbud battery is shown only when reported: above 15% green, 15% or below red. Sensors, media, screenshots and privacy indicators depend on Android/ROM access.
+Unknown states are not invented. While Bluetooth headphones occupy the center, the ring and top number show their battery, then return to the phone battery. There is no duplicated label below the icon. Unknown headphone levels keep the phone battery. Customize **0–20%, 21–80% and 81–100%** colors in **Visual → Battery colors**. Sensors, media, screenshots and privacy indicators depend on Android/ROM access.
 
 ## Install and use
 

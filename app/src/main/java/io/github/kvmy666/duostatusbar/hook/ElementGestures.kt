@@ -21,9 +21,18 @@ internal class ElementGestures(private val context: Context) {
 
     private var detector: GestureDetector? = null
     private var active = false
+    var anchor: View? = null
+        private set
     private var actions: Triple<String, String, String>? = null
     private var summary: (() -> Boolean)? = null
     private var summaryInstalled=false
+
+    fun clear() {
+        val now=android.os.SystemClock.uptimeMillis()
+        val cancel=MotionEvent.obtain(now,now,MotionEvent.ACTION_CANCEL,0f,0f,0)
+        try {detector?.onTouchEvent(cancel)} finally {cancel.recycle()}
+        detector=null;actions=null;summary=null;summaryInstalled=false;active=false;anchor=null
+    }
 
     /** Installs (or clears) the detector for the current actions. */
     fun install(view: View, tap: String, doubleTap: String, longPress: String, onSummary:(()->Boolean)?=null) {
@@ -84,7 +93,8 @@ internal class ElementGestures(private val context: Context) {
         val gestureDetector = detector ?: return false
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                active = views.any { hit(event, it) }
+                anchor = views.firstOrNull { hit(event, it) }
+                active = anchor != null
                 if (!active) return false
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {

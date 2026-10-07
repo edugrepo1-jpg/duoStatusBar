@@ -262,6 +262,7 @@ object DuoPrefs {
     private const val KEY_ROOT_ALLOWED = "root_allowed"
     /** Set the first time landscape is saved. Until then landscape reads as a copy of portrait. */
     private const val KEY_LANDSCAPE_SET = "landscape_set"
+    private const val KEY_LINK_ORIENTATIONS = "link_orientations"
     private const val HISTORY_LIMIT = 20
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -274,12 +275,22 @@ object DuoPrefs {
      * settings screen edits. Landscape that has never been saved returns the portrait copy, so rotating
      * for the first time does not jump back to factory defaults.
      */
-    fun read(context: Context, orientation: DuoOrientation = DuoOrientation.of(context)): DuoSettings {
+    fun read(context: Context, orientation: DuoOrientation = DuoOrientation.of(context), independent: Boolean = false): DuoSettings {
         val p = prefs(context)
-        if (orientation == DuoOrientation.LANDSCAPE && !p.getBoolean(KEY_LANDSCAPE_SET, false)) {
+        if ((!independent && linkOrientations(context)) || (orientation == DuoOrientation.LANDSCAPE && !p.getBoolean(KEY_LANDSCAPE_SET, false))) {
             return readStored(p, prefix(DuoOrientation.PORTRAIT))
         }
         return readStored(p, prefix(orientation))
+    }
+
+    /** Sharing is the default, including upgrades with an obsolete horizontal profile. Keep the
+     * independent profile intact so opting out restores it instead of destroying customization. */
+    fun linkOrientations(context: Context): Boolean = prefs(context).getBoolean(KEY_LINK_ORIENTATIONS, true)
+
+    fun writeLinkOrientations(context: Context, linked: Boolean): Long {
+        val next = revision(context) + 1
+        prefs(context).edit().putBoolean(KEY_LINK_ORIENTATIONS, linked).putLong(KEY_REVISION, next).apply()
+        return next
     }
 
     private fun readStored(p: android.content.SharedPreferences, prefix: String): DuoSettings = DuoSettings(
@@ -329,7 +340,8 @@ object DuoPrefs {
     fun write(
         context: Context,
         settings: DuoSettings,
-        orientation: DuoOrientation = DuoOrientation.of(context)
+        orientation: DuoOrientation = DuoOrientation.of(context),
+        independent: Boolean = false
     ): Long {
         val p = prefs(context)
         val next = revision(context) + 1
@@ -347,8 +359,9 @@ object DuoPrefs {
             dndMode = normalizeDndMode(settings.dndMode)
         )
         val editor = p.edit()
-        editor.writeFields(prefix(orientation), clamped)
-        if (orientation == DuoOrientation.LANDSCAPE) editor.putBoolean(KEY_LANDSCAPE_SET, true)
+        val destination = if (!independent && linkOrientations(context)) DuoOrientation.PORTRAIT else orientation
+        editor.writeFields(prefix(destination), clamped)
+        if (destination == DuoOrientation.LANDSCAPE) editor.putBoolean(KEY_LANDSCAPE_SET, true)
         editor.putLong(KEY_REVISION, next).apply()
         return next
     }

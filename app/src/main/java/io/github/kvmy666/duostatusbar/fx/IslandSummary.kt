@@ -17,7 +17,14 @@ import io.github.kvmy666.duostatusbar.L
 
 internal data class IslandItem(val icon:SlotIcon,val title:String,val detail:String=UiText.t("Ativo"))
 internal data class IslandState(val battery:Int=-1,val charging:Boolean=false,val items:List<IslandItem> = emptyList(),
-    val playback:PlaybackSnapshot=PlaybackSnapshot(),val chargeRemainingMs:Long=-1,val headphoneBattery:Int=-1,val torch:Boolean=false)
+    val playback:PlaybackSnapshot=PlaybackSnapshot(),val chargeRemainingMs:Long=-1,val headphoneBattery:Int=-1,val torch:Boolean=false,
+    val foreground:SlotIcon?=null) {
+    fun primaryItem():IslandItem? = items.firstOrNull {it.icon==foreground}
+        ?: items.firstOrNull {playback.playing&&it.icon==SlotIcon.MEDIA}
+        ?: items.firstOrNull {it.icon==SlotIcon.RECORD}
+        ?: items.firstOrNull {it.icon==SlotIcon.MICROPHONE}
+        ?: items.firstOrNull()
+}
 
 internal data class IslandLayout(val left:Int,val top:Int,val width:Int,val height:Int,val compactWidth:Int,val compactHeight:Int) {
     fun leftFor(compact:Boolean)=left+if(compact)(width-compactWidth)/2 else 0
@@ -199,10 +206,10 @@ internal class IslandSummary(private val context:Context,private val interactive
             sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
         }
         private fun needsMotion()= !disposed&&isAttachedToWindow&&isShown&&windowVisibility==VISIBLE&&amount>.95f&&
-            movingGlyphVisible&&(state.playback.playing||state.items.any { it.icon==SlotIcon.RECORD||it.icon==SlotIcon.RECORD_TIME })
+            movingGlyphVisible&&(state.playback.playing||state.items.any { it.icon==SlotIcon.RECORD||it.icon==SlotIcon.RECORD_TIME||(animate&&it.icon==SlotIcon.WIFI_OFFLINE) })
         private fun scheduleMotion() {
             if(!needsMotion()){removeCallbacks(motion);motionPosted=false;return}
-            if(!motionPosted){motionPosted=true;postDelayed(motion,100L)}
+            if(!motionPosted){motionPosted=true;postDelayed(motion,if(!animate)1000L else if(state.items.any {it.icon==SlotIcon.WIFI_OFFLINE})33L else 100L)}
         }
         override fun onAttachedToWindow() { super.onAttachedToWindow();disposed=false;if(animate)move(1f);scheduleMotion() }
         override fun onWindowVisibilityChanged(visibility:Int) { super.onWindowVisibilityChanged(visibility);if(ready)scheduleMotion() }
@@ -318,7 +325,7 @@ internal class IslandSummary(private val context:Context,private val interactive
             paint.color=if(state.playback.color!=0)state.playback.color else 0xFF313139.toInt()
             canvas.drawRoundRect(RectF(28*d,84*d,72*d,128*d),11*d,11*d,paint)
             val iconSave=canvas.save();canvas.translate(50*d,106*d);canvas.scale(.7f*d,.7f*d)
-            iconPainter.draw(canvas,SlotIcon.MEDIA,Color.WHITE,alpha,EffectFrame(motionMs=android.os.SystemClock.uptimeMillis(),musicPlaying=state.playback.playing))
+            iconPainter.draw(canvas,SlotIcon.MEDIA,Color.WHITE,alpha,EffectFrame(motionMs=android.os.SystemClock.uptimeMillis(),musicPlaying=state.playback.playing&&animate,motionEnabled=animate))
             canvas.restoreToCount(iconSave)
             text.textSize=12*d;text.color=Color.WHITE;canvas.drawText(shorten(state.playback.title.ifBlank { UiText.t("Música") },width-132*d),84*d,101*d,text)
             text.textSize=10*d;text.color=0xFF8D8D93.toInt();canvas.drawText(if(state.playback.playing)UiText.t("Reproduzindo") else UiText.t("Pausado"),84*d,119*d,text)
@@ -370,8 +377,8 @@ internal class IslandSummary(private val context:Context,private val interactive
                     // Timed cells already show their truthful value in detail; avoid a fake 0:00
                     // or 'calculating' glyph created from an empty EffectFrame.
                     val glyph=when(item.icon){SlotIcon.RECORD_TIME->SlotIcon.RECORD;SlotIcon.CHARGE_TIME->SlotIcon.BOLT;else->item.icon}
-                    if(glyph==SlotIcon.RECORD||(glyph==SlotIcon.MEDIA&&state.playback.playing))movingGlyphVisible=true
-                    iconPainter.draw(canvas,glyph,Color.WHITE,alpha,EffectFrame(networkText=item.detail.takeIf { item.icon==SlotIcon.NETWORK } ?: "",motionMs=android.os.SystemClock.uptimeMillis(),headphoneBattery=-1,musicPlaying=state.playback.playing))
+                    if(glyph==SlotIcon.RECORD||(animate&&glyph==SlotIcon.WIFI_OFFLINE)||(glyph==SlotIcon.MEDIA&&state.playback.playing))movingGlyphVisible=true
+                    iconPainter.draw(canvas,glyph,Color.WHITE,alpha,EffectFrame(networkText=item.detail.takeIf { item.icon==SlotIcon.NETWORK } ?: "",motionMs=android.os.SystemClock.uptimeMillis(),headphoneBattery=-1,musicPlaying=state.playback.playing&&animate,motionEnabled=animate))
                     canvas.restoreToCount(mini)
                     text.textSize=11*d;text.color=Color.WHITE;text.alpha=(255*alpha).toInt()
                     canvas.drawText(shorten(item.title,cell-51*d),x+43*d,y+20*d,text)
@@ -386,17 +393,17 @@ internal class IslandSummary(private val context:Context,private val interactive
         private fun hasMedia()=state.playback.playing||state.playback.title.isNotBlank()
         private fun drawCompact(canvas:Canvas) {
             val rect=compactBounds().apply { offset(0f,-insetTop) };val centerY=rect.centerY()
-            val active=state.items.firstOrNull { it.icon==SlotIcon.RECORD } ?: state.items.firstOrNull { it.icon==SlotIcon.MICROPHONE } ?: state.items.firstOrNull()
-            val glyph=if(state.playback.playing)SlotIcon.MEDIA else active?.icon ?: SlotIcon.BOLT
-            movingGlyphVisible=state.playback.playing||glyph==SlotIcon.RECORD
+            val active=state.primaryItem()
+            val glyph=active?.icon ?: if(state.playback.playing)SlotIcon.MEDIA else SlotIcon.BOLT
+            movingGlyphVisible=state.playback.playing||glyph==SlotIcon.RECORD||(animate&&glyph==SlotIcon.WIFI_OFFLINE)
             val s=canvas.save();canvas.translate(rect.left+29*d,centerY);canvas.scale(.5f*d,.5f*d)
-            iconPainter.draw(canvas,glyph,Color.WHITE,1f,EffectFrame(musicPlaying=state.playback.playing,motionMs=android.os.SystemClock.uptimeMillis(),networkText=active?.detail.takeIf { glyph==SlotIcon.NETWORK } ?: ""))
+            iconPainter.draw(canvas,glyph,Color.WHITE,1f,EffectFrame(motionEnabled=animate,musicPlaying=state.playback.playing&&animate,motionMs=android.os.SystemClock.uptimeMillis(),networkText=active?.detail.takeIf { glyph==SlotIcon.NETWORK } ?: ""))
             canvas.restoreToCount(s)
             text.textAlign=Paint.Align.LEFT;text.color=Color.WHITE;text.alpha=255;text.textSize=12*d
-            val title=if(hasMedia())state.playback.title.ifBlank { UiText.t("Música") } else active?.title ?: UiText.t("Seu resumo")
+            val title=if(glyph==SlotIcon.MEDIA&&hasMedia())state.playback.title.ifBlank { UiText.t("Música") } else active?.title ?: UiText.t("Seu resumo")
             canvas.drawText(shorten(title,rect.width()-112*d),rect.left+54*d,centerY-4*d,text)
             text.textSize=9*d;text.color=0xFF8D8D93.toInt()
-            val detail=if(hasMedia())UiText.t(if(state.playback.playing)"Reproduzindo" else "Pausado") else if(state.charging)UiText.t("Carregando") else UiText.format("{0} estados ativos",state.items.size)
+            val detail=if(glyph==SlotIcon.MEDIA&&hasMedia())UiText.t(if(state.playback.playing)"Reproduzindo" else "Pausado") else if(glyph in setOf(SlotIcon.RECORD,SlotIcon.MICROPHONE))active?.detail.orEmpty() else if(state.charging)UiText.t("Carregando") else UiText.format("{0} estados ativos",state.items.size)
             canvas.drawText(shorten(detail,rect.width()-112*d),rect.left+54*d,centerY+12*d,text)
             if(hasMedia()) {
                 val x=rect.right-28*d;hits["play"]=RectF(x-24*d,centerY-24*d,x+24*d,centerY+24*d)

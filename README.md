@@ -4,22 +4,22 @@
 
 Sua bateria e os estados do aparelho em um anel na barra de status. Um fork independente do [Duo Status Bar](https://github.com/kvmy666/duoStatusBar), de **kvmy666**, redesenhado com Android Canvas.
 
-**[Baixar APK](https://github.com/edugrepo1-jpg/duoStatusBar/releases/tag/v1.4.3-recreate)** · [ZIP das interfaces e demonstração](docs/downloads/DUO-Recreate-interfaces.zip) · [Todas as versões](https://github.com/edugrepo1-jpg/duoStatusBar/releases) · [Galeria completa](docs/GALERIA.md)
+**[Baixar APK](https://github.com/edugrepo1-jpg/duoStatusBar/releases/tag/v1.4.4-recreate)** · [ZIP das interfaces e demonstração](docs/downloads/DUO-Recreate-interfaces.zip) · [Todas as versões](https://github.com/edugrepo1-jpg/duoStatusBar/releases) · [Galeria completa](docs/GALERIA.md)
 
 Android **13+**, aparelho **arm64** e um ambiente **LSPosed** funcionando. Pacote: `io.github.RECREATE.statusbar`. Esta distribuição é uma prévia: os testes locais não substituem a confirmação na sua ROM.
 
 ## Veja o anel em ação
 
-<img src="docs/images/demo-animacoes.gif" width="720" alt="Demonstração do anel na barra: desbloqueio, carrossel, carga, música e gravação" />
+<img src="docs/images/v1.4.4/demo-animacoes.gif" width="720" alt="Demonstração do anel na barra: desbloqueio, carrossel, carga, música e gravação" />
 
 **Demonstração simulada:** o anel e os efeitos são desenhados pelo Canvas de produção em Android 15 (API 35) simulado. A moldura e as telas do telefone são ilustrativas; não é uma gravação de Samsung nem validação da integração na One UI. [Imagens dos painéis e detalhes](docs/GALERIA.md) · [Como reproduzir](tools/demo/README.md).
 
 ## Conheça a interface
 
 <table><tr><td align="center">Início</td><td align="center">Tema escuro</td><td align="center">Função e controle</td></tr><tr>
-<td><img src="docs/images/home-pt-BR-claro-01.png" width="220" alt="Página inicial clara" /></td>
-<td><img src="docs/images/home-pt-BR-escuro-01.png" width="220" alt="Página inicial escura" /></td>
-<td><img src="docs/images/nfc-ativado.png" width="220" alt="Explicação do NFC com controle azul ativado" /></td>
+<td><img src="docs/images/v1.4.4/home-pt-BR-claro-01.png" width="220" alt="Página inicial clara" /></td>
+<td><img src="docs/images/v1.4.4/home-pt-BR-escuro-01.png" width="220" alt="Página inicial escura" /></td>
+<td><img src="docs/images/v1.4.4/nfc-ativado.png" width="220" alt="Explicação do NFC com controle azul ativado" /></td>
 </tr></table>
 
 As imagens são renderizações do aplicativo real, com estados simulados e sem dados pessoais. A galeria reúne páginas, seções roláveis, cartões, idiomas, prévia e ilha. O desfoque gráfico deve ser confirmado no aparelho.
@@ -27,14 +27,14 @@ As imagens são renderizações do aplicativo real, com estados simulados e sem 
 ## Para que serve
 
 - **Anel Canvas:** bateria, porcentagem, sinal e ícones internos. Tamanho, espessura, posição e escala dos ícones até 200%, com ajustes por orientação.
-- **20 categorias de estado:** Wi-Fi/dados, avião, Não Perturbe, Bluetooth, NFC, roteador, fones/bateria, check, carga, câmera e microfone separados, alarme, VPN, GPS/bússola, silêncio/vibração, mídia, indução, lanterna, gravação e Wi-Fi sem internet com `!` vermelho.
+- **20 categorias de estado:** Wi-Fi/dados, avião, Não Perturbe, Bluetooth, NFC, roteador, fones/bateria, check, carga, câmera e microfone separados, alarme, VPN, GPS/bússola, silêncio/vibração, mídia, indução, lanterna, gravação e Wi-Fi sem internet com faixa vermelha diagonal e pulso rápido.
 - **Efeitos:** saída termina antes da entrada; check exclusivo de 3 segundos; brilho de carga, ondas e progresso musical, previsão de carga, captura de tela, volume e tempo de gravação. O evento de música/gravação mais recente fica no centro até parar; pausa da música libera o anel.
 - **Ritmo:** permanência de 1–60 segundos, tempo universal ou individual, entrada/saída ajustáveis, desenho dos traços e modo somente Wi-Fi/dados.
 - **Ilha compacta:** segure o anel; arraste para baixo para expandir e consultar estados, bateria, mídia e atalhos. Arraste para cima no cabeçalho para recolher.
 - **Painéis separados:** em **Visual → Painéis do sistema**, escolha exibir nas notificações e nos ajustes rápidos. Cada painel tem tamanho próprio de 50–200%, limitado pelo espaço físico do cabeçalho.
 - **Prévia interativa:** simule estados e efeitos antes de aplicar. Temas sistema/claro/escuro e tradução em português, inglês e espanhol.
 
-Um indicador só aparece quando o Android fornece evidência. Bateria de fones desconhecida não vira 0%; acima de 15% é verde e até 15% é vermelha. Mídia, captura, GPS e privacidade dependem das permissões, sensores e APIs da ROM.
+Um indicador só aparece quando o Android fornece evidência. Quando o fone Bluetooth ocupa o centro, o anel e o número superior mostram a bateria dele. Depois voltam à do celular. Não há porcentagem duplicada abaixo do ícone. Sem leitura válida, permanece a bateria do celular. Em **Visual → Cores da bateria**, personalize as faixas **0–20%, 21–80% e 81–100%**. Mídia, captura, GPS e privacidade dependem das permissões, sensores e APIs da ROM.
 
 ## Instalar ou atualizar
 
@@ -42,7 +42,7 @@ Um indicador só aparece quando o Android fornece evidência. Bateria de fones d
 2. Na primeira instalação, escolha o idioma. No LSPosed, ative **DUO Recreate**, selecione **System UI** como escopo e reinicie o telefone. Desative módulos Duo antigos para evitar duas injeções.
 3. Abra **Início → Personalizar a barra → Configurar** e ligue o controle azul. Visual, Efeitos e Ajustes organizam o restante. **Configurar** abre a explicação e o interruptor, sem sair da página.
 4. Em **Efeitos**, abra a prévia. Ajustes simulados só chegam à barra quando você toca em **Aplicar na barra**.
-5. Se desejar mídia/capturas, conceda os acessos opcionais em **Música e captura**. Reinicie o System UI depois de atualizar para carregar o novo módulo.
+5. Se desejar mídia/capturas, conceda os acessos opcionais em **Ajustes → Música e captura**. Reinicie o System UI depois de atualizar para carregar o novo módulo.
 
 Migração do pacote Canvas anterior: mantenha a edição anterior assinada instalada até abrir Recreate uma vez. A importação é única e não copia logs, permissões ou autorização de root. O app original não usa a mesma assinatura.
 
@@ -68,3 +68,5 @@ python3 tools/route-module-logs.py --check
 Assine o APK com sua própria chave protegida; uma assinatura diferente não atualiza a distribuição instalada. Não publique chaves, tokens ou logs privados. Arquivos históricos Rive não fazem parte do renderizador nem do APK.
 
 [LICENSE](LICENSE) · [Documentação original preservada](docs/fork/UPSTREAM-README.md). Não afiliado à Apple, Samsung ou Xiaomi. Sensores, desfoque por GPU, encaixe OEM e consumo físico exigem validação no dispositivo.
+
+[Auditoria 1.4.4: horizontal, painéis, ícones e organização](docs/AUDITORIA-1.4.4.md) · [Validação 1.4.4](docs/VALIDACAO-1.4.4.md).

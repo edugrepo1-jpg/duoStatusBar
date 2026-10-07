@@ -203,7 +203,11 @@ internal class RuntimeIndicators(private val context: Context, private val handl
         val battery=probe("bateria dos fones",-1) {
             if(!bluetooth)-1 else {
                 val adapter=context.getSystemService(BluetoothManager::class.java)?.adapter
-                val addresses=context.getSystemService(AudioManager::class.java)?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)?.map { it.address.lowercase() }?.filter { it.isNotBlank() }.orEmpty()
+                val outputs=context.getSystemService(AudioManager::class.java)?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)?.filter {
+                    it.type in setOf(android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO,android.media.AudioDeviceInfo.TYPE_BLE_HEADSET)
+                }.orEmpty()
+                if(outputs.isEmpty())return@probe -1
+                val addresses=outputs.map { it.address.lowercase() }.filter { it.isNotBlank() }
                 adapter?.bondedDevices.orEmpty().filter { device -> device.address.lowercase() in addresses || (addresses.isEmpty()&&device.bluetoothClass?.majorDeviceClass==android.bluetooth.BluetoothClass.Device.Major.AUDIO_VIDEO) }.mapNotNull { device ->
                     val connected=device.javaClass.getMethod("isConnected").invoke(device) as? Boolean == true
                     if(!connected)null else (device.javaClass.getMethod("getBatteryLevel").invoke(device) as? Int)?.takeIf { it in 0..100 }

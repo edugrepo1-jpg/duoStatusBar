@@ -99,6 +99,7 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val orientation = DuoOrientation.of(LocalConfiguration.current.orientation)
     var settings by remember(orientation) { mutableStateOf(DuoPrefs.read(context, orientation)) }
+    var linkedOrientations by remember { mutableStateOf(DuoPrefs.linkOrientations(context)) }
     var status by remember { mutableStateOf(DuoPrefs.status(context)) }
     var history by remember { mutableStateOf(DuoPrefs.statusHistory(context)) }
     var dump by remember { mutableStateOf(DuoPrefs.dump(context)) }
@@ -362,22 +363,38 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
         }
 
         if(StudioPage.VISUAL.visible(page,query)) {
+            if(search(UiText.t("Manter ajustes ao girar"),UiText.t("Orientação"))) StudioCard {
+                SectionTitle(UiText.t("Orientação"))
+                SettingSwitch(UiText.t("Manter ajustes ao girar"),
+                    UiText.t("Usa os mesmos efeitos, ícones, gestos e tamanhos na vertical e na horizontal. Desative para editar cada orientação separadamente. Os ajustes separados anteriores ficam preservados."),
+                    linkedOrientations) { linked ->
+                    DuoPrefs.writeLinkOrientations(context,linked)
+                    linkedOrientations=linked
+                    settings=DuoPrefs.read(context,orientation)
+                    context.sendBroadcast(Intent(DuoPrefs.ACTION_SETTINGS_CHANGED))
+                    SettingsBridge.push(context)
+                }
+            }
             GeometrySection(settings,onUpdate,search)
             ShadeSection(settings,onUpdate,search)
             CustomizeSection(settings,onUpdate,search,onRestart={restartSystemUi(context)})
             AppearanceSection(settings,onUpdate,search)
+            ExperienceSection(settings,onUpdate,search,StudioPage.VISUAL)
+            EffectsSection(settings,onUpdate,search,StudioPage.VISUAL)
         }
         if(StudioPage.EFFECTS.visible(page,query)) {
+            AnimationsSection(settings,onUpdate,search)
+            ExperienceSection(settings,onUpdate,search,StudioPage.EFFECTS)
+            EffectsSection(settings,onUpdate,search,StudioPage.EFFECTS)
             if(search(UiText.t("Experimente o movimento"),UiText.t("Demonstração"),UiText.t("Ícones"),UiText.t("Efeitos"))) StudioCard {
                 SectionTitle(UiText.t("Experimente o movimento"))
                 Text(UiText.t("Veja os ícones e os efeitos com estados simulados."),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 EffectsPreview(settings,search) { onUpdate(settings.copy(experienceJson=it.encode())) }
             }
-            ExperienceSection(settings,onUpdate,search)
-            AnimationsSection(settings,onUpdate,search)
-            EffectsSection(settings,onUpdate,search)
         }
         if(StudioPage.MORE.visible(page,query)) {
+        ExperienceSection(settings,onUpdate,search,StudioPage.MORE)
+        EffectsSection(settings,onUpdate,search,StudioPage.MORE)
         IconsSection(settings,onUpdate,search)
 
         val autoExpand = remember { DuoActions.isAutoExpandInstalled(context) }

@@ -11,10 +11,12 @@ internal data class ExperienceOptions(
     val dwellMs: Int=3000, val exitMs: Int=120, val entryMs: Int=160,
     val compass:Boolean=false, val iconPercent:Int=100,
     val iconSeconds:Map<String,Int> = emptyMap(), val networkOnly:Boolean=false, val fadeEnabled:Boolean=true, val language:String="pt-BR",
-    val universalTiming:Boolean=true
+    val universalTiming:Boolean=true,
+    val customBatteryColors:Boolean=false,
+    val batteryLow:Int=0xFFFF453A.toInt(),val batteryMid:Int=0xFFFFCC00.toInt(),val batteryHigh:Int=0xFF30D158.toInt()
 ) {
     fun encode(): String = JSONObject().apply {
-        put("v",3);put("language",language.takeIf { it in listOf("pt-BR","en","es") } ?: "pt-BR")
+        put("v",4);put("language",language.takeIf { it in listOf("pt-BR","en","es") } ?: "pt-BR")
         put("music",music);put("album",albumColors);put("charge",chargeEstimate)
         put("shot",screenshot);put("volume",volume);put("record",recordingTime)
         put("island",island);put("draw",drawIcons)
@@ -22,6 +24,7 @@ internal data class ExperienceOptions(
         put("times",JSONObject(iconSeconds.filterKeys { key -> SlotIcon.entries.any { it.name==key } }.mapValues { it.value.coerceIn(1,60) }))
         put("networkOnly",networkOnly);put("fade",fadeEnabled);put("universal",universalTiming)
         put("compass",compass);put("iconSize",iconPercent.coerceIn(60,200))
+        put("batteryColors",customBatteryColors);put("batteryLow",batteryLow or 0xFF000000.toInt());put("batteryMid",batteryMid or 0xFF000000.toInt());put("batteryHigh",batteryHigh or 0xFF000000.toInt())
     }.toString()
     companion object {
         val ALL=ExperienceOptions(true,true,true,true,true,true,true,true,compass=true)
@@ -34,7 +37,9 @@ internal data class ExperienceOptions(
                 SlotIcon.entries.mapNotNull { icon -> j.optJSONObject("times")?.let { times ->
                     if(times.has(icon.name)) icon.name to times.optInt(icon.name,3).coerceIn(1,60) else null
                 } }.toMap(),j.optBoolean("networkOnly"),j.optBoolean("fade",true),j.optString("language","pt-BR").takeIf { it in listOf("pt-BR","en","es") } ?: "pt-BR",
-                j.optBoolean("universal",(j.optJSONObject("times")?.length() ?: 0)==0))
+                j.optBoolean("universal",(j.optJSONObject("times")?.length() ?: 0)==0),
+                j.optBoolean("batteryColors"),j.optInt("batteryLow",0xFFFF453A.toInt()) or 0xFF000000.toInt(),
+                j.optInt("batteryMid",0xFFFFCC00.toInt()) or 0xFF000000.toInt(),j.optInt("batteryHigh",0xFF30D158.toInt()) or 0xFF000000.toInt())
         } catch (_:Exception) { ExperienceOptions() }
     }
 }

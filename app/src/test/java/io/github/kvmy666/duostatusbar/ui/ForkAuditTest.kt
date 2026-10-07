@@ -41,6 +41,8 @@ class ForkAuditTest {
         val cursor=MatrixCursor(DuoPrefs.COLUMNS).apply {addRow(DuoSettingsProvider.rowFor(portrait,55,landscape))}
         assertTrue(LegacySettingsMigration.importCursor(context,cursor))
         assertEquals(portrait,DuoPrefs.read(context,DuoOrientation.PORTRAIT))
+        assertEquals(portrait,DuoPrefs.read(context,DuoOrientation.LANDSCAPE))
+        DuoPrefs.writeLinkOrientations(context,false)
         assertEquals(landscape,DuoPrefs.read(context,DuoOrientation.LANDSCAPE))
         assertFalse(LegacySettingsMigration.importCursor(context,cursor))
         assertFalse(context.getSharedPreferences("duo_settings",Context.MODE_PRIVATE).contains("root_allowed"))

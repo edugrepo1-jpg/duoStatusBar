@@ -91,7 +91,7 @@ internal class EffectPainter {
         val save=canvas.save()
         val scale=if(frame.spring) .8f+.2f*EffectTimeline.spring((slot.scale-.8f)/.2f) else slot.scale
         canvas.scale(scale,scale)
-        if(icon==SlotIcon.SHARE)canvas.translate(1.5f*sin(frame.motionMs/300f),0f)
+        if(icon==SlotIcon.SHARE&&frame.motionEnabled)canvas.translate(1.5f*sin(frame.motionMs/300f),0f)
         icons.draw(canvas,icon,fg,opacity*slot.opacity,frame)
         canvas.restoreToCount(save)
     }

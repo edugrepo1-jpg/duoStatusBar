@@ -87,7 +87,8 @@ class IslandAuditTest {
         val main=shadowOf(Looper.getMainLooper());main.idle()
         view.layout(0,0,1080,1600);draw(view).recycle()
         val shadow=shadowOf(view);shadow.clearWasInvalidated()
-        main.idleFor(Duration.ofMillis(100));assertTrue("active playback advances the panel",shadow.wasInvalidated())
+        main.idleFor(Duration.ofMillis(100));assertFalse("animations disabled avoids fast frames",shadow.wasInvalidated())
+        main.idleFor(Duration.ofMillis(900));assertTrue("active playback still updates seconds",shadow.wasInvalidated())
 
         view.update(playing.copy(playback=playing.playback.copy(playing=false)));draw(view).recycle();shadow.clearWasInvalidated()
         main.idleFor(Duration.ofMillis(400));assertFalse("paused playback has no repeating redraw",shadow.wasInvalidated())

@@ -152,6 +152,8 @@ internal class DuoIconHost(private val context: Context) {
     }
 
     private val extras = ArrayList<ExtraBar>()
+    private var latestVisual: DuoVisual? = null
+    private var latestEffects: io.github.kvmy666.duostatusbar.fx.EffectFrame? = null
     private var shadeExpanded = false
     private var lastPanelScan = -1L
     fun setShadeExpanded(expanded:Boolean) {
@@ -220,7 +222,7 @@ internal class DuoIconHost(private val context: Context) {
     fun updateSummary(state:io.github.kvmy666.duostatusbar.fx.IslandState)=summary.update(state)
     fun dismissSummary()=summary.dismiss()
     private fun summaryAction():(()->Boolean)? = if(io.github.kvmy666.duostatusbar.fx.Fx.experience.island) ({
-        element?.ui?.let { summary.open(it,animationsEnabled) } ?: false
+        (gestures.anchor?.takeIf {it.isShown} ?: element?.ui)?.let { summary.open(it,animationsEnabled) } ?: false
     }) else null
     private var continuumAnimator: android.animation.ValueAnimator? = null
     fun effectClock() = io.github.kvmy666.duostatusbar.fx.Align.clock(root)
@@ -238,6 +240,7 @@ internal class DuoIconHost(private val context: Context) {
         for (target in allElements()) target.setRenderActive(!paused && !ghost)
     }
     fun applyEffects(frame: io.github.kvmy666.duostatusbar.fx.EffectFrame, hidden: Boolean) {
+        latestEffects = frame
         for (target in allElements()) (target as? DuoCanvasView)?.effects = frame
     }
     fun continuum(enter: Boolean, enabled: Boolean) {
@@ -284,6 +287,7 @@ internal class DuoIconHost(private val context: Context) {
 
     /** Pushes a snapshot at every element that is drawing, in every bar. */
     fun render(v: DuoVisual) {
+        latestVisual = v
         for (target in allElements()) {
             try {
                 (target as? DuoCanvasView)?.apply {
@@ -354,12 +358,14 @@ internal class DuoIconHost(private val context: Context) {
             return false
         }
         extras.firstOrNull {it.name=="shade header"}?.let {old ->
-            if(old.container===area)return true
+            if(old.container===area) {
+                old.bar=ShadePanels.headerFor(area)
+                applyExtraLayout(old);syncExtraIndicators(old)
+                return true
+            }
             old.stock.restore();drop(old.indicators,old.container);drop(old.element,old.container);extras.remove(old)
         }
-        // Centred on the header, not the icon area: the area is a 0x0 strip at the header's end
-        // (measured - it is laid out later), and the header is what has a real height to cap against.
-        return attachExtraView("shade header", area, area, center = false, panel=ShadePanels.Kind.SHARED)
+        return attachExtraView("shade header", area, ShadePanels.headerFor(area), center = false, panel=ShadePanels.Kind.SHARED)
     }
 
     /** Attaches into an already-known container (the shade header's icon area). */
@@ -402,18 +408,20 @@ internal class DuoIconHost(private val context: Context) {
         panel: ShadePanels.Kind? = null
     ): Boolean {
         extras.firstOrNull {it.container===target}?.let {existing ->
-            if(panel!=null) {existing.panel=panel;applyExtraLayout(existing);syncExtraIndicators(existing);hideExtra(existing)}
+            if(panel!=null) {existing.panel=panel;existing.bar=cap?:target;applyExtraLayout(existing);syncExtraIndicators(existing);hideExtra(existing)}
             return true
         }
         val slot = ExtraBar(name, center).apply {this.panel=panel}
         val candidate = createElement(elementRoot, stage, ringPart())
         slot.container = target
         slot.bar = cap ?: target
-        slot.basePx = if(panel!=null)geometry.measuredWidth(target) else geometry.slotBasePx.takeIf { it>0 } ?: geometry.measuredWidth(target)
+        slot.basePx = if(panel!=null) ShadePanels.baseWidth(target).takeIf {it>0}
+            ?: geometry.slotBasePx.takeIf {it>0} ?: geometry.measuredWidth(target)
+            else geometry.slotBasePx.takeIf { it>0 } ?: geometry.measuredWidth(target)
         slot.element = candidate
         extras.add(slot)
         allowOverflow(target)
-        val side = geometry.sidePx(target, slot.bar, slot.basePx)
+        val side = geometry.sidePx(target, slot.bar, slot.basePx, panelSize(slot))
         candidate.ui.layoutParams = layoutParamsFor(target, side)
         candidate.ui.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
             if (slot.element === candidate) { applyExtraLayout(slot); syncExtraIndicators(slot) }
@@ -431,9 +439,10 @@ internal class DuoIconHost(private val context: Context) {
         syncExtraIndicators(slot)
         candidate.onReady {
             if (slot.element !== candidate) return@onReady
+            seedElement(candidate)
             hideExtra(slot)
             candidate.reveal(settings.revealMs)
-            L.i("Duo injected into $name ($logClass, ${side}px) - FR-03b")
+            L.i("Duo injected into $name ($logClass, ${side}px; base=${slot.basePx}px cap=${slot.bar?.height}px size=${panelSize(slot)}%) - FR-03b")
         }
         candidate.onFailed {
             // Optional bar: drop the element and leave its stock icons alone.
@@ -513,15 +522,30 @@ internal class DuoIconHost(private val context: Context) {
         val view = slot.element?.ui ?: return
         try {
             val active=panelEnabled(slot)
+            val becomingVisible=active&&view.visibility!=View.VISIBLE
             view.visibility=if(active)View.VISIBLE else View.GONE
             slot.element?.setRenderActive(active&&!ghost&&!summaryOpen)
             if(!active) {slot.stock.restore();slot.indicators?.ui?.visibility=View.GONE;return}
+            installGestures(view)
+            if(becomingVisible)slot.element?.let {seedElement(it)}
             val side = geometry.sidePx(target, slot.bar, slot.basePx, panelSize(slot))
             assignBox(view, target, side, edgeInsetPx(side, settings.edgePadding))
             place(view, target, slot.bar, side, settings.offsetX, slot.center)
         } catch (t: Throwable) {
             L.w("${slot.name} layout: ${t.message}")
         }
+    }
+
+    private fun seedElement(target:DuoElement) {
+        (target as? DuoCanvasView)?.apply {
+            animationsEnabled=settings.animationsEnabled
+            arrivalEnabled=settings.arrivalEnabled
+            thickPercent=settings.thickPercent
+            globalPercent=settings.globalPercent
+            latestEffects?.let {effects=it}
+        }
+        latestVisual?.let {target.render(it)}
+        target.ui.alpha=if(ghost||summaryOpen)0f else 1f
     }
 
     /** FR-16: whether the percentage should be drawn — asked by the state monitor on every render. */
@@ -611,12 +635,13 @@ internal class DuoIconHost(private val context: Context) {
      * Called on attach and whenever the app says something changed, so no restart is needed.
      */
     fun refreshSettings(applySavedSize: Boolean = false): ModuleSettings {
+        if(applySavedSize)summary.dismiss()
         val fresh = DuoSettingsClient.read(context)
         val changed = fresh != settings
         val hideModeChanged = changed && fresh.hideOtherIcons != settings.hideOtherIcons
         settings = fresh
         io.github.kvmy666.duostatusbar.fx.Fx.sync(fresh, context)
-        if (changed) {
+        if (changed || applySavedSize) {
             if(!io.github.kvmy666.duostatusbar.fx.Fx.experience.island)summary.dismiss()
             resetContinuum()
             L.i("settings rev ${fresh.revision}: size ${fresh.sizePercent}%, offset ${fresh.offsetX}dp, " +
@@ -874,7 +899,7 @@ internal class DuoIconHost(private val context: Context) {
      * touches, because the injected view never receives them. See [ElementGestures.handle].
      */
     fun handleElementTouch(event: MotionEvent): Boolean =
-        !ghost && settings.globalPercent > 0 && gestures.handle(event, listOfNotNull(element?.ui, indicators?.ui))
+        !ghost && settings.globalPercent > 0 && gestures.handle(event, allElements().map {it.ui})
 
     /**
      * Finds `system_icons`, injects the Duo element, hides what it replaces. True on success.
@@ -886,7 +911,12 @@ internal class DuoIconHost(private val context: Context) {
      * than empty (FR-21).
      */
     fun attach(statusBarRoot: View): Boolean {
-        if (element != null) return true
+        if (element != null) {
+            if(root===statusBarRoot)return true
+            val visual=latestVisual;val effects=latestEffects
+            teardown()
+            latestVisual=visual;latestEffects=effects
+        }
         return try {
             val stage = guard.stage()
             if (stage == DuoGuard.OFF) {
@@ -985,6 +1015,7 @@ internal class DuoIconHost(private val context: Context) {
     private fun onElementReady(candidate: DuoElement, target: ViewGroup) {
         if (element !== candidate) return
         try {
+            seedElement(candidate)
             // In overlay mode the element is not a child of the strip, so nothing is "kept" there; the
             // battery keeps its layout instead so the anchor stays valid (and survives rotation).
             hideStock(
@@ -1140,6 +1171,9 @@ internal class DuoIconHost(private val context: Context) {
     /** Removes the element and puts the stock icons back exactly as they were. */
     fun teardown() {
         summary.dismiss()
+        gestures.clear()
+        latestVisual = null
+        latestEffects = null
         continuumAnimator?.cancel()
         try {
             drop(indicators, host)

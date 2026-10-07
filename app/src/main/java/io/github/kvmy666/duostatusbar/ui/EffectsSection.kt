@@ -38,10 +38,11 @@ internal fun GeometrySection(settings:DuoSettings,onUpdate:(DuoSettings)->Unit,s
     }
 }
 @Composable
-internal fun EffectsSection(settings:DuoSettings,onUpdate:(DuoSettings)->Unit,search:SearchGate) {
+internal fun EffectsSection(settings:DuoSettings,onUpdate:(DuoSettings)->Unit,search:SearchGate,page:StudioPage=StudioPage.EFFECTS) {
     val groups=listOf(UiText.t("Ícones e confirmação") to setOf(1,4,8192,4096,8,16),UiText.t("Energia") to setOf(256,512),UiText.t("Acabamento e contexto") to setOf(1024,2048,2,128,32,64))
     groups.forEach { (title,bits) ->
-        val options=effectOptions.filter { it.bit in bits && BuildConfig.FEATURE_MASK and it.bit!=0 && (search(title)||search(it.label,it.detail)) }
+        val allowed=when(page){StudioPage.VISUAL->setOf(2,1024);StudioPage.MORE->setOf(32,64);else->setOf(1,4,8192,4096,8,16,256,512,2048,128)}
+        val options=effectOptions.filter { it.bit in bits && it.bit in allowed && BuildConfig.FEATURE_MASK and it.bit!=0 && (search(title)||search(it.label,it.detail)) }
         if(options.isNotEmpty())StudioCard {
             SectionTitle(title)
             options.forEachIndexed { index,option ->

@@ -152,9 +152,7 @@ internal enum class StudioSymbol { HOME,VISUAL,EFFECTS,SETTINGS,SEARCH,ARROW,PLU
         StudioDestination(UiText.t("Visual"),UiText.t("Tamanho e posição"),StudioPage.VISUAL,Modifier.weight(1f),onSelect)
         StudioDestination(UiText.t("Efeitos"),UiText.t("Ícones e movimento"),StudioPage.EFFECTS,Modifier.weight(1f),onSelect)
     }
-    StudioCard {
-        SettingSwitch(UiText.t("Movimento suave"),UiText.t("Controle geral das animações do anel."),settings.animationsEnabled,settings.enabled,onChange={onUpdate(settings.copy(animationsEnabled=it))})
-    }
+
 }
 
 @Composable private fun StudioDestination(title:String, detail:String, page:StudioPage, modifier:Modifier, onSelect:(StudioPage)->Unit) {

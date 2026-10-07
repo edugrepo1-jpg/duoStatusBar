@@ -297,6 +297,7 @@ class SettingsChannelTest {
     @Test
     fun `portrait and landscape settings are stored apart`() {
         context.getSharedPreferences("duo_settings", Context.MODE_PRIVATE).edit().clear().commit()
+        DuoPrefs.writeLinkOrientations(context,false)
         DuoPrefs.write(
             context,
             DuoSettings(enabled = true, sizePercent = 80, offsetX = 10, iconColor = "black"),

@@ -95,12 +95,37 @@ class StudioUiTest {
                     click(root,"nav-${page.name}")
                     capture(root,"${page.name.lowercase()}-$mode")
                     assertTrue(nodes(root).any {text(it).contains(page.heading)})
+                    val labels=nodes(root).map {text(it)}
+                    when(page) {
+                        StudioPage.VISUAL -> {assertTrue(labels.any {it=="Ícones internos"});assertFalse(labels.any {it=="Ritmo e transições"})}
+                        StudioPage.EFFECTS -> {assertTrue(labels.any {it=="Ritmo e transições"});assertFalse(labels.any {it=="Ícones internos"});assertFalse(labels.any {it=="Conectar aos eventos do aparelho"})}
+                        StudioPage.MORE -> {assertTrue(labels.any {it=="Conectar aos eventos do aparelho"});assertFalse(labels.any {it=="Ritmo e transições"})}
+                        else -> Unit
+                    }
                     assertTrue(nodes(root).first {it.config.getOrNull(SemanticsProperties.TestTag)=="nav-${page.name}"}.config[SemanticsProperties.Selected])
                 }
                 click(root,"nav-HOME")
                 assertTrue(nodes(root).any {it.config.getOrNull(SemanticsProperties.TestTag)=="studio-home"})
             } finally {controller.pause().stop().destroy();idle()}
         }
+    }
+    @Test @Config(qualifiers="w852dp-h393dp-land-xxhdpi") fun `landscape navigation keeps all categories reachable`() {
+        val c=Robolectric.buildActivity(ComponentActivity::class.java)
+        c.get().setTheme(R.style.Theme_DuoStatusBar)
+        val a=c.setup().get()
+        a.setContent {DuoTheme {DuoSettingsScreen()}}
+        try {
+            val root=a.findViewById<View>(android.R.id.content);idle()
+            root.measure(View.MeasureSpec.makeMeasureSpec(2556,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(1179,View.MeasureSpec.EXACTLY))
+            root.layout(0,0,2556,1179);idle()
+            for(page in StudioPage.entries) {
+                click(root,"nav-${page.name}")
+                assertTrue(nodes(root).any {text(it).contains(page.heading)})
+                val tab=nodes(root).first {it.config.getOrNull(SemanticsProperties.TestTag)=="nav-${page.name}"}
+                assertTrue(tab.config[SemanticsProperties.Selected])
+                assertTrue("tab has a touch area",tab.boundsInRoot.width>48f&&tab.boundsInRoot.height>48f)
+            }
+        } finally {c.pause().stop().destroy();idle()}
     }
     @Test fun `master switch commits once and global search reaches NFC from the home page`() {
         val context=ApplicationProvider.getApplicationContext<Context>()

@@ -14,6 +14,7 @@ import org.robolectric.annotation.Config
 class PreferenceAuditTest {
     @Test fun `shared timing updates both orientations without replacing individual maps or features`() {
         val context=ApplicationProvider.getApplicationContext<Context>()
+        DuoPrefs.writeLinkOrientations(context,false)
         val landscape=ExperienceOptions(island=true,music=true,iconSeconds=mapOf("NFC" to 47),universalTiming=false)
         DuoPrefs.write(context,DuoSettings(sizePercent=175,experienceJson=landscape.encode()),DuoOrientation.LANDSCAPE)
         val before=DuoSettings(experienceJson=ExperienceOptions().encode())
@@ -26,6 +27,7 @@ class PreferenceAuditTest {
     }
     @Test fun `individual timing never overwrites another orientation`() {
         val context=ApplicationProvider.getApplicationContext<Context>()
+        DuoPrefs.writeLinkOrientations(context,false)
         val saved=DuoSettings(experienceJson=ExperienceOptions(dwellMs=30000).encode())
         DuoPrefs.write(context,saved,DuoOrientation.LANDSCAPE)
         TimingPreferences.publish(context,DuoSettings(),DuoSettings(experienceJson=ExperienceOptions(dwellMs=1000,universalTiming=false).encode()),DuoOrientation.PORTRAIT)

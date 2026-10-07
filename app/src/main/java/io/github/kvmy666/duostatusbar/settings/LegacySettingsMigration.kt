@@ -47,7 +47,7 @@ internal object LegacySettingsMigration {
         }
         edit.putLong("revision",1).putBoolean("landscape_set",cursor.getColumnIndex("land_enabled")>=0).commit()
         // Re-save through canonical clamping before sending anything to SystemUI.
-        for(orientation in DuoOrientation.entries)DuoPrefs.write(context,DuoPrefs.read(context,orientation),orientation)
+        for(orientation in DuoOrientation.entries)DuoPrefs.write(context,DuoPrefs.read(context,orientation,independent=true),orientation,independent=true)
         return true
     }
 }

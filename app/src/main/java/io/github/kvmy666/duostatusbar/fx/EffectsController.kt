@@ -368,7 +368,7 @@ internal class EffectsController(private val context: Context, private val host:
     } catch (_: Throwable) { null }
     private fun readAudio() {
         val next = audio?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)?.any { it.type in HEADPHONE_TYPES } == true
-        if (next != headphones) { headphones = next; indicators.refresh();updateCycle();audioEvent(if (next) "conexão" else "desconexão") }
+        if (next != headphones) { headphones = next; indicators.refresh(force=true);updateCycle();audioEvent(if (next) "conexão" else "desconexão") }
     }
     private fun audioEvent(reason: String) {
         if (!enabled(16)||foregroundIcon!=null) return
@@ -440,7 +440,7 @@ internal class EffectsController(private val context: Context, private val host:
                 SlotIcon.NETWORK->networkText
                 else->io.github.kvmy666.duostatusbar.i18n.UiText.t("Ativo")
             })
-        },experience.playback,chargeRemaining,indicators.headphoneBattery,indicators.torch))
+        },experience.playback,chargeRemaining,indicators.headphoneBattery,indicators.torch,foregroundIcon))
     }
     private fun setPocket(value: Boolean) {
         val checkPriority = SystemClock.uptimeMillis()-lastUnlock in 0 until EffectTimeline.UNLOCK_MS
@@ -527,19 +527,20 @@ internal class EffectsController(private val context: Context, private val host:
             slot, (Fx.enabled(8) && hotspot) || (Fx.enabled(4) && airplane),
             Fx.enabled(512) && !charging && level in 0..9,
             Fx.enabled(1024), enabled(2048), time,
-            indicators.headphoneBattery, networkText, Fx.enabled(4)||Fx.enabled(8192)||Fx.enabled(4096)||Fx.experience.networkOnly, charging&&enabled(256)&&!Fx.experience.networkOnly,
+            indicators.headphoneBattery.takeIf { headphones } ?: -1, networkText, Fx.enabled(4)||Fx.enabled(8192)||Fx.enabled(4096)||Fx.experience.networkOnly, charging&&enabled(256)&&!Fx.experience.networkOnly,
             musicPlaying=Fx.experience.music&&mediaPlaying()&&!Fx.experience.networkOnly,
             musicProgress=if(Fx.experience.music)experience.playback.progress(SystemClock.elapsedRealtime()) else -1f,
             albumColor=if(Fx.experience.albumColors)experience.playback.color else 0,
             chargeRemainingMs=chargeRemaining,recordElapsedMs=if(recordingAt<0)0 else SystemClock.elapsedRealtime()-recordingAt,
             volumePercent=volumePercent,drawIcons=Fx.experience.drawIcons&&host.animationsEnabled&&!Fx.experience.networkOnly,
             iconPercent=Fx.experience.iconPercent,iconRadius=(55.5f-8f*host.thickPercent/100f-2f).coerceAtLeast(12f),
-            compassDegrees=compassDegrees,compass=Fx.experience.compass), camera)
+            compassDegrees=compassDegrees,compass=Fx.experience.compass,motionEnabled=host.animationsEnabled&&!Fx.experience.networkOnly,
+            batteryColors=Fx.experience.takeIf { it.customBatteryColors }?.let { BatteryBandColors(it.batteryLow,it.batteryMid,it.batteryHigh) }), camera)
         if (!screen || Fx.experience.networkOnly || (camera&&check<0) || !host.animationsEnabled) return
         val selected=slot.icon
         val exclusive=check>=0||audioAge>=0
         val transition=check>=0||pulse>=0||charge>=0||audioAge>=0||slot.opacity<1f
-        val continuous=(charging&&enabled(256))||(!exclusive&&selected in setOf(SlotIcon.MEDIA,SlotIcon.RECORD,SlotIcon.SHARE))
+        val continuous=(charging&&enabled(256))||(!exclusive&&selected in setOf(SlotIcon.MEDIA,SlotIcon.RECORD,SlotIcon.SHARE))||OfflineWifiPulse.active(selected,exclusive,host.animationsEnabled)
         val seconds=!exclusive&&(selected==SlotIcon.RECORD_TIME||(Fx.experience.music&&mediaPlaying()))
         val deadline=if(temporary!=null&&temporaryUntil>time)temporaryUntil-time else Long.MAX_VALUE
         val delay=EffectCadence.delay(cycle.nextDelay(time),transition,continuous,seconds,deadline)

@@ -168,7 +168,9 @@ object DuoMapping {
             cellLevel = cellLevel,
             charging = charging,
             visible = visible,
-            animateCharge = animateCharge
+            animateCharge = animateCharge,
+            percentEnabled = showPercent,
+            batteryLevel = level.coerceIn(0,100)
         )
     }
 

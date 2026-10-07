@@ -110,7 +110,7 @@ internal fun AnimationsSection(
                 checked = settings.animationsEnabled,
                 enabled = settings.enabled
             ) { onUpdate(settings.copy(animationsEnabled = it)) }
-            Text(UiText.t("A entrada do anel controla a expansão da bateria. O tempo de cada ícone e os fades ficam em Experiência expandida."),style=MaterialTheme.typography.bodySmall)
+            Text(UiText.t("A entrada do anel controla a expansão da bateria. Ajuste os tempos dos ícones na seção Ritmo e transições, nesta aba."),style=MaterialTheme.typography.bodySmall)
             // Arrival duration is independent of carousel dwell and the icon fade durations.
             val speedIndex = (DuoPrefs.REVEAL_CHOICES.size - 1 -
                     DuoPrefs.REVEAL_CHOICES.indexOf(settings.revealMs).coerceAtLeast(0))

@@ -162,6 +162,8 @@ internal class DuoCanvasView(context: Context, part: DuoPart = DuoPart.ALL) : Vi
             tint = CanvasMotion.blend(old.tint, v.tint, colorStep),
             fgColor = CanvasMotion.blend(old.fgColor, v.fgColor, colorStep),
             charging = v.charging,
+            batteryLevel = v.batteryLevel,
+            percentEnabled = v.percentEnabled,
             animateCharge = v.animateCharge,
             wifiLevel = v.wifiLevel,
             cellLevel = v.cellLevel,
@@ -224,8 +226,12 @@ internal class DuoCanvasView(context: Context, part: DuoPart = DuoPart.ALL) : Vi
     private fun drawElement(canvas: Canvas) {
         val current = shown ?: return
         if (width <= 0 || height <= 0 || visibilityAmount < 0.001f) return
-        val mapped = part.apply(current)
-        val v = mapped.copy(tint = effectPainter.tint(mapped.tint, effects))
+        val headsetLevel=BatteryPresentation.headphoneLevel(effects)
+        val displayed=BatteryPresentation.visual(current,effects,headsetLevel)
+        val mapped = part.apply(displayed)
+        // Phone charging/critical overlays must never suggest that a headset is charging.
+        val batteryEffects=if(headsetLevel!=null)effects.copy(charging=false,chargeMs=-1,pulseMs=-1,criticalDot=false,albumColor=0,musicProgress=-1f) else effects
+        val v = mapped.copy(tint = if(headsetLevel!=null||effects.batteryColors!=null)mapped.tint else effectPainter.tint(mapped.tint, batteryEffects))
         val scale = minOf(width / 120f, height / 136f)
         canvas.translate(continuumX, continuumY)
         canvas.translate((width - 120f * scale) / 2f, (height - 136f * scale) / 2f)
@@ -281,7 +287,7 @@ internal class DuoCanvasView(context: Context, part: DuoPart = DuoPart.ALL) : Vi
             label(canvas, oldNetworkText, -.5f, 1f, 30f, 2f, v.fgColor,
                 slotAlpha * middleWeights[DuoMapping.MIDDLE_NETWORK])
         }
-        effectPainter.foreground(canvas, if (cycleIcon == null) effects.copy(slot = SlotFrame(null)) else effects,
+        effectPainter.foreground(canvas, if (cycleIcon == null) batteryEffects.copy(slot = SlotFrame(null)) else batteryEffects,
             v.fgColor, thickPercent, opacity, v.ringOpacity > 0f, v.indicatorsOpacity > 0f,v.leftArc,v.rightArc)
         if (v.ringOpacity <= 0f) return
         val ringAlpha = opacity * v.ringOpacity
@@ -295,7 +301,7 @@ internal class DuoCanvasView(context: Context, part: DuoPart = DuoPart.ALL) : Vi
         }
         glyph(canvas, CanvasPaths.moon, DotMoonMotion.CENTER_X, DotMoonMotion.CENTER_Y,
             DotMoonMotion.DOT_SCALE * v.centerMoonOpacity, v.fgColor, ringAlpha * v.centerMoonOpacity)
-        if (boltAmount > .001f) {
+        if (headsetLevel==null && boltAmount > .001f) {
             fill.pathEffect = roundedBolt
             glyph(canvas, CanvasPaths.bolt, 0f, -49.5f * boltAmount,
                 if (current.animateCharge) CanvasMotion.overshoot(boltAmount) else 1f,
@@ -303,26 +309,18 @@ internal class DuoCanvasView(context: Context, part: DuoPart = DuoPart.ALL) : Vi
             fill.pathEffect = null
         }
         label(canvas, v.percentText.trim(), 0f, v.percentY + RingGeometry.PERCENT_BOX_HALF,
-            v.percentFontSize, 2.4f, v.fgColor, ringAlpha * v.percentOpacity)
+            v.percentFontSize, 2.4f, if(headsetLevel!=null||effects.batteryColors!=null)v.tint else v.fgColor, ringAlpha * v.percentOpacity)
     }
 
     private fun arc(canvas: Canvas, fraction: Float, start: Float) {
         if (fraction > 0.00001f) canvas.drawArc(bounds, start, fraction * 360f, false, stroke)
     }
 
+    private val wifiGlyph=WifiGlyph()
     private fun drawWifi(canvas: Canvas, v: DuoVisual, opacity: Float) {
-        if (opacity < .001f) return
-        fun wifiArc(d: Float, width: Float, offset: Float, sweep: Float, strength: Float) {
-            val r = d / 2
-            bounds.set(-.5f - r, 17f - r, -.5f + r, 17f + r)
-            stroke.strokeWidth = width
-            stroke.color = alpha(v.fgColor, opacity * strength)
-            canvas.drawArc(bounds, 270f + offset * 360f, sweep * 360f * (if(effects.drawIcons)effects.slot.reveal else 1f), false, stroke)
-        }
-        wifiArc(62.2f, 7.1f, .88f, .239f, v.wifiOuterOpacity)
-        wifiArc(36.3f, 7f, .882f, .237f, v.wifiMidOpacity)
-        glyph(canvas, CanvasPaths.wifiDot, -.5f, 17f, 1f, v.fgColor,
-            opacity * if (v.wifiLevel > 0) 1f else .3f)
+        if(opacity<.001f)return
+        wifiGlyph.draw(canvas,v.fgColor,opacity,v.wifiOuterOpacity,v.wifiMidOpacity,
+            if(v.wifiLevel>0)1f else .3f,if(effects.drawIcons)effects.slot.reveal else 1f)
     }
 
     private fun glyph(canvas: Canvas, path: Path, x: Float, y: Float, scale: Float, color: Int, opacity: Float) {

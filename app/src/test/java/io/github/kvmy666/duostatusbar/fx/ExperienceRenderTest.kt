@@ -45,10 +45,10 @@ class ExperienceRenderTest {
         }
         write(sheet,"icons.png");sheet.recycle()
     }
-    @Test fun `earbud percentage turns red at fifteen and compass changes rendered direction`() {
-        fun pixels(b:Bitmap,predicate:(Int)->Boolean):Int {var n=0;for(y in 205..240)for(x in 75..165)if(predicate(b.getPixel(x,y)))n++;b.recycle();return n}
+    @Test fun `headphone battery moves to the ring and compass changes rendered direction`() {
+        fun pixels(b:Bitmap,predicate:(Int)->Boolean):Int {var n=0;for(y in 0..95)for(x in 45..195)if(predicate(b.getPixel(x,y)))n++;b.recycle();return n}
         val red=pixels(ring(EffectFrame(slot=SlotFrame(SlotIcon.AIRPODS),headphoneBattery=15))) {Color.red(it)>180&&Color.green(it)<130&&Color.alpha(it)>100}
-        val green=pixels(ring(EffectFrame(slot=SlotFrame(SlotIcon.AIRPODS),headphoneBattery=16))) {Color.green(it)>150&&Color.red(it)<120&&Color.alpha(it)>100}
+        val green=pixels(ring(EffectFrame(slot=SlotFrame(SlotIcon.AIRPODS),headphoneBattery=81))) {Color.green(it)>150&&Color.red(it)<120&&Color.alpha(it)>100}
         assertTrue("red percentage",red>10);assertTrue("green percentage",green>10)
         val a=ring(EffectFrame(slot=SlotFrame(SlotIcon.LOCATION),compass=true,compassDegrees=0f))
         val b=ring(EffectFrame(slot=SlotFrame(SlotIcon.LOCATION),compass=true,compassDegrees=90f))
@@ -65,5 +65,33 @@ class ExperienceRenderTest {
         touch(android.view.MotionEvent.ACTION_DOWN,1500f);touch(android.view.MotionEvent.ACTION_MOVE,100f);touch(android.view.MotionEvent.ACTION_UP,100f)
         val scrolled=Bitmap.createBitmap(1000,1800,Bitmap.Config.ARGB_8888);view.draw(Canvas(scrolled));assertFalse(b.sameAs(scrolled))
         b.recycle();scrolled.recycle()
+    }
+    @Test fun `offline slash pulses while disabled animation stays still and headphones have an open centre`() {
+        fun glyph(icon:SlotIcon,time:Long,enabled:Boolean=true):Bitmap {
+            val b=Bitmap.createBitmap(240,240,Bitmap.Config.ARGB_8888)
+            val c=Canvas(b);c.translate(120f,120f);c.scale(3f,3f)
+            StatusIconPainter().draw(c,icon,Color.WHITE,1f,EffectFrame(motionMs=time,motionEnabled=enabled))
+            return b
+        }
+        val bright=glyph(SlotIcon.WIFI_OFFLINE,0)
+        val normal=glyph(SlotIcon.WIFI,0)
+        for(y in 0 until 240)for(x in 0 until 240) {
+            // Outside the diagonal and its separation halo the underlying artwork is identical.
+            val distance=kotlin.math.abs((x-120)-(y-120)*16f/18f)
+            if(distance>26f)assertEquals("Wi-Fi base at $x,$y",normal.getPixel(x,y),bright.getPixel(x,y))
+        }
+        normal.recycle()
+        val dim=glyph(SlotIcon.WIFI_OFFLINE,250)
+        assertFalse(bright.sameAs(dim))
+        val red=bright.getPixel(120,117)
+        assertTrue("diagonal crosses the centre",Color.red(red)>200&&Color.green(red)<70)
+        val stillA=glyph(SlotIcon.WIFI_OFFLINE,0,false)
+        val stillB=glyph(SlotIcon.WIFI_OFFLINE,250,false)
+        assertTrue(stillA.sameAs(stillB))
+        val phones=glyph(SlotIcon.AIRPODS,0)
+        assertEquals("open centre",0,Color.alpha(phones.getPixel(120,120)))
+        assertTrue("left pad",Color.alpha(phones.getPixel(78,153))>200)
+        assertTrue("right pad",Color.alpha(phones.getPixel(162,153))>200)
+        listOf(bright,dim,stillA,stillB,phones).forEach {it.recycle()}
     }
 }

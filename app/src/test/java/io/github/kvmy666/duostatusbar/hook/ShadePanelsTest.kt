@@ -50,6 +50,7 @@ class ShadePanelsTest {
         assertFalse(ShadePanels.enabled(s.copy(enabled=false),ShadePanels.Kind.QUICK_SETTINGS,true))
     }
     @Test fun `new panel settings survive storage provider and orientation without changing ordinary size`() {
+        DuoPrefs.writeLinkOrientations(context,false)
         val p=DuoSettings(enabled=true,sizePercent=120,showNotifications=false,notificationSize=75,showQuickSettings=true,quickSettingsSize=185)
         val l=p.copy(showNotifications=true,notificationSize=140,showQuickSettings=false,quickSettingsSize=55)
         DuoPrefs.write(context,p,DuoOrientation.PORTRAIT);DuoPrefs.write(context,l,DuoOrientation.LANDSCAPE)
