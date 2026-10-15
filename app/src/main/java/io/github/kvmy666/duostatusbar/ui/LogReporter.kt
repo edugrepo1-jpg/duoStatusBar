@@ -3,13 +3,13 @@ package io.github.kvmy666.duostatusbar.ui
 import io.github.kvmy666.duostatusbar.i18n.UiText
 import android.content.Context
 import android.content.Intent
+import android.content.ClipData
 import android.net.Uri
 import androidx.core.content.FileProvider
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.DiagnosticPrivacy
 import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.settings.DuoSettings
-import io.github.kvmy666.duostatusbar.settings.TelegramLog
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -17,8 +17,9 @@ import java.util.Locale
 
 /** FR-28: where the support button goes. */
 
-/** Where a fallback report goes: the developer's Telegram, and the issue tracker. */
+/** The fork's user-confirmed support destinations. Never upload in the background. */
 internal const val GITHUB_NEW_ISSUE = "https://github.com/edugrepo1-jpg/duoStatusBar/issues/new"
+internal const val TELEGRAM_SUPPORT = "@GMnevz"
 internal val TELEGRAM_PACKAGES = listOf(
     "org.telegram.messenger",
     "org.telegram.messenger.web",
@@ -26,14 +27,38 @@ internal val TELEGRAM_PACKAGES = listOf(
 )
 
 /**
- * Saves the diagnostics file and hands it to Telegram, so one press gets the log on its way. When
- * Telegram is not installed the chat is opened instead, and the file can be attached from
- * "Save status to a file".
+ * Creates a sanitised file and opens Telegram's Android share flow. The user chooses @GMnevz and
+ * confirms sending in Telegram. A username cannot securely identify a direct-share recipient.
  */
 internal fun sendLogOnTelegram(context: Context, report: String) {
     val file=writeDiagnostics(context,report)
     val uri=file?.let {fileUri(context,it)}
-    if(uri!=null)shareLog(context,uri) else shareText(context,report)
+    sharePreparedDiagnosticTelegram(context,uri,report)
+}
+
+internal fun sharePreparedDiagnosticTelegram(context:Context,uri:Uri?,report:String) {
+    val send=telegramDiagnosticIntent(context,uri,report)
+    val chooser=Intent.createChooser(send,UiText.format("Escolha {0} no Telegram e confirme o envio",TELEGRAM_SUPPORT))
+        .apply {if(context !is android.app.Activity)addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)}
+    runCatching {context.startActivity(chooser)}.onFailure {
+        if(uri!=null)shareLog(context,uri) else shareText(context,report)
+    }
+}
+
+/** ACTION_SEND opens a user-reviewed draft/recipient chooser; it does not send anything itself. */
+internal fun telegramDiagnosticIntent(context:Context,file:Uri?,report:String):Intent = Intent(Intent.ACTION_SEND).apply {
+    type="text/plain"
+    val caption=UiText.format("Diagnóstico DUO Recreate para {0}. Escolha o contato e confirme o envio.",TELEGRAM_SUPPORT)
+    putExtra(Intent.EXTRA_TEXT,if(file==null)caption+"\n\n"+DiagnosticPrivacy.clean(report) else caption)
+    if(file!=null) {
+        putExtra(Intent.EXTRA_STREAM,file)
+        clipData=ClipData("DUO Recreate diagnostic",arrayOf("text/plain"),ClipData.Item(file))
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    val destination=TELEGRAM_PACKAGES.firstOrNull {pkg ->
+        runCatching {context.packageManager.getPackageInfo(pkg,0);true}.getOrDefault(false)
+    }
+    destination?.let {setPackage(it)}
 }
 
 /** Opens a new GitHub issue with the device and status pre-filled; the report file can be attached there. */
@@ -64,10 +89,10 @@ internal fun buildDiagnostics(
 ): String =
     DiagnosticPrivacy.clean(buildString {
         appendLine("Diagnóstico do Duo Status Bar")
-        appendLine("configurações: $settings")
+        appendLine("configurações: ${io.github.kvmy666.duostatusbar.DiagnosticConfiguration.render(settings)}")
         appendLine(
             "módulo carregado: " + if (moduleLoadAt <= 0L) {
-                "nunca (o LSPosed ainda não injetou o módulo no System UI)"
+                "nenhum registro de injeção; confira o backend e a saúde do processo root no relatório"
             } else {
                 formatTimestamp(moduleLoadAt)
             }
@@ -75,12 +100,13 @@ internal fun buildDiagnostics(
         appendLine("módulo: ${status.ifEmpty { "nenhum relatório ainda" }}")
         if (history.isNotEmpty()) {
             appendLine("histórico:")
-            history.forEach { appendLine("  $it") }
+            if(history.size>100)appendLine("  [older status history omitted]")
+            history.takeLast(100).forEach { appendLine("  ${it.take(2000)}") }
         }
         // The debug build's full dump (build identity, id probes, view tree, readers). Empty in release.
         if (dump.isNotEmpty()) {
             appendLine()
-            appendLine(dump)
+            appendLine(io.github.kvmy666.duostatusbar.hook.DiagnosticTransport.prepare(dump))
         }
     })
 
@@ -94,7 +120,7 @@ internal fun buildFullReport(
     moduleLoadAt: Long,
     logs: String
 ): String = io.github.kvmy666.duostatusbar.DiagnosticPrivacy.clean(buildString {
-    val message = problem.trim()
+    val message = problem.trim().take(4000)
     if (message.isNotEmpty()) {
         appendLine("mensagem do usuário:")
         appendLine(message)
@@ -117,14 +143,15 @@ internal fun shareText(context: Context, report: String) {
 }
 
 /**
- * Hands the collected log to a share sheet, where the user picks Telegram (the developer, @kvmy1),
+ * Hands the collected log to a share sheet, where the user picks a recipient or storage app,
  * another app, or "Save to Files" — one button, "send it" or "keep it", as the user prefers.
  */
 internal fun shareLog(context: Context, file: Uri) {
     val share = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(Intent.EXTRA_STREAM, file)
-        putExtra(Intent.EXTRA_TEXT, "Duo Status Bar log — @kvmy1")
+        putExtra(Intent.EXTRA_TEXT, "DUO Recreate — diagnóstico")
+        clipData=ClipData("DUO Recreate diagnostic",arrayOf("text/plain"),ClipData.Item(file))
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     context.startActivity(

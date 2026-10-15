@@ -32,11 +32,12 @@ internal object DeviceFacts {
 
     /** Same allowlisted facts for every capture route. Deliberately excludes uname nodename and host. */
     fun header(context: Context): String = DiagnosticPrivacy.clean(buildString {
-        appendLine("=== device facts (no privilege, schema=2) ===")
+        appendLine("=== device facts (no privilege, schema=3) ===")
         appendLine("moduleVersion=${BuildConfig.VERSION_NAME} moduleCode=${BuildConfig.VERSION_CODE} base=1.4.2-beta.2 renderer=Canvas")
         appendLine("manufacturer=${Build.MANUFACTURER} brand=${Build.BRAND} model=${Build.MODEL}")
         appendLine("device=${Build.DEVICE} product=${Build.PRODUCT} hardware=${Build.HARDWARE}")
         appendLine("android=${Build.VERSION.RELEASE} sdk=${Build.VERSION.SDK_INT} securityPatch=${Build.VERSION.SECURITY_PATCH}")
+        appendLine("buildType=${Build.TYPE} buildTags=${Build.TAGS} previewSdk=${Build.VERSION.PREVIEW_SDK_INT}")
         appendLine("romBuild=${Build.DISPLAY} incremental=${Build.VERSION.INCREMENTAL}")
         val kernel=runCatching { Os.uname().release }.getOrDefault("unknown")
         appendLine("kernelRelease=$kernel abi=${abi()} selinux=${selinux()}")

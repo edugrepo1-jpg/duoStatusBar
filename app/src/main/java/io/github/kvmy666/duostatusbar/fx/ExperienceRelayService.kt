@@ -1,12 +1,14 @@
 package io.github.kvmy666.duostatusbar.fx
 
 import android.content.*
+import android.app.Notification
 import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
 import android.os.*
 import android.service.notification.NotificationListenerService
+import android.service.notification.StatusBarNotification
 import io.github.kvmy666.duostatusbar.L
 import io.github.kvmy666.duostatusbar.BuildConfig
 import io.github.kvmy666.duostatusbar.settings.*
@@ -21,15 +23,22 @@ class ExperienceRelayService:NotificationListenerService() {
     private var watching=false
     private var screen=true
     private var music=false
+    private var clocks=false
+    private val clockTracker=ClockNotificationTracker()
+    private var tasks=false
+    private val progress=NotificationProgressTracker()
     private var screenshots:ScreenshotObserver?=null
     private var failed=false
     private var controllers=emptyList<MediaController>()
     private var latest=PlaybackSnapshot()
     private var sentAt=0L
+    private var retryNotBefore=0L
     private var metadataDirty=true
     private var cachedToken:android.media.session.MediaSession.Token?=null
     private var cachedMetadata:MediaMetadata?=null
     private var cachedColor=0
+    private val artworkCache=MediaArtworkCache()
+    private var cachedArtwork:android.graphics.Bitmap?=null
     private val callback=object:MediaController.Callback() {
         override fun onPlaybackStateChanged(state:PlaybackState?) { publish() }
         override fun onMetadataChanged(metadata:MediaMetadata?) { metadataDirty=true;publish() }
@@ -68,6 +77,18 @@ class ExperienceRelayService:NotificationListenerService() {
         val p=DuoPrefs.read(this,DuoOrientation.PORTRAIT)
         val l=DuoPrefs.read(this,DuoOrientation.LANDSCAPE)
         val a=ExperienceOptions.decode(p.experienceJson);val b=ExperienceOptions.decode(l.experienceJson)
+        val clocksWanted=(p.enabled&&a.aurora.timer)||(l.enabled&&b.aurora.timer)
+        clocks=clocksWanted
+        clockTracker.clear()
+        if(clocks)runCatching {activeNotifications.orEmpty().forEach {clockTracker.observe(it)}}
+            .onFailure {L.w("Rel�gio: metadados indispon�veis=${it.javaClass.simpleName}")}
+        send(clockTracker.intent())
+        val tasksWanted=(p.enabled&&a.aurora.taskComplete)||(l.enabled&&b.aurora.taskComplete)
+        if(tasksWanted!=tasks) {
+            tasks=tasksWanted;progress.clear()
+            if(tasks)runCatching {activeNotifications.orEmpty().forEach {trackTask(it,seed=true)}}
+                .onFailure {L.w("Tarefas: acesso às notificações indisponível=${it.javaClass.simpleName}")}
+        }
         val wanted=(p.enabled&&(a.music||a.island||(p.featFlags and BuildConfig.FEATURE_MASK and 8192 != 0)))||
             (l.enabled&&(b.music||b.island||(l.featFlags and BuildConfig.FEATURE_MASK and 8192 != 0)))
         if(!wanted&&music) { music=false;stopMedia();latest=PlaybackSnapshot();sendPlayback(latest) }
@@ -97,7 +118,7 @@ class ExperienceRelayService:NotificationListenerService() {
         if(!connected||!music)return
         if(force)metadataDirty=true
         runCatching { replaceControllers(manager?.getActiveSessions(component).orEmpty());publish(force) }
-            .onFailure { failure(it);scheduleHeartbeat() }
+            .onFailure { mediaFailure(it);scheduleHeartbeat() }
     }
     private fun publish(force:Boolean=false) {
         if(!connected||!music)return
@@ -107,44 +128,70 @@ class ExperienceRelayService:NotificationListenerService() {
             val next=if(selected==null)PlaybackSnapshot() else {
                 val controller=selected.first
                 if(metadataDirty||cachedToken!=controller.sessionToken) {
-                    cachedToken=controller.sessionToken;cachedMetadata=controller.metadata
-                    RuntimeExperience.snapshot(controller,selected.second,cachedMetadata).also {
+                    cachedToken=controller.sessionToken;cachedMetadata=controller.metadata;cachedArtwork=artworkCache.read(cachedMetadata)
+                    RuntimeExperience.snapshot(controller,selected.second,cachedMetadata,artwork=cachedArtwork).also {
                         cachedColor=it.color;metadataDirty=false
                     }
-                } else RuntimeExperience.snapshot(controller,selected.second,cachedMetadata,cachedColor)
+                } else RuntimeExperience.snapshot(controller,selected.second,cachedMetadata,cachedColor,cachedArtwork)
             }
+            retryNotBefore=0L
             if(force||next!=latest) { latest=next;sendPlayback(next) }
-        }.onFailure(::failure)
+        }.onFailure(::mediaFailure)
         scheduleHeartbeat()
     }
     private fun scheduleHeartbeat() {
         handler.removeCallbacks(heartbeat)
-        if(shouldHeartbeat(connected,music,screen,latest.playing,watching))
-            handler.postDelayed(heartbeat,heartbeatDelay(sentAt,SystemClock.elapsedRealtime()))
+        if(shouldHeartbeat(connected,music,screen,latest.playing,watching)) {
+            val now=SystemClock.elapsedRealtime()
+            handler.postDelayed(heartbeat,maxOf(heartbeatDelay(sentAt,now),(retryNotBefore-now).coerceAtLeast(0L)))
+        }
     }
     private fun sendPlayback(s:PlaybackSnapshot) {
         sentAt=SystemClock.elapsedRealtime()
         send(Intent(RuntimeExperience.ACTION).putExtra("playing",s.playing)
             .putExtra("position",if(s.positionMs<0)-1 else (s.progress(SystemClock.elapsedRealtime())*s.durationMs).toLong())
             .putExtra("duration",s.durationMs).putExtra("speed",s.speed).putExtra("color",s.color).putExtra("title",s.title)
-            .putExtra("source",s.sourcePackage))
+            .putExtra("source",s.sourcePackage).putExtra("artwork",s.artwork?.takeIf {MediaArtwork.valid(it)}))
     }
     private fun send(intent:Intent) {
-        runCatching { sendBroadcast(intent.setPackage(SettingsBridge.SYSTEMUI)) }.onFailure(::failure)
+        val target=if(io.github.kvmy666.duostatusbar.settings.RuntimeBackend.mode(this)=="root")
+            io.github.kvmy666.duostatusbar.BuildConfig.APPLICATION_ID else SettingsBridge.SYSTEMUI
+        runCatching { sendBroadcast(intent.setPackage(target)) }.onFailure(::failure)
     }
+    private fun trackTask(notification:StatusBarNotification,seed:Boolean=false) {
+        if(!connected||!tasks)return
+        val extras=notification.notification.extras
+        val done=progress.observe(notification.key,extras.getInt(Notification.EXTRA_PROGRESS,-1),
+            extras.getInt(Notification.EXTRA_PROGRESS_MAX,-1),!extras.getBoolean(Notification.EXTRA_PROGRESS_INDETERMINATE,false),seed)
+        if(done)send(Intent(RuntimeExperience.ACTION).putExtra("taskComplete",true)
+            .putExtra("source",RuntimeExperience.sourceIdentity(notification.packageName)))
+    }
+    override fun onNotificationPosted(sbn:StatusBarNotification?) {
+        if(sbn!=null)runCatching {trackTask(sbn);if(clocks&&clockTracker.observe(sbn))send(clockTracker.intent())}.onFailure {L.w("Tarefas: progresso indisponível=${it.javaClass.simpleName}")}
+    }
+    override fun onNotificationRemoved(sbn:StatusBarNotification?) {sbn?.let {progress.remove(it.key);if(clocks&&clockTracker.remove(it.key))send(clockTracker.intent())}}
     private fun failure(t:Throwable) {
         if(!failed) { failed=true;L.w("Acesso de música: ${t.javaClass.simpleName}") }
+    }
+    private fun mediaFailure(t:Throwable) {
+        // An overdue heartbeat must not spin on the main looper while Binder/permission access fails.
+        // Genuine session callbacks can still recover immediately; only scheduled retries back off.
+        retryNotBefore=SystemClock.elapsedRealtime()+HEARTBEAT_MS
+        failure(t)
     }
     private fun stopMedia() {
         handler.removeCallbacks(heartbeat)
         controllers.forEach { runCatching { it.unregisterCallback(callback) } };controllers=emptyList()
         if(watching)runCatching { manager?.removeOnActiveSessionsChangedListener(sessionListener) }
         watching=false
-        cachedToken=null;cachedMetadata=null;cachedColor=0;metadataDirty=true
+        retryNotBefore=0L
+        cachedToken=null;cachedMetadata=null;cachedColor=0;cachedArtwork=null;artworkCache.clear();metadataDirty=true
     }
     private fun stop() {
         if(connected&&music)sendPlayback(PlaybackSnapshot())
+        clockTracker.clear();if(connected)send(clockTracker.intent());clocks=false
         connected=false;music=false;stopMedia();handler.removeCallbacksAndMessages(null)
+        tasks=false;progress.clear()
         screenshots?.stop();screenshots=null
         if(registered) { runCatching { unregisterReceiver(refreshReceiver) };registered=false }
         latest=PlaybackSnapshot()

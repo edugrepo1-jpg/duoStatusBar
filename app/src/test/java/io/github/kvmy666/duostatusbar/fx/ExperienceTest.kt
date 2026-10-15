@@ -68,11 +68,12 @@ class ExperienceTest {
         c.transient(null,2000);assertEquals(SlotIcon.VOLUME,c.frame(2100).icon)
         assertEquals(SlotIcon.WIFI,c.frame(2280).icon)
     }
-    @Test fun `charge estimate waits for evidence then resets on unplug or reversal`() {
+    @Test fun `charge forecast uses only supplied system time and never extrapolates observed gains`() {
         val c=ChargeEstimator();c.observe(50,true,0);assertEquals(-1L,c.remaining(0))
         c.observe(51,true,60000);assertEquals(-1L,c.remaining(60000))
-        c.observe(52,true,120000);assertEquals(48*60000L,c.remaining(120000))
+        c.observe(52,true,120000);assertEquals(-1L,c.remaining(120000))
         assertEquals(35*60000L,c.remaining(120000,35*60000L))
+        assertEquals(-1L,c.remaining(120001)) // A missing later system reading cannot become a cached local countdown.
         c.observe(40,true,130000);assertEquals(-1L,c.remaining(130000))
         c.observe(100,true,140000);assertEquals(0L,c.remaining(140000))
         c.observe(100,false,150000);assertEquals(-1L,c.remaining(150000))

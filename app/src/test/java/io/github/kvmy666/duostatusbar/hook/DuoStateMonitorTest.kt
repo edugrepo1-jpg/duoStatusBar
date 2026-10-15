@@ -88,7 +88,7 @@ class DuoStateMonitorTest {
             assertTrue(f.view.effects.checkMs in 1450..1550)
             assertEquals(1f,EffectTimeline.check(f.view.effects.checkMs),0f)
             assertEquals(0f,EffectTimeline.checkNormal(f.view.effects.checkMs),0f)
-            idle(1350)
+            idle(1410)
             assertTrue(EffectTimeline.check(f.view.effects.checkMs) in .1f.. .9f)
             idle(400)
             assertEquals(-1L,f.view.effects.checkMs)

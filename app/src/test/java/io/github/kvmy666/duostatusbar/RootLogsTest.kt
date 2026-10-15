@@ -12,6 +12,47 @@ import java.io.File
  * lookup as the last resort — and the grant/parse rules must be decidable without a device.
  */
 class RootLogsTest {
+    @Test fun `request shares one deadline across candidates`() {
+        var clock = 0L
+        val budgets = mutableListOf<Long>()
+        val result = RootLogs.probeCandidates(listOf("a", "b", "c"), 12_000, { clock }) { _, budget ->
+            budgets += budget
+            clock += 6_000
+            "root log collection failed"
+        }
+        assertEquals(listOf(12_000L, 6_000L), budgets)
+        assertEquals(RootLogs.Access.TIMEOUT, result.access)
+    }
+    @Test fun `restricted uid profile does not try another route to bypass it`() {
+        var calls = 0
+        val result = RootLogs.probeCandidates(listOf("a", "b"), 12_000, { 0 }) { _, _ ->
+            calls++; "uid=2000(shell) gid=2000(shell)"
+        }
+        assertEquals(1, calls)
+        assertEquals(RootLogs.Access.NON_ROOT_PROFILE, result.access)
+    }
+    @Test fun `successful virtual route is retained after a missing executable`() {
+        val result = RootLogs.probeCandidates(listOf("missing", "virtual"), 12_000, { 0 }) { name, _ ->
+            if (name == "virtual") "uid=0(root) gid=0(root)" else "root log collection failed"
+        }
+        assertEquals(RootLogs.Access.GRANTED, result.access)
+        assertEquals("virtual", result.candidate)
+    }
+    @Test fun `timeout does not open another pending authorization`() {
+        var calls = 0
+        val result = RootLogs.probeCandidates(listOf("a", "b"), 12_000, { 0 }) { _, _ ->
+            calls++; "root log collection failed: timed out"
+        }
+        assertEquals(1, calls)
+        assertEquals(RootLogs.Access.TIMEOUT, result.access)
+    }
+    @Test fun `virtual su is attempted even when file metadata cannot see it`() {
+        assertEquals(listOf("/system/bin/su","su"),RootLogs.orderedCandidates(null,emptyList()))
+    }
+    @Test fun `verified root route wins and duplicate candidates are removed`() {
+        assertEquals(listOf("su","/sbin/su","/system/bin/su"),RootLogs.orderedCandidates("su",listOf("/sbin/su","/system/bin/su")))
+    }
+
 
     @Test
     fun `the discovered root shell is non-blank and exists when it is an absolute path`() {

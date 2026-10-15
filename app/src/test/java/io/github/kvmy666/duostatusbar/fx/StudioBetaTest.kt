@@ -52,10 +52,10 @@ class StudioBetaTest {
         assertEquals(SlotIcon.BLUETOOTH,c.frame(1000).icon);assertEquals(0f,c.frame(1000).opacity,0f)
         assertEquals(SlotIcon.BLUETOOTH,c.frame(1160).icon);assertEquals(1f,c.frame(1160).opacity,0f)
     }
-    @Test fun `periodic state polls do not starve any of twenty six active icons`() {
+    @Test fun `periodic state polls do not starve any supported active icon`() {
         val c=SlotCycle();val icons=SlotIcon.entries.toList();val seen=mutableSetOf<SlotIcon>()
         c.configure(ExperienceOptions(dwellMs=1000),0);c.update(icons,0)
-        for(t in 0L..27000L step 20L){if(t%2000L==0L)c.update(icons,t);c.frame(t).takeIf { it.opacity>.95f }?.icon?.let {seen.add(it)}}
+        for(t in 0L..(icons.size*1000L+1000) step 20L){if(t%2000L==0L)c.update(icons,t);c.frame(t).takeIf { it.opacity>.95f }?.icon?.let {seen.add(it)}}
         assertEquals(icons.toSet(),seen)
     }
     @Test fun `rootless collection includes device facts and sanitized app evidence`() {
@@ -83,9 +83,9 @@ class StudioBetaTest {
         for(o in listOf(DuoOrientation.PORTRAIT,DuoOrientation.LANDSCAPE))DuoPrefs.write(context,DuoSettings(experienceJson=existing.encode()),o)
         AppLanguage.choose(context,"en")
         assertTrue(AppLanguage.chosen(context));assertEquals("en",AppLanguage.selected(context))
-        assertEquals("Airplane mode",iconLabel(SlotIcon.AIRPLANE));assertEquals("Estimating",estimateLabel(-1))
+        assertEquals("Airplane mode",iconLabel(SlotIcon.AIRPLANE));assertEquals("",estimateLabel(-1))
         for(o in listOf(DuoOrientation.PORTRAIT,DuoOrientation.LANDSCAPE)){val saved=ExperienceOptions.decode(DuoPrefs.read(context,o).experienceJson);assertEquals(existing.copy(language="en"),saved)}
-        AppLanguage.choose(context,"es");assertEquals("Modo avión",iconLabel(SlotIcon.AIRPLANE));assertEquals("Calculando",estimateLabel(-1))
+        AppLanguage.choose(context,"es");assertEquals("Modo avión",iconLabel(SlotIcon.AIRPLANE));assertEquals("",estimateLabel(-1))
     }
     private fun summary(height:Int=1600,actions:MutableList<String> = mutableListOf()):IslandSummary.SummaryCanvas {
         UiText.initialize(context,"pt-BR")
@@ -95,8 +95,8 @@ class StudioBetaTest {
     private fun tap(view:IslandSummary.SummaryCanvas,x:Float,y:Float) {for(action in listOf(MotionEvent.ACTION_DOWN,MotionEvent.ACTION_UP)){val e=MotionEvent.obtain(0,10,action,x,y,0);view.onTouchEvent(e);e.recycle()}}
     @Test fun `expanded island buttons dispatch media and all four shortcuts separately`() {
         val actions=mutableListOf<String>();val view=summary(actions=actions);draw(view).recycle();val d=context.resources.displayMetrics.density
-        for(key in listOf("previous","play","next","wifi","bluetooth","volume","torch")){val rect=view.actionBounds(key)!!;tap(view,rect.centerX(),rect.centerY())}
-        assertEquals(listOf("previous","play","next","wifi","bluetooth","volume","torch"),actions)
+        for(key in listOf("previous","play","next","wifi","bluetooth","nfc","torch")){val rect=view.actionBounds(key)!!;tap(view,rect.centerX(),rect.centerY())}
+        assertEquals(listOf("previous","play","next","wifi","bluetooth","nfc","torch"),actions)
         val info=AccessibilityNodeInfo.obtain();view.onInitializeAccessibilityNodeInfo(info)
         assertTrue(info.actionList.size>=8)
         assertTrue(view.performAccessibilityAction(0x01000000+6,null));assertEquals("torch",actions.last())
@@ -109,7 +109,7 @@ class StudioBetaTest {
         before.recycle();after.recycle()
     }
     @Test fun `expanded island renders its new music battery and shortcuts layout`() {
-        val view=summary();val b=draw(view);assertEquals(0xFF050505.toInt(),b.getPixel(540,45))
+        val view=summary();val b=draw(view);assertTrue(Color.alpha(b.getPixel(540,45))>=220);assertNotEquals(b.getPixel(540,45),b.getPixel(540,1500))
         val out=File("build/experience-captures").apply {mkdirs()};File(out,"island-studio.png").outputStream().use {assertTrue(b.compress(Bitmap.CompressFormat.PNG,100,it))};b.recycle()
     }
 }

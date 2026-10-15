@@ -26,12 +26,18 @@ internal class ElementGestures(private val context: Context) {
     private var actions: Triple<String, String, String>? = null
     private var summary: (() -> Boolean)? = null
     private var summaryInstalled=false
+    private fun anchorVisible() = anchor?.let {it.isAttachedToWindow&&it.isShown&&it.isEnabled&&it.alpha>.01f}==true
 
     fun clear() {
+        cancelPending()
+        detector=null;actions=null;summary=null;summaryInstalled=false;active=false;anchor=null
+    }
+
+    private fun cancelPending() {
         val now=android.os.SystemClock.uptimeMillis()
         val cancel=MotionEvent.obtain(now,now,MotionEvent.ACTION_CANCEL,0f,0f,0)
         try {detector?.onTouchEvent(cancel)} finally {cancel.recycle()}
-        detector=null;actions=null;summary=null;summaryInstalled=false;active=false;anchor=null
+        active=false;anchor=null
     }
 
     /** Installs (or clears) the detector for the current actions. */
@@ -42,6 +48,7 @@ internal class ElementGestures(private val context: Context) {
             view.isClickable = detector != null
             return
         }
+        cancelPending()
         actions = next
         summaryInstalled=onSummary!=null
         active = false
@@ -60,14 +67,17 @@ internal class ElementGestures(private val context: Context) {
             // tap meant for power saver also toggled Wi-Fi and switched the slot to the 4G label).
             // The confirmed callback only fires once the double-tap window has passed.
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                if(!anchorVisible())return false
                 L.i("gesture: single tap")
                 return AutoExpand.request(context, tap)
             }
             override fun onDoubleTap(e: MotionEvent): Boolean {
+                if(!anchorVisible())return false
                 L.i("gesture: double tap")
                 return AutoExpand.request(context, doubleTap)
             }
             override fun onLongPress(e: MotionEvent) {
+                if(!anchorVisible())return
                 L.i("gesture: long press")
                 if(summary?.invoke()!=true)AutoExpand.request(context, longPress)
             }
@@ -112,7 +122,7 @@ internal class ElementGestures(private val context: Context) {
     }
 
     private fun hit(event: MotionEvent, view: View): Boolean {
-        if (!view.isShown || !view.isEnabled || view.alpha <= .01f) return false
+        if (!view.isAttachedToWindow || !view.isShown || !view.isEnabled || view.alpha <= .01f) return false
         val location = IntArray(2)
         try {
             view.getLocationOnScreen(location)

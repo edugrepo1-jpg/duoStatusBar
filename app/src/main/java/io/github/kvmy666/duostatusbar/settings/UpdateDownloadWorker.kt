@@ -177,7 +177,10 @@ internal object UpdateDownloadPolicy {
             !u.rawPath.contains("%",ignoreCase=true) && u.query==null && u.fragment==null
     }.getOrDefault(false)
 
-    fun compatibleChannel(installed:String,release:String)=!installed.contains("-canvas-")||release.contains("-canvas-")
+    // The repository, package and installed signer establish the fork identity. Public stable
+    // release titles need not repeat the implementation flavour in VERSION_NAME.
+    fun compatibleChannel(installed:String,release:String)=validVersion(installed)&&validVersion(release)&&
+        (!installed.contains("-canvas-")||installed.endsWith("-recreate")||release.contains("-canvas-"))
     fun downloadable(info:UpdateInfo)=trustedAsset(info.apkUrl)&&validVersion(info.version)&&validDigest(info.sha256)&&compatibleChannel(io.github.kvmy666.duostatusbar.BuildConfig.VERSION_NAME,info.version)
     fun validVersion(version:String)=version.matches(Regex("[0-9A-Za-z][0-9A-Za-z._-]{0,79}"))
     fun validDigest(sha:String)=sha.matches(Regex("(?i)[0-9a-f]{64}"))

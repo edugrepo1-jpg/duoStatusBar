@@ -29,7 +29,7 @@ import io.github.kvmy666.duostatusbar.hook.rom.RomResources
  * still works as long as the AOSP names are present; `system_icons` is tried first, then the
  * OxygenOS spellings.
  */
-internal class DuoIconHost(private val context: Context) {
+internal class DuoIconHost(private val context: Context,private val onRendererFailed:()->Unit={}) : StateHost {
 
     /** Where the element view is actually added. Usually the strip; see [overlay]. */
     private var host: ViewGroup? = null
@@ -214,36 +214,60 @@ internal class DuoIconHost(private val context: Context) {
 
     val duo: DuoElement? get() = element
     private var ghost = false
+    private var elementsVisible=true
+    private var effectsPaused=false
+    private var rendererFailureLatched=false
+    override val rendererReady get()=element!=null&&!rendererFailureLatched
+    override val effectsVisible get()=renderAllowed()
+    override fun installBiometricObserver(callback:()->Unit):()->Unit = XposedBiometricObserver.install(context,callback)
+    override val rendererFailed get()=rendererFailureLatched
+    private fun renderAllowed()=elementsVisible&&!effectsPaused&&!ghost&&!summaryOpen&&!rendererFailureLatched
+    private fun visibleFor(target:DuoElement)=elementsVisible&&
+        (extras.firstOrNull {it.element===target||it.indicators===target}?.let {panelEnabled(it)} ?: true)
+    private fun rendererFailed(candidate:DuoElement) {
+        if(rendererFailureLatched)return
+        if(element!==candidate&&indicators!==candidate&&extras.none {it.element===candidate||it.indicators===candidate})return
+        rendererFailureLatched=true
+        L.w("Canvas drawing failed; restoring stock icons. Restart SystemUI to retry.")
+        teardown()
+        runCatching {DuoSettingsClient.reportFallback(context,"Canvas drawing failed; original Android icons restored. Restart SystemUI to retry.")}
+        runCatching {onRendererFailed()}.onFailure {L.w("Canvas recovery: ${it.javaClass.simpleName}")}
+    }
+    private val nfcParticles=io.github.kvmy666.duostatusbar.fx.NfcParticleOverlay(context)
+    override fun showNfcParticles():Boolean = if(effectsVisible) (element?.ui?.let { nfcParticles.show(it,animationsEnabled) } ?: false) else false
+    override fun dismissNfcParticles()=nfcParticles.dismiss()
     private var summaryOpen=false
     private val summary=io.github.kvmy666.duostatusbar.fx.IslandSummary(context) { opened ->
         summaryOpen=opened
-        allElements().forEach { it.ui.alpha=if(ghost||opened)0f else 1f;it.setRenderActive(!ghost&&!opened) }
+        if(opened)nfcParticles.dismiss()
+        allElements().forEach { it.ui.alpha=if(ghost||opened)0f else 1f;it.setRenderActive(renderAllowed()) }
     }
-    fun updateSummary(state:io.github.kvmy666.duostatusbar.fx.IslandState)=summary.update(state)
-    fun dismissSummary()=summary.dismiss()
+    override fun updateSummary(state:io.github.kvmy666.duostatusbar.fx.IslandState)=summary.update(state)
+    override fun dismissSummary()=summary.dismiss()
     private fun summaryAction():(()->Boolean)? = if(io.github.kvmy666.duostatusbar.fx.Fx.experience.island) ({
         (gestures.anchor?.takeIf {it.isShown} ?: element?.ui)?.let { summary.open(it,animationsEnabled) } ?: false
     }) else null
     private var continuumAnimator: android.animation.ValueAnimator? = null
-    fun effectClock() = io.github.kvmy666.duostatusbar.fx.Align.clock(root)
-    fun effectsHidden(hidden: Boolean) {
+    override fun effectClock() = io.github.kvmy666.duostatusbar.fx.Align.clock(root)
+    override fun effectsHidden(hidden: Boolean) {
         ghost = hidden
-        if(hidden)summary.dismiss()
+        if(hidden){summary.dismiss();nfcParticles.dismiss()}
         for (target in allElements()) {
             target.ui.alpha = if (hidden||summaryOpen) 0f else 1f
             target.ui.isEnabled = !hidden
-            target.setRenderActive(!hidden&&!summaryOpen)
+            target.setRenderActive(renderAllowed())
         }
     }
-    fun pauseEffects(paused: Boolean) {
-        if (paused) resetContinuum()
-        for (target in allElements()) target.setRenderActive(!paused && !ghost)
+    override fun pauseEffects(paused: Boolean) {
+        effectsPaused=paused
+        if (paused) {resetContinuum();nfcParticles.dismiss()}
+        for (target in allElements()) target.setRenderActive(renderAllowed())
     }
-    fun applyEffects(frame: io.github.kvmy666.duostatusbar.fx.EffectFrame, hidden: Boolean) {
+    override fun applyEffects(frame: io.github.kvmy666.duostatusbar.fx.EffectFrame, hidden: Boolean) {
         latestEffects = frame
         for (target in allElements()) (target as? DuoCanvasView)?.effects = frame
     }
-    fun continuum(enter: Boolean, enabled: Boolean) {
+    override fun continuum(enter: Boolean, enabled: Boolean) {
         resetContinuum()
         val targets = allElements().mapNotNull { it as? DuoCanvasView }
         if (!enabled) { targets.forEach { it.continuumX = 0f; it.continuumY = 0f; it.invalidate() }; return }
@@ -286,7 +310,7 @@ internal class DuoIconHost(private val context: Context) {
     private fun ourViews(): List<View> = allElements().map { it.ui }
 
     /** Pushes a snapshot at every element that is drawing, in every bar. */
-    fun render(v: DuoVisual) {
+    override fun render(v: DuoVisual) {
         latestVisual = v
         for (target in allElements()) {
             try {
@@ -445,6 +469,7 @@ internal class DuoIconHost(private val context: Context) {
             L.i("Duo injected into $name ($logClass, ${side}px; base=${slot.basePx}px cap=${slot.bar?.height}px size=${panelSize(slot)}%) - FR-03b")
         }
         candidate.onFailed {
+            if(candidate is DuoCanvasView){rendererFailed(candidate);return@onFailed}
             // Optional bar: drop the element and leave its stock icons alone.
             L.w("$name element did not bind - leaving its stock icons")
             runCatching { target.removeView(candidate.ui) }
@@ -522,9 +547,9 @@ internal class DuoIconHost(private val context: Context) {
         val view = slot.element?.ui ?: return
         try {
             val active=panelEnabled(slot)
-            val becomingVisible=active&&view.visibility!=View.VISIBLE
-            view.visibility=if(active)View.VISIBLE else View.GONE
-            slot.element?.setRenderActive(active&&!ghost&&!summaryOpen)
+            val becomingVisible=active&&elementsVisible&&view.visibility!=View.VISIBLE
+            view.visibility=if(active&&elementsVisible)View.VISIBLE else View.GONE
+            slot.element?.setRenderActive(active&&renderAllowed())
             if(!active) {slot.stock.restore();slot.indicators?.ui?.visibility=View.GONE;return}
             installGestures(view)
             if(becomingVisible)slot.element?.let {seedElement(it)}
@@ -545,32 +570,34 @@ internal class DuoIconHost(private val context: Context) {
             latestEffects?.let {effects=it}
         }
         latestVisual?.let {target.render(it)}
+        target.ui.visibility=if(visibleFor(target))View.VISIBLE else View.GONE
+        target.setRenderActive(visibleFor(target)&&renderAllowed())
         target.ui.alpha=if(ghost||summaryOpen)0f else 1f
     }
 
     /** FR-16: whether the percentage should be drawn — asked by the state monitor on every render. */
-    val showPercent: Boolean get() = settings.showPercent
+    override val showPercent: Boolean get() = settings.showPercent
 
     /** 0 is the original percentage seat; 100 is fully raised. Asked on every render, so it moves live. */
-    val percentHeight: Int get() = settings.percentHeight
+    override val percentHeight: Int get() = settings.percentHeight
 
     /** FR-15b: "auto", "black" or "white" — asked by the state monitor on every render. */
-    val iconColor: String get() = settings.iconColor
+    override val iconColor: String get() = settings.iconColor
 
     /** Whether Airplane mode may take the middle of the ring. Asked on every render. */
-    val showAirplane: Boolean get() = settings.showAirplane
+    override val showAirplane: Boolean get() = settings.showAirplane
 
     /** How Do Not Disturb is drawn: "off", "middle", or "dots". Asked on every render. */
-    val dndMode: String get() = settings.dndMode
+    override val dndMode: String get() = settings.dndMode
 
     /** Whether Do Not Disturb may take the middle of the ring. Asked on every render. */
-    val showDnd: Boolean get() = settings.showDnd
+    override val showDnd: Boolean get() = settings.showDnd
 
     /** Which cellular line the spheres follow on a dual-SIM phone: "auto", "sim1" or "sim2". */
-    val simChoice: String get() = settings.simChoice
+    override val simChoice: String get() = settings.simChoice
 
     /** When true, airplane mode turns the spheres into Wi-Fi, hiding them if Wi-Fi is off too. */
-    val wifiDots: Boolean get() = settings.wifiDots
+    override val wifiDots: Boolean get() = settings.wifiDots
 
     /**
      * FR-08/08b: hides the stock views per the user's choice — everything, or only what Duo replaces.
@@ -586,14 +613,14 @@ internal class DuoIconHost(private val context: Context) {
     }
 
     /** FR-25: how long an arrival takes, in ms — asked by the monitor when it fires one. */
-    val revealMs: Int get() = settings.revealMs
+    override val revealMs: Int get() = settings.revealMs
 
     // The Animations section (FR-25). The master gates the three individual switches.
-    val animationsEnabled: Boolean get() = settings.animationsEnabled
-    val thickPercent: Int get() = settings.thickPercent
-    val arrivalEnabled: Boolean get() = settings.animationsEnabled && settings.arrivalEnabled
-    val departureEnabled: Boolean get() = settings.animationsEnabled && settings.departureEnabled
-    val chargingEnabled: Boolean get() = settings.animationsEnabled && settings.chargingEnabled
+    override val animationsEnabled: Boolean get() = settings.animationsEnabled
+    override val thickPercent: Int get() = settings.thickPercent
+    override val arrivalEnabled: Boolean get() = settings.animationsEnabled && settings.arrivalEnabled
+    override val departureEnabled: Boolean get() = settings.animationsEnabled && settings.departureEnabled
+    override val chargingEnabled: Boolean get() = settings.animationsEnabled && settings.chargingEnabled
 
     /**
      * Shows or hides every element's view outright.
@@ -604,15 +631,17 @@ internal class DuoIconHost(private val context: Context) {
      * honest answer is to take the element off the display while it is dozing rather than leave it
      * half-drawn.
      */
-    fun setElementsVisible(on: Boolean) {
-        if(!on)summary.dismiss()
+    override fun setElementsVisible(on: Boolean) {
+        elementsVisible=on
+        if(!on){summary.dismiss();nfcParticles.dismiss()}
         if (on) resetContinuum()
         for (target in allElements()) {
             try {
-                target.ui.visibility = if (on) View.VISIBLE else View.GONE
+                val visible=visibleFor(target)
+                target.ui.visibility = if (visible) View.VISIBLE else View.GONE
                 // Off screen means no drawing at all: a looping Rive idle animation would otherwise keep
                 // advancing and drawing into a hidden view for the whole process lifetime (battery).
-                target.setRenderActive(on)
+                target.setRenderActive(visible&&renderAllowed())
             } catch (t: Throwable) {
                 L.w("visibility: ${t.javaClass.simpleName}: ${t.message}")
             }
@@ -620,7 +649,7 @@ internal class DuoIconHost(private val context: Context) {
     }
 
     /** FR-25: fires the arrival on every bar, so the lock screen wakes with the rest of the element. */
-    fun revealAll(ms: Int) {
+    override fun revealAll(ms: Int) {
         for (target in allElements()) {
             try {
                 target.reveal(ms)
@@ -635,11 +664,12 @@ internal class DuoIconHost(private val context: Context) {
      * Called on attach and whenever the app says something changed, so no restart is needed.
      */
     fun refreshSettings(applySavedSize: Boolean = false): ModuleSettings {
-        if(applySavedSize)summary.dismiss()
+        if(applySavedSize){summary.dismiss();nfcParticles.dismiss()}
         val fresh = DuoSettingsClient.read(context)
         val changed = fresh != settings
         val hideModeChanged = changed && fresh.hideOtherIcons != settings.hideOtherIcons
         settings = fresh
+        if(!fresh.animationsEnabled||!fresh.enabled)nfcParticles.dismiss()
         io.github.kvmy666.duostatusbar.fx.Fx.sync(fresh, context)
         if (changed || applySavedSize) {
             if(!io.github.kvmy666.duostatusbar.fx.Fx.experience.island)summary.dismiss()
@@ -815,6 +845,8 @@ internal class DuoIconHost(private val context: Context) {
     ): DuoElement? {
         val side = geometry.sidePx(container, windowRoot, basePx,sizePercent)
         existing?.let { cluster ->
+            cluster.ui.visibility=if(visibleFor(cluster))View.VISIBLE else View.GONE
+            cluster.setRenderActive(visibleFor(cluster)&&renderAllowed())
             assignBox(cluster.ui, container, side, edgeInsetPx(side, 0))
             place(cluster.ui, container, windowRoot, side, settings.indicatorsOffsetX, center)
             installGestures(cluster.ui)
@@ -836,10 +868,12 @@ internal class DuoIconHost(private val context: Context) {
         place(candidate.ui, container, windowRoot, side, settings.indicatorsOffsetX, center)
         installGestures(candidate.ui)
         candidate.onReady {
+            seedElement(candidate)
             candidate.reveal(settings.revealMs)
             L.i("icon cluster injected (${side}px, offset ${settings.indicatorsOffsetX}dp)")
         }
         candidate.onFailed {
+            if(candidate is DuoCanvasView){rendererFailed(candidate);return@onFailed}
             L.w("icon cluster did not bind - drawing it with Canvas")
             val canvas = try {
                 DuoCanvasView(context, DuoPart.INDICATORS).also { it.start() }
@@ -898,8 +932,23 @@ internal class DuoIconHost(private val context: Context) {
      * Called from a `dispatchTouchEvent` hook on the status bar, above the point where the bar swallows
      * touches, because the injected view never receives them. See [ElementGestures.handle].
      */
-    fun handleElementTouch(event: MotionEvent): Boolean =
-        !ghost && settings.globalPercent > 0 && gestures.handle(event, allElements().map {it.ui})
+    private val touchLocation=IntArray(2)
+    fun handleElementTouch(event: MotionEvent): Boolean {
+        if(ghost||settings.globalPercent<=0)return false
+        val targets=allElements()
+        if(event.actionMasked==MotionEvent.ACTION_DOWN) {
+            for(target in targets) {
+                val view=target.ui
+                if(target !is DuoCanvasView||!target.effects.aurora.touchResponse||!view.isAttachedToWindow||!view.isShown||!view.isEnabled||view.alpha<=.01f)continue
+                view.getLocationOnScreen(touchLocation)
+                if(event.rawX>=touchLocation[0]&&event.rawX<=touchLocation[0]+view.width&&
+                    event.rawY>=touchLocation[1]&&event.rawY<=touchLocation[1]+view.height)
+                    (target as? DuoCanvasView)?.touchResponse(true)
+            }
+        } else if(event.actionMasked==MotionEvent.ACTION_UP||event.actionMasked==MotionEvent.ACTION_CANCEL)
+            targets.forEach {(it as? DuoCanvasView)?.touchResponse(false)}
+        return gestures.handle(event,targets.map {it.ui})
+    }
 
     /**
      * Finds `system_icons`, injects the Duo element, hides what it replaces. True on success.
@@ -911,6 +960,7 @@ internal class DuoIconHost(private val context: Context) {
      * than empty (FR-21).
      */
     fun attach(statusBarRoot: View): Boolean {
+        if(rendererFailureLatched)return false
         if (element != null) {
             if(root===statusBarRoot)return true
             val visual=latestVisual;val effects=latestEffects
@@ -1041,6 +1091,7 @@ internal class DuoIconHost(private val context: Context) {
      */
     private fun onElementFailed(candidate: DuoElement, target: ViewGroup) {
         if (element !== candidate) return
+        if(candidate is DuoCanvasView){rendererFailed(candidate);return}
         L.w("Rive element did not bind - falling back to Canvas")
         // Tell the app so it can ask the user to send the log; this is the failure we most need evidence for.
         DuoSettingsClient.reportFallback(context, "Rive did not bind on ${android.os.Build.MODEL}; using the simple drawing")
@@ -1084,7 +1135,7 @@ internal class DuoIconHost(private val context: Context) {
      * Re-applies the hiding pass: the ROM re-shows its icon views whenever the icon set changes, so
      * this runs again on layout changes rather than only once.
      */
-    fun reapplyHiding() {
+    override fun reapplyHiding() {
         applyLayout()
         syncIndicators()
         extras.forEach { applyExtraLayout(it); syncExtraIndicators(it) }
@@ -1170,6 +1221,7 @@ internal class DuoIconHost(private val context: Context) {
 
     /** Removes the element and puts the stock icons back exactly as they were. */
     fun teardown() {
+        nfcParticles.dismiss()
         summary.dismiss()
         gestures.clear()
         latestVisual = null

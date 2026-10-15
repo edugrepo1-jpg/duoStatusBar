@@ -1,6 +1,10 @@
 package io.github.kvmy666.duostatusbar.ui
 
 import io.github.kvmy666.duostatusbar.i18n.UiText
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.rememberScrollState
@@ -72,9 +76,7 @@ import io.github.kvmy666.duostatusbar.settings.DuoActions
 import io.github.kvmy666.duostatusbar.settings.DuoPrefs
 import io.github.kvmy666.duostatusbar.settings.ModuleState
 import io.github.kvmy666.duostatusbar.settings.StockIconHider
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * The settings search gate shared by the section cards: a row is shown when the query appears in its
@@ -114,7 +116,7 @@ internal fun FallbackAlert(
             if (detail.isNotEmpty()) {
                 Text(detail, style = MaterialTheme.typography.bodySmall)
             }
-            Button(onClick = onTelegram, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+            Button(colors=StudioFilledButtonColors(),onClick = onTelegram, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(if (busy) R.string.settings_collecting else R.string.fallback_telegram))
             }
             OutlinedButton(onClick = onGitHub, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
@@ -162,7 +164,7 @@ internal fun StageOverrideAlert(
                 ),
                 style = MaterialTheme.typography.bodySmall
             )
-            Button(onClick = onClear, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+            Button(colors=StudioFilledButtonColors(),onClick = onClear, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                 Text(
                     stringResource(
                         if (busy) R.string.settings_override_clearing else R.string.settings_override_clear
@@ -205,7 +207,7 @@ internal fun ModuleHealthCard(
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(stringResource(title), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(text), style = MaterialTheme.typography.bodyMedium)
-            Button(onClick = onRestart, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+            Button(colors=StudioFilledButtonColors(),onClick = onRestart, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.settings_restart))
             }
             OutlinedButton(onClick = onReboot, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
@@ -335,10 +337,11 @@ internal fun SettingSwitch(
             Text(UiText.t(if(checked)"Ativo" else "Desativado"),style=MaterialTheme.typography.labelSmall,
                 color=if(checked)MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Row(Modifier.clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.primaryContainer)
-            .padding(horizontal=9.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
-            Text(UiText.t("Configurar"),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onPrimaryContainer)
-            StudioGlyph(StudioSymbol.ARROW,MaterialTheme.colorScheme.onPrimaryContainer,Modifier.size(14.dp))
+        Column(horizontalAlignment=Alignment.CenterHorizontally) {
+            androidx.compose.material3.Switch(checked=checked,onCheckedChange=onChange,enabled=enabled)
+            TextButton(onClick={explaining=true},modifier=Modifier.heightIn(min=48.dp)) {
+                Text("?",style=MaterialTheme.typography.titleMedium)
+            }
         }
     }
     if(explaining) FeaturePresentation(label,detail,checked,enabled,
@@ -353,6 +356,36 @@ internal fun SettingSwitch(
  * screen. The permission callback re-reads the wish from [DuoPrefs] instead of closing over a value a
  * recomposition may have replaced.
  */
+/** External permission managers may change capabilities while this Activity is paused. */
+@Composable internal fun ObserveAccessOnResume(refresh:()->Unit) {
+    val lifecycle=androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    val latest by rememberUpdatedState(refresh)
+    DisposableEffect(lifecycle) {
+        val observer=androidx.lifecycle.LifecycleEventObserver {_,event->
+            if(event==androidx.lifecycle.Lifecycle.Event.ON_RESUME)latest()
+        }
+        lifecycle.addObserver(observer)
+        if(lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED))latest()
+        onDispose {lifecycle.removeObserver(observer)}
+    }
+}
+
+/** Status polling is useful only while the settings screen is actually visible. */
+@Composable internal fun ObserveScreenWhileStarted(refresh:()->Unit) {
+    val lifecycle=androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    val latest by rememberUpdatedState(refresh)
+    LaunchedEffect(lifecycle) {
+        withContext(Dispatchers.Main.immediate) {
+        lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+            while(kotlinx.coroutines.currentCoroutineContext().isActive) {
+                latest()
+                kotlinx.coroutines.delay(1500)
+            }
+        }
+        }
+    }
+}
+
 @Composable
 internal fun IconHidingSetting(enabled: Boolean) {
     val context = LocalContext.current
@@ -360,6 +393,12 @@ internal fun IconHidingSetting(enabled: Boolean) {
     var running by remember { mutableStateOf(StockIconHider.isShizukuRunning()) }
     var granted by remember { mutableStateOf(StockIconHider.isPermissionGranted()) }
     var note by remember { mutableStateOf<String?>(null) }
+
+    ObserveAccessOnResume {
+        wanted=DuoPrefs.hideStockIcons(context)
+        running=StockIconHider.isShizukuRunning()
+        granted=StockIconHider.isPermissionGranted()
+    }
 
     fun apply(hide: Boolean) {
         when {
@@ -478,9 +517,10 @@ internal fun ActionPicker(
     label: String,
     selectedKey: String,
     enabled: Boolean,
+    actionsAvailable: Boolean = true,
     onSelect: (String) -> Unit
 ) {
-    OptionPicker(label, DuoActions.ALL, selectedKey, enabled, onSelect)
+    OptionPicker(label, DuoActions.ALL, selectedKey, enabled,optionEnabled={it=="no_action"||actionsAvailable},onSelect=onSelect)
 }
 
 /** A plain labelled dropdown over a (key → label) list: no experimental API needed. */
@@ -490,6 +530,7 @@ internal fun OptionPicker(
     options: List<Pair<String, String>>,
     selectedKey: String,
     enabled: Boolean,
+    optionEnabled: (String) -> Boolean = { true },
     onSelect: (String) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -511,7 +552,7 @@ internal fun OptionPicker(
             }
             DropdownMenu(expanded=expanded,onDismissRequest={expanded=false}) {
                 options.forEach { (key,name) ->
-                    DropdownMenuItem(text={Text(name)},
+                    DropdownMenuItem(enabled=optionEnabled(key),text={Text(name)},
                         trailingIcon=if(key==selectedKey){{StudioGlyph(StudioSymbol.CHECK,MaterialTheme.colorScheme.primary,Modifier.size(18.dp))}}else null,
                         onClick={expanded=false;onSelect(key)})
                 }
@@ -537,6 +578,12 @@ internal fun RootAccessSetting() {
     var granted by remember { mutableStateOf(StockIconHider.isPermissionGranted()) }
     var busy by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<String?>(null) }
+
+    ObserveAccessOnResume {
+        allowed=DuoPrefs.rootAllowed(context)
+        running=StockIconHider.isShizukuRunning()
+        granted=StockIconHider.isPermissionGranted()
+    }
 
     val onPermission: (Boolean) -> Unit = remember {
         { grantedNow -> granted = grantedNow }

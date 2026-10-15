@@ -36,7 +36,7 @@ class IslandAuditTest {
     private fun touch(view:View,action:Int,x:Float,y:Float) {
         MotionEvent.obtain(0,100,action,x,y,0).also { view.onTouchEvent(it);it.recycle() }
     }
-    private fun summary(state:IslandState=IslandState(72,items=SlotIcon.entries.map { IslandItem(it,iconLabel(it)) }),height:Int=1600,action:(String)->Unit={},dismiss:()->Unit={}):IslandSummary.SummaryCanvas =
+    private fun summary(state:IslandState=IslandState(72,items=SlotIcon.entries.map { IslandItem(it,iconLabel(it)) },playback=PlaybackSnapshot(title="Demo")),height:Int=1600,action:(String)->Unit={},dismiss:()->Unit={}):IslandSummary.SummaryCanvas =
         IslandSummary.SummaryCanvas(context,state,animate=false,action=action,dismissed=dismiss).apply { layout(0,0,1080,height) }
 
     @Test fun `expanded and compact media targets are distinct forty eight dp and remain usable`() {
@@ -44,14 +44,14 @@ class IslandAuditTest {
         for(height in listOf(1600,740)) {
             val actions=mutableListOf<String>();val view=summary(height=height,action={actions.add(it)})
             draw(view).recycle()
-            for(key in listOf("previous","play","next","wifi","bluetooth","volume","torch")) {
+            for(key in listOf("previous","play","next","wifi","bluetooth","nfc","torch")) {
                 val bounds=requireNotNull(view.actionBounds(key))
                 assertTrue("$key width",bounds.width()>=48*d-1)
                 assertTrue("$key height",bounds.height()>=48*d-1)
                 touch(view,MotionEvent.ACTION_DOWN,bounds.centerX(),bounds.centerY())
                 touch(view,MotionEvent.ACTION_UP,bounds.centerX(),bounds.centerY())
             }
-            assertEquals(listOf("previous","play","next","wifi","bluetooth","volume","torch"),actions)
+            assertEquals(listOf("previous","play","next","wifi","bluetooth","nfc","torch"),actions)
             val buttons=listOf("previous","play","next").map { requireNotNull(view.actionBounds(it)) }
             assertTrue(buttons[0].right<=buttons[1].left+.1f&&buttons[1].right<=buttons[2].left+.1f)
             view.dispose()

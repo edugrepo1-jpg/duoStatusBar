@@ -7,7 +7,7 @@ import kotlin.math.PI
 internal object EffectTimeline {
     const val CHECK_MS = 3000L
     const val UNLOCK_MS = CHECK_MS + 160L
-    const val CHECK_FADE_OUT_AT = CHECK_MS - 280L
+    const val CHECK_FADE_OUT_AT = CHECK_MS - 180L
     const val AUDIO_MS = 4000L
     const val CHARGE_MS = 3000L
     const val PULSE_MS = 1800L
@@ -15,7 +15,7 @@ internal object EffectTimeline {
         (now - began).takeIf { allowed && it in 0 until duration } ?: -1L
     fun smooth(t: Float): Float = t.coerceIn(0f, 1f).let { it * it * (3f - 2f * it) }
     fun check(t: Long): Float = if (t !in 0 until UNLOCK_MS) 0f else
-        smooth((t - 120) / 160f) * (1f - smooth((t - CHECK_FADE_OUT_AT) / 280f))
+        smooth((t - 120) / 160f) * (1f - smooth((t - CHECK_FADE_OUT_AT) / (CHECK_MS-CHECK_FADE_OUT_AT).toFloat()))
     fun checkNormal(t: Long): Float = when {
         t !in 0 until UNLOCK_MS -> 1f
         t < 120 -> 1f - smooth(t / 120f)
@@ -55,7 +55,7 @@ internal object EffectTimeline {
     }
 }
 
-internal enum class SlotIcon { WIFI, AIRPLANE, BLUETOOTH, SHARE, NFC, NETWORK, DND, AIRPODS, BOLT, CAMERA, MICROPHONE, ALARM, VPN, LOCATION, SILENT, VIBRATE, MEDIA, WIRELESS, TORCH, RECORD, WIFI_OFFLINE, CHARGE_TIME, RECORD_TIME, VOLUME, SCREENSHOT, NOTIFICATION }
+internal enum class SlotIcon { WIFI, AIRPLANE, BLUETOOTH, SHARE, NFC, NETWORK, DND, AIRPODS, BOLT, CAMERA, MICROPHONE, ALARM, VPN, LOCATION, SILENT, VIBRATE, MEDIA, WIRELESS, TORCH, RECORD, WIFI_OFFLINE, CHARGE_TIME, RECORD_TIME, VOLUME, SCREENSHOT, NOTIFICATION, CALL, TIMER, STOPWATCH, TASK_DONE }
 internal data class SlotFrame(val icon: SlotIcon?, val opacity: Float = 1f, val scale: Float = 1f, val reveal: Float = 1f)
 
 /** Exit and entry are disjoint; one occupant never costs a periodic callback. */
@@ -86,6 +86,7 @@ internal class SlotCycle {
     private var temporary:SlotIcon?=null
     private var temporaryAt=0L
     private var returnAt=Long.MIN_VALUE
+    fun transitionDurations():Pair<Long,Long> = exit to entry
     fun configure(options:ExperienceOptions,now:Long) {
         val pose=frame(now).icon;val phase=position(pausedAt ?: now).phase
         val next=options.dwellMs.coerceIn(1000,60000).toLong()
@@ -178,9 +179,9 @@ internal class ForegroundEvents {
     private val active=mutableMapOf<SlotIcon,Long>()
     var current:SlotIcon?=null; private set
     fun update(icons:Collection<SlotIcon>):SlotIcon? {
-        val present=icons.filter { it==SlotIcon.MEDIA||it==SlotIcon.MICROPHONE||it==SlotIcon.RECORD }.toSet()
+        val present=icons.filter { it in listOf(SlotIcon.MEDIA,SlotIcon.MICROPHONE,SlotIcon.RECORD,SlotIcon.CALL,SlotIcon.TIMER,SlotIcon.STOPWATCH) }.toSet()
         active.keys.retainAll(present)
-        for(icon in listOf(SlotIcon.MEDIA,SlotIcon.MICROPHONE,SlotIcon.RECORD))
+        for(icon in listOf(SlotIcon.MEDIA,SlotIcon.MICROPHONE,SlotIcon.RECORD,SlotIcon.TIMER,SlotIcon.STOPWATCH,SlotIcon.CALL))
             if(icon in present&&icon !in active)active[icon]=++serial
         current=active.maxByOrNull { it.value }?.key
         return current
@@ -216,7 +217,10 @@ internal data class EffectFrame(
     val chargeRemainingMs: Long = -1, val recordElapsedMs: Long = 0, val volumePercent: Int = -1,
     val drawIcons: Boolean = false, val iconPercent:Int=100, val iconRadius:Float=47.5f,
     val compassDegrees:Float=0f, val compass:Boolean=false, val motionEnabled:Boolean=true,
-    val batteryColors:BatteryBandColors?=null
+    val batteryColors:BatteryBandColors?=null,
+    val aurora:AuroraOptions=AuroraOptions(),val headphoneConnectMs:Long=-1,val wirelessCharging:Boolean=false,
+    val callElapsedMs:Long=0,val timerElapsedMs:Long=-1,val timerRemainingMs:Long=-1,val stopwatchElapsedMs:Long=-1,
+    val taskCompleteMs:Long=-1,val batterySourceMs:Long=-1
 )
 
 internal data class SwapFrame(val key: Int, val opacity: Float, val reveal:Float=1f)

@@ -1,6 +1,7 @@
 package io.github.kvmy666.duostatusbar.ui
 
 import io.github.kvmy666.duostatusbar.i18n.UiText
+import io.github.kvmy666.duostatusbar.fx.AuroraText
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -66,7 +67,6 @@ import io.github.kvmy666.duostatusbar.settings.SettingsBridge
 import io.github.kvmy666.duostatusbar.settings.ModuleState
 import io.github.kvmy666.duostatusbar.settings.StageOverride
 import io.github.kvmy666.duostatusbar.settings.StockIconHider
-import io.github.kvmy666.duostatusbar.settings.TelegramLog
 import io.github.kvmy666.duostatusbar.settings.UpdateChecker
 import io.github.kvmy666.duostatusbar.settings.UpdateDownloadWorker
 import io.github.kvmy666.duostatusbar.settings.UpdateInfo
@@ -105,10 +105,14 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
     var dump by remember { mutableStateOf(DuoPrefs.dump(context)) }
     var query by rememberSaveable { mutableStateOf("") }
     var page by rememberSaveable { mutableStateOf(StudioPage.HOME) }
+    var topic by rememberSaveable { mutableStateOf("") }
+    val uiPrefs=remember {context.getSharedPreferences("duo_navigation",Context.MODE_PRIVATE)}
+    var advanced by remember {mutableStateOf(uiPrefs.getBoolean("advanced",false))}
+    var fullPreview by rememberSaveable {mutableStateOf(false)}
     val scroll = rememberScrollState()
-    LaunchedEffect(page) { scroll.scrollTo(0) }
-    BackHandler(enabled = page != StudioPage.HOME || query.isNotEmpty()) {
-        if (query.isNotEmpty()) query = "" else page = StudioPage.HOME
+    LaunchedEffect(page,topic) { scroll.scrollTo(0) }
+    BackHandler(enabled = page != StudioPage.HOME || query.isNotEmpty() || topic.isNotEmpty()) {
+        if (query.isNotEmpty()) query = "" else if(topic.isNotEmpty()) topic="" else page = StudioPage.HOME
     }
     val scope = rememberCoroutineScope()
     var collecting by remember { mutableStateOf(false) }
@@ -163,18 +167,19 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
     val search = SearchGate { matches(*it) }
 
     // The module answers an instant after the broadcast; re-reading is simpler than a callback.
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(1500)
-            status = DuoPrefs.status(context)
-            history = DuoPrefs.statusHistory(context)
-            dump = DuoPrefs.dump(context)
-            moduleLoadAt = DuoPrefs.moduleLoadTime(context)
-            fallback = DuoPrefs.fallback(context)
-            stageOverride = StageOverride.read(context)
-            moduleHealth = ModuleHealthCheck.of(context)
-            accessGranted = DuoPrefs.rootAllowed(context) || StockIconHider.isPermissionGranted()
-        }
+    ObserveScreenWhileStarted {
+        status = DuoPrefs.status(context)
+        history = DuoPrefs.statusHistory(context)
+        dump = DuoPrefs.dump(context)
+        moduleLoadAt = DuoPrefs.moduleLoadTime(context)
+        fallback = DuoPrefs.fallback(context)
+        stageOverride = StageOverride.read(context)
+        moduleHealth = ModuleHealthCheck.of(context)
+        accessGranted = DuoPrefs.rootAllowed(context) || StockIconHider.isPermissionGranted()
+    }
+    ObserveAccessOnResume {
+        linkedOrientations=DuoPrefs.linkOrientations(context)
+        settings=DuoPrefs.read(context,orientation)
     }
 
     fun update(new: DuoSettings) {
@@ -209,66 +214,54 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
      * right now (e.g. the shade open) rather than the one-shot boot dump. Falls back to the last stored
      * dump if the module is unreachable or does not answer in time.
      */
-    suspend fun refreshedDump(): String = try {
-        context.sendBroadcast(
-            Intent(DuoPrefs.ACTION_DIAGNOSTICS_REQUEST).setPackage("com.android.systemui")
-        )
-        withContext(Dispatchers.IO) { Thread.sleep(900) }
-        DuoPrefs.dump(context).ifEmpty { dump }
-    } catch (t: Throwable) {
-        dump
-    }
+    suspend fun refreshedDump(): String = DiagnosticRefresh.await(
+        fallback=dump,
+        read={DuoPrefs.dump(context)},
+        request={
+            io.github.kvmy666.duostatusbar.settings.RuntimeBackend.requestDiagnostics(context)
+            context.sendBroadcast(Intent(DuoPrefs.ACTION_DIAGNOSTICS_REQUEST).setPackage("com.android.systemui"))
+        }
+    )
 
-    // One-tap bug report, shared by the About button and the module-health card: packs the description,
-    // the module status and the logs, uploads it, and falls back to the share sheet.
+    // User-reviewed Telegram share only. No bot, original relay or automatic upload.
     fun collectAndSend() {
-        if (collecting) return
+        if (collecting || exporting) return
         collecting = true
         logSent = false
         scope.launch {
             try {
-            val logs = withContext(Dispatchers.IO) { RootLogs.collect(context) }
-            val message = problem.trim()
-            val report = buildFullReport(problem, settings, status, history, refreshedDump(), moduleLoadAt, logs)
-            val file = writeDiagnostics(context, report)
-            if (file == null) {
-                shareText(context, report)
-            } else {
-                val caption = io.github.kvmy666.duostatusbar.DiagnosticPrivacy.clean(message).take(200).ifBlank { UiText.t("Duo Status Bar log") }
-                val result = withContext(Dispatchers.IO) { TelegramLog.send(context, file, caption) }
-                when (result) {
-                    TelegramLog.Result.SENT -> {
-                        logSent = true
-                        Toast.makeText(context, R.string.settings_log_sent, Toast.LENGTH_LONG).show()
-                    }
-                    TelegramLog.Result.RATE_LIMITED -> Toast.makeText(
-                        context, R.string.settings_log_wait, Toast.LENGTH_LONG
-                    ).show()
-                    TelegramLog.Result.FAILED ->
-                        fileUri(context, file)?.let { shareLog(context, it) } ?: shareText(context, report)
+                val fresh=refreshedDump()
+                val prepared=withContext(Dispatchers.IO) {
+                    val logs=RootLogs.collect(context)
+                    val report=buildFullReport(problem,settings,status,history,fresh,moduleLoadAt,logs)
+                    report to writeDiagnostics(context,report)
                 }
-            }
+                val uri=prepared.second?.let {fileUri(context,it)}
+                sharePreparedDiagnosticTelegram(context,uri,prepared.first)
             } finally { collecting = false }
         }
     }
 
     val backdrop = remember { OverlayBackdropState() }
-    androidx.compose.runtime.CompositionLocalProvider(LocalOverlayBackdrop provides backdrop) {
+    androidx.compose.runtime.CompositionLocalProvider(LocalOverlayBackdrop provides backdrop, LocalSettingsAdvanced provides advanced, LocalSettingsNavigation provides SettingsNavigation(topic,{topic=it},{topic=""})) {
     Scaffold(
         modifier = modifier.fillMaxSize().safeDrawingPadding().imePadding().semantics { this[BackdropBlurred] = backdrop.active }.then(if(backdrop.active) Modifier.blur(14.dp) else Modifier),
         contentWindowInsets = WindowInsets(0,0,0,0),
         containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = { StudioNavigation(page) { page = it; query = "" } }
+        bottomBar = { StudioNavigation(page) { page = it; query = ""; topic="" } }
     ) { insets ->
+    Column(Modifier.fillMaxSize().padding(insets)) {
+    if(page in setOf(StudioPage.VISUAL,StudioPage.EFFECTS) && query.isBlank())
+        PinnedBarPreview(settings, page==StudioPage.EFFECTS) { fullPreview=true }
     Column(
-        modifier = Modifier.fillMaxSize().padding(insets)
-            .verticalScroll(scroll).padding(horizontal=20.dp,vertical=20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        modifier = Modifier.weight(1f).fillMaxWidth()
+            .verticalScroll(scroll).padding(horizontal=20.dp,vertical=if(page==StudioPage.HOME&&query.isBlank())16.dp else 20.dp),
+        verticalArrangement = Arrangement.spacedBy(if(page==StudioPage.HOME&&query.isBlank())12.dp else 16.dp)
     ) {
-        StudioHeader(page,orientation==DuoOrientation.LANDSCAPE,query.isNotBlank())
+        StudioHeader(page,orientation==DuoOrientation.LANDSCAPE,query.isNotBlank(),settings,moduleHealth.state,onUpdate)
         TextField(
             value=query,onValueChange={query=it},singleLine=true,
-            placeholder={Text(UiText.t("Buscar um ajuste…"),style=MaterialTheme.typography.bodyMedium)},
+            placeholder={Text(AuroraText.t("Buscar um ajuste…","Search settings…","Buscar un ajuste…"),style=MaterialTheme.typography.bodyMedium)},
             leadingIcon={StudioGlyph(StudioSymbol.SEARCH,MaterialTheme.colorScheme.onSurfaceVariant,Modifier.size(20.dp))},
             trailingIcon=if(query.isNotEmpty()){{TextButton(onClick={query=""}){Text(UiText.t("Limpar"))}}}else null,
             shape=RoundedCornerShape(18.dp),
@@ -279,14 +272,22 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             ),modifier=Modifier.fillMaxWidth().testTag("studio-search")
         )
         if(page==StudioPage.HOME && query.isBlank()) {
-            StudioHome(settings,moduleHealth.state,onUpdate) { page=it }
+            StudioHome(settings,moduleHealth.state,onUpdate) { page=it;topic="" }
+            EffectProfiles(settings,onUpdate)
+            FirstRunTour(settings,onUpdate,uiPrefs)
         } else if(query.isNotBlank() && search(UiText.t("Personalizar a barra"),UiText.t("Ativar"),UiText.t("Usar o Duo Status Bar"))) {
             StudioCard { SettingSwitch(UiText.t("Personalizar a barra"),UiText.t("Ative o Duo na orientação atual."),settings.enabled,onChange={onUpdate(settings.copy(enabled=it))}) }
         }
 
+        if(query.isBlank() && page==StudioPage.MORE && topic=="help") {
+            IconPresentationDiagnostic(settings,moduleHealth.state,dump,stageOverride) {
+                scope.launch { dump=refreshedDump() }
+            }
+        }
+
         // Red health card: not loaded, running old code after an update, or loaded but unable to report
         // (the One UI 8 "Unknown authority" case). Recovery buttons plus a one-tap report.
-        if (moduleHealth.state != ModuleState.OK && query.isBlank() && page == StudioPage.MORE) {
+        if (moduleHealth.state != ModuleState.OK && query.isBlank() && page == StudioPage.MORE && topic=="help") {
             ModuleHealthCard(
                 state = moduleHealth.state,
                 busy = collecting,
@@ -298,24 +299,12 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
 
         // Fallback alert (see DuoPrefs.fallback): the module could not draw the animated element and is
         // using the simple drawing. Ask for the log where the developer watches — Telegram or GitHub.
-        if (fallback.isNotEmpty() && query.isBlank() && page == StudioPage.MORE) {
+        if (fallback.isNotEmpty() && query.isBlank() && page == StudioPage.MORE && topic=="help") {
             FallbackAlert(
                 detail = fallback,
                 busy = collecting,
                 onTelegram = {
-                    if (!collecting) {
-                        collecting = true
-                        scope.launch {
-                            // Same full log as the About button: the module dump plus the device capture.
-                            val logs = withContext(Dispatchers.IO) { RootLogs.collect(context) }
-                            collecting = false
-                            sendLogOnTelegram(
-                                context,
-                                buildDiagnostics(settings, status, history, dump, moduleLoadAt) +
-                                    "\n\n===== device capture =====\n" + logs
-                            )
-                        }
-                    }
+                    collectAndSend()
                 },
                 onGitHub = { openGitHubIssue(context, fallback, status) },
                 onDismiss = {
@@ -328,7 +317,7 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
         // A leftover adb override is the other reason the simple drawing shows with no warning: the app's
         // own settings ask for Rive, but `Settings.Global` outranks them. Explain it and offer the clear.
         val override = stageOverride
-        if (override != null && query.isBlank() && page == StudioPage.MORE) {
+        if (override != null && query.isBlank() && page == StudioPage.MORE && topic=="help") {
             StageOverrideAlert(
                 value = override,
                 busy = clearingOverride,
@@ -363,6 +352,33 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
         }
 
         if(StudioPage.VISUAL.visible(page,query)) {
+            SettingsGroup("ring",AuroraText.t("Anel","Ring","Anillo"),AuroraText.t("Tamanho, espessura e ícones.","Size, stroke and icons.","Tamaño, grosor e iconos."),query) {
+                GeometrySection(settings,onUpdate,search)
+                ExperienceSection(settings,onUpdate,search,StudioPage.VISUAL)
+            }
+            SettingsGroup("percentage",UiText.t("Porcentagem"),AuroraText.t("Número e altura.","Number and height.","Número y altura."),query) { CustomizeSection(settings,onUpdate,search){restartSystemUi(context)} }
+            SettingsGroup("colors",UiText.t("Cores da bateria"),AuroraText.t("Três faixas para celular e fones.","Three bands for phone and headphones.","Tres rangos para móvil y auriculares."),query) {ExperienceSection(settings,onUpdate,search,StudioPage.VISUAL)}
+            SettingsGroup("island-look",UiText.t("Ilha dinâmica"),AuroraText.t("Capa, opacidade e composição.","Artwork, opacity and layout.","Portada, opacidad y composición."),query) {ExperienceSection(settings,onUpdate,search,StudioPage.VISUAL)}
+            SettingsGroup("position",AuroraText.t("Posição e espaço","Position and spacing","Posición y espacio"),AuroraText.t("Alinhamento e indicadores.","Alignment and indicators.","Alineación e indicadores."),query) {
+                CustomizeSection(settings,onUpdate,search){restartSystemUi(context)}
+                AppearanceSection(settings,onUpdate,search)
+                EffectsSection(settings,onUpdate,search,StudioPage.VISUAL)
+            }
+            SettingsGroup("theme",UiText.t("Tema"),AuroraText.t("Claro, escuro ou sistema.","Light, dark or system.","Claro, oscuro o sistema."),query) {ThemePicker()}
+        }
+        if(StudioPage.EFFECTS.visible(page,query)) {
+            effectTopics().forEach { item ->
+                SettingsGroup(item.first,item.second,effectTopicSummary(settings,item.first),query) {
+                    EffectGroupControl(settings,item.first,onUpdate)
+                    if(item.first=="movement") AnimationsSection(settings,onUpdate,search)
+                    EffectsSection(settings,onUpdate,search,StudioPage.EFFECTS)
+                    ExperienceSection(settings,onUpdate,search,StudioPage.EFFECTS)
+                }
+            }
+        }
+        if(StudioPage.MORE.visible(page,query)) {
+            SettingsGroup("panels",AuroraText.t("Barra e painéis","Bar and panels","Barra y paneles"),AuroraText.t("Notificações, ajustes rápidos e orientação.","Notifications, quick settings and orientation.","Notificaciones, ajustes rápidos y orientación."),query) {
+                ShadeSection(settings,onUpdate,search)
             if(search(UiText.t("Manter ajustes ao girar"),UiText.t("Orientação"))) StudioCard {
                 SectionTitle(UiText.t("Orientação"))
                 SettingSwitch(UiText.t("Manter ajustes ao girar"),
@@ -375,36 +391,18 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                     SettingsBridge.push(context)
                 }
             }
-            GeometrySection(settings,onUpdate,search)
-            ShadeSection(settings,onUpdate,search)
-            CustomizeSection(settings,onUpdate,search,onRestart={restartSystemUi(context)})
-            AppearanceSection(settings,onUpdate,search)
-            ExperienceSection(settings,onUpdate,search,StudioPage.VISUAL)
-            EffectsSection(settings,onUpdate,search,StudioPage.VISUAL)
-        }
-        if(StudioPage.EFFECTS.visible(page,query)) {
-            AnimationsSection(settings,onUpdate,search)
-            ExperienceSection(settings,onUpdate,search,StudioPage.EFFECTS)
-            EffectsSection(settings,onUpdate,search,StudioPage.EFFECTS)
-            if(search(UiText.t("Experimente o movimento"),UiText.t("Demonstração"),UiText.t("Ícones"),UiText.t("Efeitos"))) StudioCard {
-                SectionTitle(UiText.t("Experimente o movimento"))
-                Text(UiText.t("Veja os ícones e os efeitos com estados simulados."),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                EffectsPreview(settings,search) { onUpdate(settings.copy(experienceJson=it.encode())) }
+
+                SettingSwitch(UiText.t("Aplicar na hora"),null,settings.liveApply,settings.enabled){onUpdate(settings.copy(liveApply=it))}
+                TextButton(onClick={restartSystemUi(context)}){Text(UiText.t("Reiniciar a barra"))}
             }
-        }
-        if(StudioPage.MORE.visible(page,query)) {
-        ExperienceSection(settings,onUpdate,search,StudioPage.MORE)
-        EffectsSection(settings,onUpdate,search,StudioPage.MORE)
-        IconsSection(settings,onUpdate,search)
-
-        val autoExpand = remember { DuoActions.isAutoExpandInstalled(context) }
-        ActionsSection(
-            settings = settings,
-            onUpdate = onUpdate,
-            matches = search,
-            autoExpand = autoExpand
-        )
-
+            SettingsGroup("advanced",AuroraText.t("Avançado","Advanced","Avanzado"),AuroraText.t("Acesso root, permissões e ajustes finos.","Root access, permissions and fine tuning.","Acceso root, permisos y ajustes finos."),query) {
+                SettingSwitch(AuroraText.t("Modo avançado","Advanced mode","Modo avanzado"),AuroraText.t("Mostra controles extras em cada assunto.","Shows extra controls in each topic.","Muestra controles extra en cada tema."),advanced){advanced=it;uiPrefs.edit().putBoolean("advanced",it).apply()}
+                RootRuntimeSection(search)
+                IconsSection(settings,onUpdate,search)
+                ExperienceSection(settings,onUpdate,search,StudioPage.MORE)
+            }
+            listOf("app" to AuroraText.t("Aplicativo","Application","Aplicación"),"help" to UiText.t("Ajuda")).forEach { (id,label) ->
+        SettingsGroup(id,label,if(id=="app")AuroraText.t("Idioma, tema e atualizações.","Language, theme and updates.","Idioma, tema y actualizaciones.") else AuroraText.t("Diagnóstico, relatório e Telegram.","Diagnostics, report and Telegram.","Diagnóstico, informe y Telegram."),query) {
         AboutSection(
             matches = search,
             status = status,
@@ -421,13 +419,14 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
                 exporting = true
                 logSent = false
                 scope.launch {
-                    val logs = withContext(Dispatchers.IO) { RootLogs.collect(context) }
-                    exporting = false
-                    pendingExport = buildFullReport(
-                        problem, settings, status, history, refreshedDump(), moduleLoadAt, logs
-                    )
-                    val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
-                    exportLog.launch("duo-log-$stamp.txt")
+                    try {
+                        val fresh=refreshedDump()
+                        pendingExport=withContext(Dispatchers.IO) {
+                            buildFullReport(problem,settings,status,history,fresh,moduleLoadAt,RootLogs.collect(context))
+                        }
+                        val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+                        exportLog.launch("duo-log-$stamp.txt")
+                    } finally {exporting=false}
                 }
             },
             checkUpdates = checkUpdates,
@@ -471,8 +470,12 @@ fun DuoSettingsScreen(modifier: Modifier = Modifier) {
             }
         )
         }
+        }
+        }
     }
     }
+    }
+    if(fullPreview) FullPreviewDialog(settings,{fullPreview=false}) {onUpdate(settings.copy(experienceJson=it.encode()))}
     }
 }
 

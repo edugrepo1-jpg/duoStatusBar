@@ -224,22 +224,28 @@ internal object StockIconHider {
      * confirm. Reading back is the success signal: the `settings` command reports failures on stdout,
      * so its exit status alone would not be enough.
      */
-    private fun writeBlacklist(svc: IShellService, hide: Boolean): Boolean = try {
+    private fun writeBlacklist(svc: IShellService, hide: Boolean): Boolean { return try {
         val before = svc.exec("settings get secure $SETTING")
+        if (!validSettingResponse(before)) return false
         val current = IconBlacklist.parse(before).joinToString(",")
         val next = if (hide) IconBlacklist.withKeys(current) else IconBlacklist.withoutKeys(current)
         if (next.isEmpty()) {
             svc.exec("settings delete secure $SETTING")
         } else {
-            svc.exec("settings put secure $SETTING '$next'")
+            svc.exec("settings put secure $SETTING " + shellArgument(next))
         }
-        val after = IconBlacklist.parse(svc.exec("settings get secure $SETTING"))
+        val readback = svc.exec("settings get secure $SETTING")
+        if (!validSettingResponse(readback)) return false
+        val after = IconBlacklist.parse(readback)
         val raw = after.joinToString(",")
-        val ok = if (hide) IconBlacklist.hasKeys(raw) else IconBlacklist.KEYS.none { it in after }
-        L.i("shizuku icon blacklist ${if (hide) "hide" else "show"}: '${before.trim()}' -> '$raw' (ok=$ok)")
+        val ok = after.toSet() == IconBlacklist.parse(next).toSet()
+        L.i("shizuku icon blacklist ${if (hide) "hide" else "show"}: entries=${after.size} (ok=$ok)")
         ok
     } catch (t: Throwable) {
         L.w("shizuku blacklist write: ${t.javaClass.simpleName}: ${t.message}")
         false
-    }
+    } }
+    private fun shellArgument(value:String)="'"+value.replace("'","'\"'\"'")+"'"
+    private fun validSettingResponse(value:String):Boolean = value.length<=4096 && !value.trim().contains('\n') &&
+        !value.contains('\r') && !Regex("(?i)(error|exception|denied|timed out|permission)").containsMatchIn(value)
 }

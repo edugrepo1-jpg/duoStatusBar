@@ -60,7 +60,19 @@ internal val BackdropBlurred = SemanticsPropertyKey<Boolean>("BackdropBlurred")
     }
 }
 
-internal fun featureIcon(label:String):SlotIcon = when(FeatureGuide.find(label)?.title ?: label) {
+internal fun featureIcon(label:String):SlotIcon {
+    when(AuroraOptions.KEYS.firstOrNull {AuroraText.title(it)==label}) {
+        "unlockGlow","unlockBuild"->return SlotIcon.NOTIFICATION
+        "headphoneConfirm","batterySource"->return SlotIcon.AIRPODS
+        "chargeStyles"->return SlotIcon.BOLT
+        "shutter"->return SlotIcon.SCREENSHOT
+        "privacyPair","privacyOrigins"->return SlotIcon.MICROPHONE
+        "timer"->return SlotIcon.TIMER
+        "voiceCall"->return SlotIcon.CALL
+        "taskComplete"->return SlotIcon.TASK_DONE
+    }
+    return when(FeatureGuide.find(label)?.title ?: label) {
+    "Modo Avião"->SlotIcon.AIRPLANE;"Cores por porcentagem"->SlotIcon.BOLT
     "NFC"->SlotIcon.NFC;"Aviso de fones"->SlotIcon.AIRPODS
     "GPS com bússola"->SlotIcon.LOCATION;"Anel musical","Cores da capa"->SlotIcon.MEDIA
     "Captura de tela"->SlotIcon.SCREENSHOT;"Volume no anel"->SlotIcon.VOLUME
@@ -68,45 +80,120 @@ internal fun featureIcon(label:String):SlotIcon = when(FeatureGuide.find(label)?
     "Brilho durante a carga"->SlotIcon.BOLT;"Previsão de carga"->SlotIcon.CHARGE_TIME
     "Ocultar na câmera"->SlotIcon.CAMERA;"Check no desbloqueio"->SlotIcon.NOTIFICATION
     "Bateria fraca"->SlotIcon.BOLT; else->SlotIcon.WIFI
+    }
+}
+
+/** Read the SystemUI report stored by its authenticated return channel, never the app's own ledger. */
+internal data class IconReportEvidence(val detected:Boolean?,val readerOk:Boolean?,val executions:Long?)
+internal fun iconReportEvidence(dump:String,icon:SlotIcon):IconReportEvidence? {
+    val marker=io.github.kvmy666.duostatusbar.TelemetryLedger.MARKER
+    val start=dump.indexOf(marker)
+    val end=dump.indexOf(io.github.kvmy666.duostatusbar.TelemetryLedger.END_MARKER,start.coerceAtLeast(0))
+    if(start<0||end<start)return null
+    val line=dump.substring(start,end).lineSequence().firstOrNull {it.startsWith("feature.${icon.name.lowercase()} ")} ?: return null
+    val values=line.split(' ').drop(1).mapNotNull {token->token.split('=',limit=2).takeIf {it.size==2}?.let {it[0] to it[1]}}.toMap()
+    fun flag(key:String)=when(values[key]){"true"->true;"false"->false;else->null}
+    return IconReportEvidence(flag("detected"),flag("reader_ok"),values["executions"]?.toLongOrNull()?.takeIf {it>=0})
+}
+
+internal fun iconPresentationReasons(settings:io.github.kvmy666.duostatusbar.settings.DuoSettings,
+    state:io.github.kvmy666.duostatusbar.settings.ModuleState,icon:SlotIcon,dump:String,stageOverride:Int?=null):List<String> = buildList {
+    if(!settings.enabled)add("A personalização está desligada nesta orientação.")
+    if(stageOverride==0)add("O bloqueio de desenvolvimento está desligando o módulo. Confira o aviso em Ajustes.")
+    if(state!=io.github.kvmy666.duostatusbar.settings.ModuleState.OK)add(when(state) {
+        io.github.kvmy666.duostatusbar.settings.ModuleState.NEVER_LOADED->"O módulo ainda não informou carregamento. Confira o LSPosed e o escopo SystemUI."
+        io.github.kvmy666.duostatusbar.settings.ModuleState.NEEDS_RESTART->"A barra ainda executa a versão anterior. Reinicie o SystemUI para aplicar a atualização."
+        else->"O módulo carregou, mas não enviou um relatório. Não é possível confirmar a exibição."
+    })
+    val options=ExperienceOptions.decode(settings.experienceJson)
+    if(options.networkOnly&&icon !in setOf(SlotIcon.WIFI,SlotIcon.WIFI_OFFLINE,SlotIcon.NETWORK))add("Somente Wi-Fi ou dados oculta os outros ícones. Seus ajustes continuam guardados.")
+    if(icon==SlotIcon.AIRPLANE&&!settings.showAirplane)add("O indicador de modo avião está desativado em Visual.")
+    fun flag(bit:Int)=settings.featFlags and io.github.kvmy666.duostatusbar.BuildConfig.FEATURE_MASK and bit != 0
+    if(icon==SlotIcon.MEDIA&&!options.music&&!flag(8192))add("Ative o anel musical em Efeitos para mostrar a reprodução.")
+    if(icon==SlotIcon.NFC&&!flag(4096))add("O indicador NFC está desativado em Efeitos.")
+    if(icon==SlotIcon.SHARE&&!flag(8))add("O indicador de roteador Wi-Fi está desativado em Efeitos.")
+    val evidence=iconReportEvidence(dump,icon)
+    when {
+        evidence==null->add("Não há observação deste ícone no último relatório. Gere um diagnóstico com o estado ativo.")
+        evidence.readerOk==false->add("O último relatório registrou falha ao consultar este estado. Confira o acesso e gere um novo diagnóstico.")
+        evidence.detected==false->add("O estado estava inativo no último relatório. Isso não significa uma falha.")
+        evidence.executions!=null&&evidence.executions>0->add("O último relatório registrou um desenho deste ícone. Isso não confirma que ele esteja visível agora.")
+        else->add("O relatório ainda não confirma um desenho deste ícone. Pode haver outro evento em primeiro plano.")
+    }
+    add("Música e gravações permanecem em primeiro plano até terminar. O evento mais recente tem prioridade; os demais aguardam.")
+}
+
+@Composable internal fun IconPresentationDiagnostic(settings:io.github.kvmy666.duostatusbar.settings.DuoSettings,
+    state:io.github.kvmy666.duostatusbar.settings.ModuleState,dump:String,stageOverride:Int?=null,onRefresh:()->Unit) {
+    var visible by remember {mutableStateOf(false)}
+    var selected by remember {mutableStateOf(SlotIcon.WIFI)}
+    OutlinedButton(onClick={visible=true},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("icon-diagnostic")) {
+        Text(UiText.t("Por que este ícone não aparece?"))
+    }
+    if(visible) {
+        OverlayBackdrop()
+        Dialog(onDismissRequest={visible=false},properties=DialogProperties(usePlatformDefaultWidth=false)) {
+            Surface(Modifier.padding(20.dp).widthIn(max=520.dp).fillMaxWidth(),shape=RoundedCornerShape(28.dp),color=MaterialTheme.colorScheme.surface) {
+                Column(Modifier.padding(20.dp).heightIn(max=520.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                    Text(UiText.t("Por que este ícone não aparece?"),style=MaterialTheme.typography.titleLarge)
+                    Column(Modifier.weight(1f,fill=false).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                        OptionPicker(UiText.t("Escolha o ícone"),SlotIcon.entries.map {it.name to iconLabel(it)},selected.name,true) { selected=SlotIcon.valueOf(it) }
+                        Text(UiText.t("Configuração atual e última observação da barra. Este painel não simula sucesso nem mede o estado ao vivo."),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        iconPresentationReasons(settings,state,selected,dump,stageOverride).forEach {key->Text(UiText.t(key),style=MaterialTheme.typography.bodyMedium)}
+                    }
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End) {
+                        TextButton(onClick=onRefresh,modifier=Modifier.heightIn(min=48.dp)) {Text(UiText.t("Atualizar diagnóstico"))}
+                        OutlinedButton(onClick={visible=false},modifier=Modifier.heightIn(min=48.dp)) {Text(UiText.t("Fechar"))}
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable internal fun FeaturePresentation(label:String,detail:String?,checked:Boolean,enabled:Boolean,
     onDismiss:()->Unit,onChange:(Boolean)->Unit) {
     OverlayBackdrop()
     val guide=FeatureGuide.find(label)
+    val auroraKey=AuroraOptions.KEYS.firstOrNull {AuroraText.title(it)==label}
     Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
-        Surface(color=StudioInk,contentColor=Color.White,shape=RoundedCornerShape(30.dp),
-            modifier=Modifier.fillMaxWidth().padding(20.dp).widthIn(max=520.dp)) {
+        Surface(color=MaterialTheme.colorScheme.surface,contentColor=MaterialTheme.colorScheme.onSurface,shape=RoundedCornerShape(30.dp),
+            modifier=Modifier.padding(20.dp).widthIn(max=520.dp).fillMaxWidth()) {
             Column(Modifier.padding(20.dp).heightIn(max=520.dp),
                 verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 Row(verticalAlignment=Alignment.CenterVertically) {
                     Text(label,style=MaterialTheme.typography.titleLarge,modifier=Modifier.weight(1f))
                     RecreateSwitch(checked,enabled,label,onChange)
                 }
-                Column(Modifier.heightIn(max=300.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1f,fill=false).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(16.dp)) {
                     AndroidView(factory={context -> DuoCanvasView(context).apply {
                         animationsEnabled=false;arrivalEnabled=false
-                        effects=EffectFrame(checkMs=if(guide?.title=="Check no desbloqueio")420 else -1,slot=SlotFrame(featureIcon(label)),managedSlots=true,headphoneBattery=65,networkText="5G",volumePercent=65)
+                        effects=EffectFrame(checkMs=when {auroraKey=="unlockGlow"->200;auroraKey=="unlockBuild"||guide?.title=="Check no desbloqueio"->420;else->-1},
+                            slot=SlotFrame(featureIcon(label)),managedSlots=true,headphoneBattery=65,networkText="5G",volumePercent=65,
+                            aurora=AuroraOptions(enabled=setOfNotNull(auroraKey)),timerRemainingMs=300000,timerElapsedMs=0,callElapsedMs=18000,
+                            headphoneConnectMs=if(auroraKey=="headphoneConfirm")420 else -1,
+                            chargeMs=if(auroraKey=="chargeStyles")500 else -1,charging=auroraKey=="chargeStyles",motionMs=500,
+                            taskCompleteMs=if(auroraKey=="taskComplete")500 else -1)
                         render(DuoMapping.visual(level=72,charging=false,saver=false,showPercent=true,wifiLevel=3,cellLevel=4,airplane=false).copy(tint=android.graphics.Color.WHITE))
-                    }},modifier=Modifier.size(88.dp))
+                    }},onRelease={it.teardown()},modifier=Modifier.size(88.dp).background(StudioInk,RoundedCornerShape(50)))
                     Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                        Text(detail ?: UiText.t("Controla este ajuste da sua barra de status."),style=MaterialTheme.typography.bodySmall,color=Color(0xFFCDCDD3))
+                        Text(detail ?: UiText.t("Controla este ajuste da sua barra de status."),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                         if(guide!=null) {
                             Text(UiText.t("Como funciona"),style=MaterialTheme.typography.labelLarge)
-                            Text(UiText.t(guide.explanation),style=MaterialTheme.typography.bodySmall,color=Color(0xFFCDCDD3))
+                            Text(UiText.t(guide.explanation),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Text(UiText.t(if(checked)"Esta função está ativada." else "Esta função está desativada."),style=MaterialTheme.typography.bodySmall,color=if(checked)StudioMint else Color(0xFFAEAEB2))
+                        Text(UiText.t(if(checked)"Esta função está ativada." else "Esta função está desativada."),style=MaterialTheme.typography.bodySmall,color=if(checked)MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 if(guide!=null) {
-                    Text(UiText.t(guide.use),style=MaterialTheme.typography.bodySmall,color=Color(0xFFAEAEB2),
-                        modifier=Modifier.fillMaxWidth().background(Color(0xFF222225),RoundedCornerShape(14.dp)).padding(12.dp))
+                    Text(UiText.t(guide.use),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier=Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=.55f),RoundedCornerShape(14.dp)).padding(12.dp))
                 }
-                if(!enabled)Text(UiText.t("Este ajuste está indisponível agora. Ative a personalização ou a opção da qual ele depende."),color=Color(0xFFFF9CAA))
+                if(!enabled)Text(UiText.t("Este ajuste está indisponível agora. Ative a personalização ou a opção da qual ele depende."),color=MaterialTheme.colorScheme.error)
                 }
                 OutlinedButton(onClick=onDismiss,modifier=Modifier.align(Alignment.End).heightIn(min=48.dp),
-                    colors=ButtonDefaults.outlinedButtonColors(contentColor=Color(0xFF79DFF1)),border=androidx.compose.foundation.BorderStroke(1.dp,Color(0xFF45454B))) {Text(UiText.t("Fechar"))}
+                    colors=ButtonDefaults.outlinedButtonColors(contentColor=MaterialTheme.colorScheme.primary),border=androidx.compose.foundation.BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant)) {Text(UiText.t("Fechar"))}
             }
         }
     }

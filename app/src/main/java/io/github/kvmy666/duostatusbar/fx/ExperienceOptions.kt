@@ -13,10 +13,12 @@ internal data class ExperienceOptions(
     val iconSeconds:Map<String,Int> = emptyMap(), val networkOnly:Boolean=false, val fadeEnabled:Boolean=true, val language:String="pt-BR",
     val universalTiming:Boolean=true,
     val customBatteryColors:Boolean=false,
-    val batteryLow:Int=0xFFFF453A.toInt(),val batteryMid:Int=0xFFFFCC00.toInt(),val batteryHigh:Int=0xFF30D158.toInt()
+    val batteryLow:Int=0xFFFF453A.toInt(),val batteryMid:Int=0xFFFFCC00.toInt(),val batteryHigh:Int=0xFF30D158.toInt(),
+    val aurora:AuroraOptions=AuroraOptions(),
+    val nfcParticles:Boolean=false, val islandAppearance:IslandAppearance=IslandAppearance()
 ) {
     fun encode(): String = JSONObject().apply {
-        put("v",4);put("language",language.takeIf { it in listOf("pt-BR","en","es") } ?: "pt-BR")
+        put("v",7);put("islandAppearance",islandAppearance.encode());put("nfcParticles",nfcParticles);put("aurora",aurora.encode());put("language",language.takeIf { it in listOf("pt-BR","en","es") } ?: "pt-BR")
         put("music",music);put("album",albumColors);put("charge",chargeEstimate)
         put("shot",screenshot);put("volume",volume);put("record",recordingTime)
         put("island",island);put("draw",drawIcons)
@@ -27,7 +29,7 @@ internal data class ExperienceOptions(
         put("batteryColors",customBatteryColors);put("batteryLow",batteryLow or 0xFF000000.toInt());put("batteryMid",batteryMid or 0xFF000000.toInt());put("batteryHigh",batteryHigh or 0xFF000000.toInt())
     }.toString()
     companion object {
-        val ALL=ExperienceOptions(true,true,true,true,true,true,true,true,compass=true)
+        val ALL=ExperienceOptions(true,true,true,true,true,true,true,true,compass=true,aurora=AuroraOptions.ALL)
         fun decode(raw: String): ExperienceOptions = try {
             val j=JSONObject(raw)
             ExperienceOptions(j.optBoolean("music"),j.optBoolean("album"),j.optBoolean("charge"),
@@ -39,7 +41,7 @@ internal data class ExperienceOptions(
                 } }.toMap(),j.optBoolean("networkOnly"),j.optBoolean("fade",true),j.optString("language","pt-BR").takeIf { it in listOf("pt-BR","en","es") } ?: "pt-BR",
                 j.optBoolean("universal",(j.optJSONObject("times")?.length() ?: 0)==0),
                 j.optBoolean("batteryColors"),j.optInt("batteryLow",0xFFFF453A.toInt()) or 0xFF000000.toInt(),
-                j.optInt("batteryMid",0xFFFFCC00.toInt()) or 0xFF000000.toInt(),j.optInt("batteryHigh",0xFF30D158.toInt()) or 0xFF000000.toInt())
+                j.optInt("batteryMid",0xFFFFCC00.toInt()) or 0xFF000000.toInt(),j.optInt("batteryHigh",0xFF30D158.toInt()) or 0xFF000000.toInt(),AuroraOptions.decode(j.optJSONObject("aurora")),j.optBoolean("nfcParticles",false),IslandAppearance.decode(j.optJSONObject("islandAppearance")))
         } catch (_:Exception) { ExperienceOptions() }
     }
 }
@@ -47,7 +49,7 @@ internal data class ExperienceOptions(
 internal data class PlaybackSnapshot(
     val playing:Boolean=false, val positionMs:Long=-1, val durationMs:Long=0,
     val updatedAt:Long=0, val speed:Float=1f, val color:Int=0, val title:String="",
-    val sourcePackage:String=""
+    val sourcePackage:String="", val artwork:android.graphics.Bitmap?=null
 ) {
     fun progress(now:Long):Float = if(positionMs<0||durationMs<=0) -1f else
         ((positionMs + if(playing) ((now-updatedAt).coerceAtLeast(0)*speed).toLong() else 0).toDouble()/durationMs).toFloat().coerceIn(0f,1f)
@@ -67,11 +69,7 @@ internal class ChargeEstimator {
     fun remaining(now:Long,systemMs:Long=-1):Long {
         if(lastLevel==100)return 0
         if(startLevel<0)return -1
-        if(systemMs>0)return systemMs.coerceAtMost(48*3600000L)
-        val gained=lastLevel-startLevel
-        if(gained<2||lastTime-startTime<60000)return -1
-        return (((100-lastLevel).toDouble()*(lastTime-startTime)/gained).toLong()-(now-lastTime).coerceAtLeast(0))
-            .coerceIn(60000,48*3600000L)
+        return systemMs.takeIf {it>0}?.coerceAtMost(48*3600000L) ?: -1
     }
 }
 
@@ -81,7 +79,7 @@ internal fun durationLabel(ms:Long):String {
     else "%d:%02d".format(seconds/60,seconds%60)
 }
 internal fun estimateLabel(ms:Long):String {
-    if(ms<0)return UiText.t("Calculando")
+    if(ms<0)return ""
     if(ms==0L)return UiText.t("Completa")
     val minutes=((ms+59999)/60000).coerceAtLeast(1)
     return if(minutes>=60) "~${minutes/60}h${(minutes%60).toString().padStart(2,'0')}" else "~${minutes}min"
@@ -95,4 +93,8 @@ internal fun iconLabel(icon:SlotIcon):String=when(icon) {
     SlotIcon.MEDIA->UiText.t("Música");SlotIcon.WIRELESS->UiText.t("Carga sem fio");SlotIcon.TORCH->UiText.t("Lanterna");SlotIcon.RECORD->UiText.t("Gravação de tela")
     SlotIcon.WIFI_OFFLINE->UiText.t("Wi-Fi sem internet");SlotIcon.CHARGE_TIME->UiText.t("Previsão de carga");SlotIcon.RECORD_TIME->UiText.t("Tempo de gravação")
     SlotIcon.VOLUME->UiText.t("Volume");SlotIcon.SCREENSHOT->UiText.t("Captura de tela");SlotIcon.NOTIFICATION->UiText.t("Notificação")
+    SlotIcon.CALL->AuroraText.t("Chamada","Call","Llamada")
+    SlotIcon.TIMER->AuroraText.t("Temporizador","Timer","Temporizador")
+    SlotIcon.STOPWATCH->AuroraText.t("Cronômetro","Stopwatch","Cronómetro")
+    SlotIcon.TASK_DONE->AuroraText.t("Concluído","Completed","Completado")
 }

@@ -36,7 +36,7 @@ class EffectTimelineTest {
         assertEquals(0f,EffectTimeline.unlockColor(400),0f)
         assertTrue(EffectTimeline.check(650)>0f)
         assertEquals(1f,EffectTimeline.check(2720),0f)
-        assertTrue(EffectTimeline.check(2860) in .49f.. .51f)
+        assertTrue(EffectTimeline.check(2910) in .49f.. .51f)
         assertEquals(0f,EffectTimeline.check(3000),0f)
     }
     @Test fun `power threshold excludes invalid readings and discharging current`() {

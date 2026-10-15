@@ -17,9 +17,12 @@ internal object BatteryPresentation {
         val slotVisible=frame.slot.icon==SlotIcon.AIRPODS&&frame.slot.opacity>.001f&&EffectTimeline.audioNormal(frame.audioMs)>.001f
         return frame.headphoneBattery.takeIf {audioVisible||slotVisible}
     }
+    /** Discharge bands do not replace phone charging artwork; a headset remains a separate source. */
+    fun frameForSource(device:DuoVisual,frame:EffectFrame,headphoneLevel:Int?=headphoneLevel(frame)):EffectFrame =
+        if(headphoneLevel==null&&(device.charging||frame.charging)&&frame.batteryColors!=null)frame.copy(batteryColors=null) else frame
     fun visual(device:DuoVisual,frame:EffectFrame,headphoneLevel:Int?=headphoneLevel(frame)):DuoVisual {
         if(headphoneLevel==null) {
-            val palette=frame.batteryColors ?: return device
+            val palette=frameForSource(device,frame,headphoneLevel).batteryColors ?: return device
             return device.copy(tint=palette.color(device.batteryLevel))
         }
         val show=device.percentEnabled
@@ -30,4 +33,21 @@ internal object BatteryPresentation {
             percentOpacity=if(show)1f else 0f,percentFontSize=RingGeometry.percentFontSize(number),
             tint=(frame.batteryColors ?: defaults).color(headphoneLevel),charging=false,boltOpacity=0f)
     }
+}
+
+/** Keeps the last real presentation until fade-out reaches zero; percentages are never interpolated. */
+internal class BatterySourceSwap {
+    data class Snapshot(val visual:DuoVisual,val headphoneLevel:Int?)
+    private var shown:Snapshot?=null
+    private var outgoing:Snapshot?=null
+    private var lastAge=-1L
+    fun present(visual:DuoVisual,headphoneLevel:Int?,frame:EffectFrame):Snapshot {
+        val incoming=Snapshot(visual,headphoneLevel)
+        val animated=frame.checkMs<0&&frame.motionEnabled&&frame.aurora.batterySource&&frame.batterySourceMs in 0 until 600
+        if(!animated) {outgoing=null;lastAge=-1;shown=incoming;return incoming}
+        if(lastAge<0||frame.batterySourceMs<lastAge)outgoing=shown
+        lastAge=frame.batterySourceMs
+        return (if(frame.batterySourceMs<300)outgoing?:incoming else incoming).also {shown=it}
+    }
+    fun clear() {shown=null;outgoing=null;lastAge=-1}
 }

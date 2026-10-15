@@ -46,7 +46,7 @@ import io.github.kvmy666.duostatusbar.i18n.UiText
                         TextButton(onClick={hex="%06X".format(swatch.toInt() and 0xFFFFFF)},modifier=Modifier.weight(1f).heightIn(min=48.dp).semantics {contentDescription="#%06X".format(swatch.toInt() and 0xFFFFFF)},contentPadding=PaddingValues(4.dp)) {Box(Modifier.size(24.dp).background(Color(swatch),CircleShape))}
                     }
                 }
-                OutlinedTextField(value=hex,onValueChange={hex=it.removePrefix("#").take(6)},singleLine=true,label={Text(UiText.t("Cor hexadecimal (#RRGGBB)"))},isError=!valid,modifier=Modifier.testTag("battery-color-hex"))
+                if(LocalSettingsAdvanced.current) OutlinedTextField(value=hex,onValueChange={hex=it.removePrefix("#").take(6)},singleLine=true,label={Text(UiText.t("Cor hexadecimal (#RRGGBB)"))},isError=!valid,modifier=Modifier.testTag("battery-color-hex"))
                 if(!valid)Text(UiText.t("Digite seis caracteres de 0 a 9 e A a F."),color=MaterialTheme.colorScheme.error)
             }},confirmButton={TextButton(onClick={onSelect(hex.toInt(16) or 0xFF000000.toInt());open=false},enabled=enabled&&valid){Text(UiText.t("Aplicar cor"))}},
             dismissButton={TextButton(onClick={open=false}){Text(UiText.t("Fechar"))}})

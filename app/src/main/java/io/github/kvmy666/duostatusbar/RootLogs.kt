@@ -61,7 +61,7 @@ internal object RootLogs {
      * KernelSU-family managers do not prompt and may leave the `su` call waiting when the app is not
      * allowlisted, so this must be short.
      */
-    private const val ROOT_REQUEST_TIMEOUT_SECONDS = 8L
+    private const val ROOT_REQUEST_TIMEOUT_SECONDS = 12L
 
     /** A re-check of an already-granted root is bounded tighter still, so the guide appears quickly. */
     private const val ROOT_RECHECK_TIMEOUT_SECONDS = 3L
@@ -77,7 +77,9 @@ internal object RootLogs {
         candidates.firstOrNull { it != "su" && exists(it) } ?: "su"
 
     /** The first root shell on this device, or `"su"` when none of the known paths exists. */
-    internal fun findSuBinary(): String = firstExisting(SU_CANDIDATES) { File(it).exists() }
+    @Volatile private var verifiedSu: String? = null
+
+    internal fun findSuBinary(): String = verifiedSu ?: firstExisting(SU_CANDIDATES) { File(it).exists() }
 
     /**
      * The `su` spellings to actually try, in order: every known absolute path that exists **and is
@@ -85,9 +87,13 @@ internal object RootLogs {
      * for the app (e.g. `/data/adb/ksu/bin/su` is root-only); skipping it avoids reporting "denied" when
      * a different spelling would have worked.
      */
+    internal fun orderedCandidates(verified: String?, runnable: List<String>): List<String> =
+        (listOfNotNull(verified) + runnable + listOf("/system/bin/su", "su")).distinct()
+
     internal fun suCandidates(): List<String> {
         val runnable = SU_CANDIDATES.filter { it != "su" && File(it).exists() && File(it).canExecute() }
-        return runnable + "su"
+        // KernelSU may virtualize exec of /system/bin/su despite stat/access returning false.
+        return orderedCandidates(verifiedSu, runnable)
     }
 
     /** Whether `id` printed uid 0 — the proof that a granted root shell really ran. */
@@ -103,19 +109,43 @@ internal object RootLogs {
      * denied prompt and a timeout all report `false`, and the report falls back to Shizuku / the module
      * log.
      */
-    fun requestRoot(context: Context, timeoutSeconds: Long = ROOT_REQUEST_TIMEOUT_SECONDS): Boolean {
-        for (candidate in suCandidates()) {
-            val output = runRoot(candidate, "id", timeoutSeconds)
-            if (looksRooted(output)) {
-                DuoPrefs.writeRootAllowed(context, true)
-                L.i("root access granted via $candidate")
-                return true
-            }
-            // A timeout means the root manager is prompting; do not fire a second prompt behind it.
-            if (output.contains("timed out")) break
+    internal enum class Access { GRANTED, NOT_GRANTED, NON_ROOT_PROFILE, TIMEOUT }
+    internal data class AccessResult(val access: Access, val candidate: String? = null)
+    @Volatile internal var lastAccess: Access = Access.NOT_GRANTED
+        private set
+
+    /** One deadline for the whole request, not a new timeout for each su spelling. */
+    internal fun probeCandidates(candidates: List<String>, budgetMs: Long,
+        now: () -> Long = { System.nanoTime() / 1_000_000 },
+        execute: (String, Long) -> String): AccessResult {
+        val started = now()
+        for (candidate in candidates) {
+            val remaining = budgetMs - (now() - started).coerceAtLeast(0)
+            if (remaining <= 0) return AccessResult(Access.TIMEOUT)
+            val output = execute(candidate, remaining)
+            if (looksRooted(output)) return AccessResult(Access.GRANTED, candidate)
+            if (output.contains("timed out")) return AccessResult(Access.TIMEOUT)
+            // A successful non-root profile is a real manager decision, not a path failure.
+            if (Regex("^uid=\\d+\\b").containsMatchIn(output.trim()))
+                return AccessResult(Access.NON_ROOT_PROFILE)
         }
+        return AccessResult(Access.NOT_GRANTED)
+    }
+
+    fun requestRoot(context: Context, timeoutSeconds: Long = ROOT_REQUEST_TIMEOUT_SECONDS): Boolean {
+        val result = probeCandidates(suCandidates(), timeoutSeconds.coerceAtLeast(0) * 1000) { candidate, remaining ->
+            runRoot(candidate, "id", timeoutMillis = remaining)
+        }
+        lastAccess = result.access
+        if (result.access == Access.GRANTED) {
+                verifiedSu = result.candidate
+                DuoPrefs.writeRootAllowed(context, true)
+                L.i("root access granted via ${result.candidate}; uid=0")
+                return true
+        }
+        verifiedSu = null
         DuoPrefs.writeRootAllowed(context, false)
-        L.w("root access not granted (tried ${suCandidates().joinToString(",")})")
+        L.w("root access ${result.access}; no runtime launched")
         return false
     }
 
@@ -181,6 +211,7 @@ internal object RootLogs {
 
         return DiagnosticPrivacy.clean(buildString {
             append(DeviceFacts.header(context))
+            append(RootlessCapture.collect(context))
             appendLine("=== app recent log (no privilege) ===")
             appendLine(L.recentText())
             appendLine("=== capture route ===")
@@ -283,7 +314,8 @@ internal object RootLogs {
         script: String,
         timeoutSeconds: Long = ROOT_TIMEOUT_SECONDS,
         allowEmpty: Boolean = false,
-        start: () -> Process = { ProcessBuilder(su, "-c", script).redirectErrorStream(true).start() }
+        start: () -> Process = { ProcessBuilder(su, "-c", script).redirectErrorStream(true).start() },
+        timeoutMillis: Long = timeoutSeconds * 1000
     ): String {
         // The read itself can block forever if the root prompt never answers, so the whole
         // start-and-read runs on a worker that the caller abandons after the timeout.
@@ -298,6 +330,9 @@ internal object RootLogs {
                 val process = start()
                 processRef.set(process)
                 if (cancelled.get()) { closeProcess(process); return@submit "$FAILURE_PREFIX: cancelled" }
+                // No command uses interactive stdin. Signal EOF so an authorized su wrapper
+                // cannot wait for more input after executing -c.
+                process.outputStream.close()
                 val out = process.inputStream.bufferedReader().use { reader ->
                     val captured = StringBuilder()
                     val buffer = CharArray(4096)
@@ -316,9 +351,9 @@ internal object RootLogs {
                 else if (out.isBlank() && !allowEmpty) "$FAILURE_PREFIX: root shell ($su) returned no output - root denied?"
                 else out
             }
-            future!!.get(timeoutSeconds, TimeUnit.SECONDS)
+            future!!.get(timeoutMillis.coerceAtLeast(1), TimeUnit.MILLISECONDS)
         } catch (_: java.util.concurrent.TimeoutException) {
-            "$FAILURE_PREFIX: root shell ($su) timed out after ${timeoutSeconds}s"
+            "$FAILURE_PREFIX: root shell ($su) timed out after ${timeoutMillis}ms"
         } catch (t: Throwable) {
             "$FAILURE_PREFIX: ${t.javaClass.simpleName}: ${t.message} (tried $su)"
         } finally {
@@ -332,10 +367,11 @@ internal object RootLogs {
     private fun closeProcess(process: Process) {
         // Closing the pipe unblocks read(); interrupting a native stream read alone does not.
         runCatching { process.destroy() }
+        // Kill before acquiring stream-close locks: a blocked reader may own the pipe lock.
+        runCatching { if (process.isAlive) process.destroyForcibly() }
         runCatching { process.inputStream.close() }
         runCatching { process.errorStream.close() }
         runCatching { process.outputStream.close() }
-        runCatching { if (process.isAlive) process.destroyForcibly() }
     }
 
     /**

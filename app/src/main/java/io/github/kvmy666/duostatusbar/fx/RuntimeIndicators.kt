@@ -22,6 +22,9 @@ import io.github.kvmy666.duostatusbar.TelemetryFeature
 internal class RuntimeIndicators(private val context: Context, private val handler: Handler, private val changed: () -> Unit) {
     var camera = false; private set
     var microphone = false; private set
+    var cameraSources:Set<String> = emptySet(); private set
+    var microphoneSources:Set<String> = emptySet(); private set
+    var privacySharedSource=false; private set
     private var locationInUse = false
     var locationEnabled = false; private set
     val location get() = locationEnabled || locationInUse
@@ -63,12 +66,19 @@ internal class RuntimeIndicators(private val context: Context, private val handl
                 AppOpsManager.OPSTR_FINE_LOCATION,AppOpsManager.OPSTR_COARSE_LOCATION -> RuntimeTelemetry.probe(TelemetryFeature.LOCATION,true)
             }
             val key="$op|$uid|$pkg"
-            val previous=Triple(camera,microphone,locationInUse)
+            val previous=listOf(camera,microphone,locationInUse,cameraSources,microphoneSources,privacySharedSource)
             if (active) operations.add(key) else operations.remove(key)
             camera=operations.any { it.startsWith(AppOpsManager.OPSTR_CAMERA+"|") }
             microphone=operations.any { it.startsWith(AppOpsManager.OPSTR_RECORD_AUDIO+"|") }
+            val cameraOwners=operations.filter {it.startsWith(AppOpsManager.OPSTR_CAMERA+"|")}.map {it.substringAfter('|')}.toSet()
+            val microphoneOwners=operations.filter {it.startsWith(AppOpsManager.OPSTR_RECORD_AUDIO+"|")}.map {it.substringAfter('|')}.toSet()
+            // UID plus package identifies the same observed owner, including separate Android profiles.
+            // Only the package is presented locally; neither UID nor app identity enters logs.
+            cameraSources=cameraOwners.map {RuntimeExperience.sourceIdentity(it.substringAfter('|'))}.filter {it.isNotBlank()}.toSet()
+            microphoneSources=microphoneOwners.map {RuntimeExperience.sourceIdentity(it.substringAfter('|'))}.filter {it.isNotBlank()}.toSet()
+            privacySharedSource=cameraOwners.any {it in microphoneOwners}
             locationInUse=operations.any { it.startsWith(AppOpsManager.OPSTR_FINE_LOCATION+"|") || it.startsWith(AppOpsManager.OPSTR_COARSE_LOCATION+"|") }
-            if(previous!=Triple(camera,microphone,locationInUse))changed()
+            if(previous!=listOf(camera,microphone,locationInUse,cameraSources,microphoneSources,privacySharedSource))changed()
         }
     }
     private val torchListener = object : CameraManager.TorchCallback() {
@@ -114,6 +124,7 @@ internal class RuntimeIndicators(private val context: Context, private val handl
         read("encerrar privacidade") { ops?.stopWatchingActive(opListener) }
         read("encerrar lanterna") { cameras?.unregisterTorchCallback(torchListener) }
         operations.clear();torches.clear();camera=false;microphone=false;locationInUse=false;torch=false
+        cameraSources=emptySet();microphoneSources=emptySet();privacySharedSource=false
     }
     fun bluetoothBattery(intent: Intent) {
         if(intent.action=="android.bluetooth.device.action.BATTERY_LEVEL_CHANGED") {

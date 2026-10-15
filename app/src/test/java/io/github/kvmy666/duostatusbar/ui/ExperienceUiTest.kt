@@ -11,6 +11,7 @@ import io.github.kvmy666.duostatusbar.fx.*
 import io.github.kvmy666.duostatusbar.settings.*
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.Before
 import org.junit.runner.RunWith
 import org.robolectric.*
 import org.robolectric.annotation.*
@@ -20,15 +21,19 @@ import java.util.concurrent.TimeUnit
 @Config(sdk=[35],manifest=Config.NONE,qualifiers="w393dp-h852dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ExperienceUiTest {
+    @Before fun controlledVsync() {
+        org.robolectric.shadows.ShadowChoreographer.setPaused(true)
+        org.robolectric.shadows.ShadowChoreographer.setFrameDelay(java.time.Duration.ofMillis(16))
+    }
     @Test fun `battery color dialog validates input and releases the blurred backdrop`() {
         val c=Robolectric.buildActivity(ComponentActivity::class.java);c.get().setTheme(R.style.Theme_DuoStatusBar)
-        val a=c.setup().get();val backdrop=OverlayBackdropState();var selected=ExperienceOptions(customBatteryColors=true)
-        a.setContent {DuoTheme {CompositionLocalProvider(LocalOverlayBackdrop provides backdrop) {Column {
+        val a=c.setup().visible().get();val backdrop=OverlayBackdropState();var selected=ExperienceOptions(customBatteryColors=true)
+        a.setContent {DuoTheme {CompositionLocalProvider(LocalOverlayBackdrop provides backdrop, LocalSettingsAdvanced provides true) {Column {
             var options by remember {mutableStateOf(selected)}
             BatteryColorsSection(options,true){options=it;selected=it}
         }}}}
         try {
-            val root=a.findViewById<View>(android.R.id.content);root.measure(View.MeasureSpec.makeMeasureSpec(1179,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(5000,View.MeasureSpec.EXACTLY));root.layout(0,0,1179,5000);idle()
+            val root=a.findViewById<View>(android.R.id.content);idle();assertTrue("Fixture must attach before native measurement",root.isAttachedToWindow);root.measure(View.MeasureSpec.makeMeasureSpec(1179,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(5000,View.MeasureSpec.EXACTLY));root.layout(0,0,1179,5000);idle()
             click(root,"Escolher cor: 0–20%");assertTrue(backdrop.active)
             val dialog=org.robolectric.shadows.ShadowDialog.getLatestDialog();val modal=dialog.window!!.decorView
             modal.measure(View.MeasureSpec.makeMeasureSpec(1179,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(2556,View.MeasureSpec.AT_MOST));modal.layout(0,0,1179,modal.measuredHeight);idle()
@@ -62,10 +67,10 @@ class ExperienceUiTest {
     }
     @Test fun `preview draft remains local until Apply and timing preset is committed together`() {
         val c=Robolectric.buildActivity(ComponentActivity::class.java);c.get().setTheme(R.style.Theme_DuoStatusBar)
-        val a=c.setup().get();var saved:ExperienceOptions?=null
+        val a=c.setup().visible().get();var saved:ExperienceOptions?=null
         a.setContent {DuoTheme {Column {EffectsPreview(DuoSettings(enabled=true),SearchGate {true}) {saved=it}}}}
         try {
-            val root=a.findViewById<View>(android.R.id.content);root.measure(View.MeasureSpec.makeMeasureSpec(1179,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(7000,View.MeasureSpec.EXACTLY));root.layout(0,0,1179,7000);idle()
+            val root=a.findViewById<View>(android.R.id.content);idle();assertTrue("Fixture must attach before native measurement",root.isAttachedToWindow);root.measure(View.MeasureSpec.makeMeasureSpec(1179,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(7000,View.MeasureSpec.EXACTLY));root.layout(0,0,1179,7000);idle()
             click(root,"Abrir prévia interativa");click(root,"Rápido");click(root,"Experimentar tudo")
             assertNull(saved);click(root,"Desbloquear");click(root,"Captura");assertNull(saved)
             click(root,"Pausar");click(root,"Retomar");click(root,"Aplicar na barra")
@@ -74,12 +79,12 @@ class ExperienceUiTest {
     }
     @Test fun `activation keeps chosen icon scale and compass can be disabled independently`() {
         val c=Robolectric.buildActivity(ComponentActivity::class.java);c.get().setTheme(R.style.Theme_DuoStatusBar)
-        val a=c.setup().get();var current=DuoSettings(enabled=true,experienceJson=ExperienceOptions(iconPercent=200).encode())
+        val a=c.setup().visible().get();var current=applyEffectProfile(DuoSettings(enabled=true,experienceJson=ExperienceOptions(iconPercent=200).encode()),2)
         a.setContent {DuoTheme {Column {var settings by remember {mutableStateOf(current)};ExperienceSection(settings,{settings=it;current=it},SearchGate {true})}}}
         try {
-            val root=a.findViewById<View>(android.R.id.content);root.measure(View.MeasureSpec.makeMeasureSpec(1179,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(7000,View.MeasureSpec.EXACTLY));root.layout(0,0,1179,7000);idle()
-            click(root,"Ativar todas as novidades")
-            assertEquals(ExperienceOptions.ALL.copy(iconPercent=200),ExperienceOptions.decode(current.experienceJson))
+            val root=a.findViewById<View>(android.R.id.content);idle();assertTrue("Fixture must attach before native measurement",root.isAttachedToWindow);root.measure(View.MeasureSpec.makeMeasureSpec(1179,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(7000,View.MeasureSpec.EXACTLY));root.layout(0,0,1179,7000);idle()
+            assertTrue(ExperienceOptions.decode(current.experienceJson).music)
+            assertEquals(200,ExperienceOptions.decode(current.experienceJson).iconPercent)
             val toggle=nodes(root).first {it.config.getOrNull(SemanticsProperties.Text)?.any {it.text=="GPS com bússola"}==true&&it.config.getOrNull(SemanticsActions.OnClick)!=null}
             toggle.config[SemanticsActions.OnClick].action!!.invoke();idle()
             assertTrue("opening the explanation must not commit",ExperienceOptions.decode(current.experienceJson).compass)

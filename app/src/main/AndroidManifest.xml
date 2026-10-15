@@ -16,6 +16,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- AOSP RF field notifications only; DUO does not register transaction/APDU intent filters. -->
+    <uses-permission android:name="android.permission.NFC_TRANSACTION_EVENT" />
 
     <!-- The provider-independent app <-> System UI channel. The module registers its receiver with this
          signature permission, so only this app can push settings; the app holds it too. -->
@@ -43,6 +45,15 @@
         </activity>
 
         <!-- ============ app <-> module channel ============ -->
+        <!-- Require the sender to hold the NFC service's privileged permission. Normal apps cannot
+             inject RF events. Some OEM services may not provide this channel; fail closed there. -->
+        <receiver android:name="io.github.kvmy666.duostatusbar.fx.NfcFieldReceiver"
+            android:exported="true" android:permission="android.permission.WRITE_SECURE_SETTINGS">
+            <intent-filter>
+                <action android:name="com.android.nfc_extras.action.RF_FIELD_ON_DETECTED" />
+                <action android:name="com.android.nfc_extras.action.RF_FIELD_OFF_DETECTED" />
+            </intent-filter>
+        </receiver>
         <service android:name="io.github.kvmy666.duostatusbar.fx.ExperienceRelayService" android:label="Duo — música e captura"
             android:exported="true" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter><action android:name="android.service.notification.NotificationListenerService" /></intent-filter>

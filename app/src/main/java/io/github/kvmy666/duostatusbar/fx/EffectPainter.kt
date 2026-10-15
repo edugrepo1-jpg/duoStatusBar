@@ -16,21 +16,12 @@ internal class EffectPainter {
     private val bounds = RectF()
     private val gradient = SweepGradient(0f, 0f, intArrayOf(0x003DDC84, 0xFFD2FFE2.toInt(), 0x003DDC84), floatArrayOf(0f, .65f, 1f))
     private val rotation = Matrix()
+    private val energyGradient=LinearGradient(-55f,0f,55f,0f,0xFF30D158.toInt(),0xFFD2FFE2.toInt(),Shader.TileMode.CLAMP)
     fun tint(base: Int, frame: EffectFrame): Int {
         var color = CanvasMotion.blend(base, 0xFF3DDC84.toInt(), EffectTimeline.unlockColor(frame.checkMs))
-        if(frame.musicPlaying&&frame.albumColor!=0&&!frame.charging&&frame.checkMs<0)color=CanvasMotion.blend(color,frame.albumColor,.8f)
-        if(frame.charging)color=CanvasMotion.blend(color,0xFF8CFFBC.toInt(),.16f+.14f*sin(frame.motionMs/500f))
+        if(frame.charging)color=CanvasMotion.blend(color,0xFF8CFFBC.toInt(),if(frame.motionEnabled).16f+.14f*sin(frame.motionMs/500f) else .16f)
         color = CanvasMotion.blend(color, if (frame.pulseRed) 0xFFFF8A80.toInt() else 0xFFFFB300.toInt(), EffectTimeline.pulse(frame.pulseMs))
         return color
-    }
-    fun background(canvas: Canvas, fg: Int, frame: EffectFrame, edge: Float) {
-        if (!frame.glass) return
-        paint.shader = null; paint.style = Paint.Style.FILL
-        paint.color = if ((fg and 0xFFFFFF) == 0) 0x30FFFFFF else 0x30000000
-        canvas.drawCircle(0f, 0f, 54.5f, paint)
-        paint.style = Paint.Style.STROKE; paint.strokeWidth = edge
-        paint.color = (fg and 0xFFFFFF) or 0x55000000
-        canvas.drawCircle(0f, 0f, 54.5f, paint)
     }
     fun foreground(canvas: Canvas, frame: EffectFrame, fg: Int, thickPercent: Int, opacity: Float, ring: Boolean, indicators: Boolean, leftArc:Float, rightArc:Float) {
         val save = canvas.save()
@@ -38,15 +29,18 @@ internal class EffectPainter {
         try {
             if(ring&&frame.musicPlaying&&frame.musicProgress>=0) {
                 paint.shader=null;paint.style=Paint.Style.STROKE;paint.strokeWidth=1.8f
-                paint.color=if(frame.albumColor!=0)frame.albumColor else 0xFF71E3B1.toInt()
+                paint.color=fg
                 paint.alpha=(200*opacity).toInt();val musicRadius=minOf(43f,55.5f-8f*thickPercent.coerceIn(1,300)/100f-3f)
                 bounds.set(-musicRadius,-musicRadius,musicRadius,musicRadius)
                 canvas.drawArc(bounds,150f,240f*frame.musicProgress,false,paint)
             }
             if (ring && (frame.chargeMs >= 0 || frame.charging)) {
                 val thick = 8f * thickPercent.coerceIn(1,300) / 100f
+                if(frame.aurora.chargeStyles) {
+                    drawChargeStyle(canvas,frame,opacity,leftArc,rightArc,thick)
+                } else {
                 paint.style = Paint.Style.STROKE; paint.strokeWidth = minOf(4f, thick * .85f)
-                rotation.setRotate(frame.motionMs * .18f); gradient.setLocalMatrix(rotation); paint.shader = gradient
+                rotation.setRotate(if(frame.motionEnabled)frame.motionMs * .18f else 0f); gradient.setLocalMatrix(rotation); paint.shader = gradient
                 paint.alpha = ((if (frame.chargeMs >= 0) 220f * minOf(1f, frame.chargeMs / 180f, (3000 - frame.chargeMs) / 300f) else 210f) * opacity).toInt().coerceIn(0, 255)
                 val radius = (111f - thick) / 2f
                 bounds.set(-radius,-radius,radius,radius)
@@ -55,14 +49,57 @@ internal class EffectPainter {
                 canvas.drawArc(bounds,270f + geometry.LEFT_START * 360f,leftArc * 360f,false,paint)
                 canvas.drawArc(bounds,270f + geometry.RIGHT_START * 360f,rightArc * 360f,false,paint)
                 paint.shader = null
-
+                }
             }
             if (ring && frame.criticalDot) { paint.style = Paint.Style.FILL; paint.color = 0xFFFFB300.toInt(); paint.alpha = (230 * opacity).toInt(); canvas.drawCircle(0f, 32f, 2f, paint) }
             if (ring && frame.checkMs >= 0) drawCheck(canvas, frame.checkMs, thickPercent, opacity)
-            if (indicators && frame.audioMs >= 0) drawAudio(canvas, frame, fg, opacity * EffectTimeline.checkNormal(frame.checkMs))
+            if(indicators&&AuroraRender.headphone(frame)&&frame.checkMs<0) {
+                val age=frame.headphoneConnectMs
+                icons.draw(canvas,SlotIcon.AIRPODS,fg,opacity*AuroraRender.headphoneOpacity(frame),
+                    frame.copy(drawIcons=true,slot=SlotFrame(SlotIcon.AIRPODS,reveal=EffectTimeline.smooth(age/450f))))
+            } else {
+            val returnOpacity=AuroraRender.headphoneReturnOpacity(frame)
+            if (indicators && frame.audioMs >= 0) drawAudio(canvas, frame, fg, opacity * EffectTimeline.checkNormal(frame.checkMs)*returnOpacity)
             if (indicators && frame.slot.icon != null) drawSlot(canvas, frame.slot, fg,
-                opacity * EffectTimeline.checkNormal(frame.checkMs) * EffectTimeline.audioNormal(frame.audioMs), frame)
+                opacity * EffectTimeline.checkNormal(frame.checkMs) * EffectTimeline.audioNormal(frame.audioMs)*returnOpacity, frame)
+            }
         } finally { canvas.restoreToCount(save); paint.shader = null; paint.maskFilter = null }
+    }
+    private fun drawChargeStyle(canvas:Canvas,frame:EffectFrame,opacity:Float,left:Float,right:Float,thick:Float) {
+        paint.shader=null;paint.style=Paint.Style.STROKE;paint.strokeWidth=minOf(3f,thick*.75f)
+        paint.color=0xFF71E3B1.toInt()
+        if(frame.wirelessCharging) {
+            // Concentric waves contract toward the centre, wholly inside the battery geometry.
+            for(i in 0..2) {
+                val phase=if(frame.motionEnabled)((frame.motionMs%1200)/1200f+i/3f)%1f else (i+1)/4f
+                val radius=(55.5f-thick-4f)*(1f-phase)
+                paint.alpha=(opacity*160f*(1f-phase)).toInt().coerceIn(0,255)
+                canvas.drawCircle(0f,0f,radius.coerceAtLeast(1f),paint)
+            }
+        } else {
+            // One bright packet traverses the visible left/right arc windows without closing the top gap.
+            val total=left+right
+            if(total<=0f)return
+            val phase=if(frame.motionEnabled)(frame.motionMs%1400)/1400f else .5f
+            val start=total*phase;val extent=minOf(.055f,total)
+            val radius=(111f-thick)/2f;bounds.set(-radius,-radius,radius,radius)
+            paint.shader=energyGradient;paint.alpha=(230*opacity).toInt().coerceIn(0,255)
+            val geometry=io.github.kvmy666.duostatusbar.hook.RingGeometry
+            if(start<left)chargePacket(canvas,270f+(geometry.LEFT_START+start)*360f,minOf(extent,left-start)*360f,opacity)
+            val rightStart=(start-left).coerceAtLeast(0f)
+            val rightExtent=if(start<left)(extent-(left-start)).coerceAtLeast(0f) else extent
+            if(rightExtent>0&&rightStart<right)chargePacket(canvas,270f+(geometry.RIGHT_START+rightStart)*360f,minOf(rightExtent,right-rightStart)*360f,opacity)
+            paint.shader=null
+        }
+    }
+    private fun chargePacket(canvas:Canvas,start:Float,sweep:Float,opacity:Float) {
+        val width=paint.strokeWidth
+        for(layer in 2 downTo 1) {
+            paint.strokeWidth=width+layer*2f;paint.alpha=(opacity*22f/layer).toInt().coerceIn(0,255)
+            canvas.drawArc(bounds,start,sweep,false,paint)
+        }
+        paint.strokeWidth=width;paint.alpha=(230*opacity).toInt().coerceIn(0,255)
+        canvas.drawArc(bounds,start,sweep,false,paint)
     }
     private fun drawCheck(canvas: Canvas, age: Long, thick: Int, opacity: Float) {
         val amount = EffectTimeline.check(age)
@@ -70,7 +107,7 @@ internal class EffectPainter {
         val inner = 55.5f - 8f * thick.coerceIn(1, 300) / 100f
         val k = minOf(1f, inner * 1.25f / 55.2f)
         val size = 55.2f * k
-        val scale = (.8f + .2f * EffectTimeline.smooth((age - 120) / 160f)) * (1 - .15f * EffectTimeline.smooth((age - EffectTimeline.CHECK_FADE_OUT_AT) / 280f))
+        val scale = (.8f + .2f * EffectTimeline.smooth((age - 120) / 160f)) * (1 - .15f * EffectTimeline.smooth((age - EffectTimeline.CHECK_FADE_OUT_AT) / (EffectTimeline.CHECK_MS-EffectTimeline.CHECK_FADE_OUT_AT).toFloat()))
         val save = canvas.save(); canvas.translate(0f, 1.5f); canvas.scale(scale, scale)
         path.reset(); path.moveTo(-.42f * size, .04f * size); path.lineTo(-.12f * size, .34f * size); path.lineTo(.44f * size, -.34f * size)
         measure.setPath(path, false); trace.reset()
@@ -91,7 +128,6 @@ internal class EffectPainter {
         val save=canvas.save()
         val scale=if(frame.spring) .8f+.2f*EffectTimeline.spring((slot.scale-.8f)/.2f) else slot.scale
         canvas.scale(scale,scale)
-        if(icon==SlotIcon.SHARE&&frame.motionEnabled)canvas.translate(1.5f*sin(frame.motionMs/300f),0f)
         icons.draw(canvas,icon,fg,opacity*slot.opacity,frame)
         canvas.restoreToCount(save)
     }

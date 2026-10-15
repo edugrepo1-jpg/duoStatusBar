@@ -126,6 +126,23 @@ class IntegrationAuditTest {
         assertTrue(output.contains("timed out")); assertTrue(process.destroyed)
     }
 
+    @Test fun `authorized shell receives stdin EOF before its output is read`() {
+        var eof = false
+        val process = object : Process() {
+            override fun getOutputStream(): OutputStream = object : ByteArrayOutputStream() { override fun close() { eof = true } }
+            override fun getInputStream(): InputStream {
+                check(eof) { "authorized shell still waiting for stdin" }
+                return ByteArrayInputStream("uid=0(root)".toByteArray())
+            }
+            override fun getErrorStream(): InputStream = ByteArrayInputStream(byteArrayOf())
+            override fun waitFor() = 0
+            override fun exitValue() = 0
+            override fun destroy() {}
+            override fun isAlive() = false
+        }
+        assertTrue(RootLogs.looksRooted(RootLogs.runRoot("authorized-su", "id", 1, start = { process })))
+    }
+
     @Test fun `completed root command failure remains a failure even when output contains uid text`() {
         val process = FakeProcess(ByteArrayInputStream("uid=0(root)".toByteArray()), 1)
         val output = RootLogs.runRoot("fake-su", "id", 1, start = { process })

@@ -50,7 +50,13 @@ class DuoSettingsProvider : ContentProvider() {
         // Read access remains open for the measured cross-UID settings contract. Only the app
         // and the installed SystemUI UID may write self-reports; third-party apps cannot forge them.
         val ctxForCaller = context
-        if (ctxForCaller == null || !trustedReporter(ctxForCaller, Binder.getCallingUid())) {
+        if (ctxForCaller != null && method == "runtime_backend") {
+            RuntimeBackend.snapshot(ctxForCaller)
+        } else if (ctxForCaller != null && method in setOf("root_health", "root_stock_journal")) {
+            if (Binder.getCallingUid() != 0) Bundle().apply { putBoolean(EXTRA_OK, false) }
+            else if (method == "root_health") Bundle().apply { putBoolean(EXTRA_OK, RuntimeBackend.report(ctxForCaller,arg,extras)) }
+            else RuntimeBackend.stockJournal(ctxForCaller,arg,extras)
+        } else if (ctxForCaller == null || !trustedReporter(ctxForCaller, Binder.getCallingUid())) {
             Bundle().apply { putBoolean(EXTRA_OK, false) }
         } else when (method) {
             METHOD_STATUS -> {
@@ -98,7 +104,7 @@ class DuoSettingsProvider : ContentProvider() {
 
     companion object {
         internal fun trustedReporter(context: android.content.Context, uid: Int): Boolean {
-            if (uid == context.applicationInfo.uid) return true
+            if (uid == 0 || uid == context.applicationInfo.uid) return true
             return runCatching {
                 context.packageManager.getApplicationInfo(SettingsBridge.SYSTEMUI, 0).uid == uid
             }.getOrDefault(false)

@@ -27,6 +27,7 @@ internal object SettingsBridge {
     const val ACTION_FALLBACK_PUSH = "io.github.RECREATE.statusbar.action.FALLBACK_PUSH"
 
     /** The provider row, serialized as `ArrayList<Any>` (ints, longs, strings). */
+    const val EXTRA_RUNTIME_BACKEND = "runtime_backend"
     const val EXTRA_REPORT_TOKEN = "report_token"
     const val EXTRA_VALUES = "values"
     const val EXTRA_COLUMNS = "columns"
@@ -45,9 +46,13 @@ internal object SettingsBridge {
             val row = DuoSettingsProvider.rowFor(portrait, DuoPrefs.revision(context), landscape)
             context.sendBroadcast(
                 Intent(ACTION_SETTINGS_PUSH).setPackage(SYSTEMUI)
+                    .putExtra(EXTRA_RUNTIME_BACKEND, RuntimeBackend.mode(context))
                     .putExtra(EXTRA_REPORT_TOKEN, ReportAuthentication.token(context))
                     .putExtra(EXTRA_VALUES, ArrayList<Any>(row.toList()))
                     .putStringArrayListExtra(EXTRA_COLUMNS,ArrayList(DuoPrefs.COLUMNS.toList()))
+            )
+            if(RuntimeBackend.mode(context)==RuntimeBackend.ROOT) context.sendBroadcast(
+                Intent(ACTION_SETTINGS_PUSH).setPackage(context.packageName)
             )
             L.i("settings bridge: pushed rev ${DuoPrefs.revision(context)}")
             context.sendBroadcast(Intent(io.github.kvmy666.duostatusbar.fx.ExperienceRelayService.REFRESH).setPackage(context.packageName))
@@ -79,8 +84,8 @@ class SettingsRequestReceiver : BroadcastReceiver() {
 class StatusBridgeReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val app = context.applicationContext
-        if (!ReportAuthentication.accepts(app, intent.getStringExtra(SettingsBridge.EXTRA_REPORT_TOKEN))) return
         try {
+            if (!ReportAuthentication.accepts(app, intent.getStringExtra(SettingsBridge.EXTRA_REPORT_TOKEN))) return
             when (intent.action) {
                 SettingsBridge.ACTION_STATUS_PUSH ->
                     intent.getStringExtra(SettingsBridge.EXTRA_STATUS)

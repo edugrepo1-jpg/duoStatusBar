@@ -1,10 +1,14 @@
 package io.github.kvmy666.duostatusbar.ui
 import io.github.kvmy666.duostatusbar.i18n.UiText
+import io.github.kvmy666.duostatusbar.fx.AuroraOptions
+import io.github.kvmy666.duostatusbar.fx.AuroraText
 
 /** Explanations are resolved on demand so language changes never retain old labels. */
 internal data class FeatureGuide(val title:String,val explanation:String,val use:String) {
     companion object {
         private val entries=listOf(
+            FeatureGuide("Modo Avião","Permite mostrar o avião no centro quando o modo avião está ativo. Desligar esta opção só remove o indicador do Duo; não altera o modo avião do celular.","A conexão Wi-Fi pode continuar disponível no modo avião. Com a alternância ligada, os indicadores ativos continuam sendo exibidos."),
+            FeatureGuide("Cores por porcentagem","Escolha uma cor para cada faixa. As cores valem para a bateria do celular e do fone Bluetooth.","Enquanto o fone Bluetooth aparece no centro, o anel e o número mostram a bateria dele. Ao sair, voltam à bateria do celular. Se o fone não informar a carga, a bateria do celular permanece."),
             FeatureGuide("Mostrar nas notificações","Mostra o anel no cabeçalho de notificações, quando esse cabeçalho é reconhecido. Desligar restaura os indicadores originais apenas neste painel.","Ative aqui e ajuste o tamanho abaixo. Se não aparecer, abra o painel e gere um diagnóstico para registrar o cabeçalho da sua ROM."),
             FeatureGuide("Mostrar nos ajustes rápidos","Mostra o anel no cabeçalho dos ajustes rápidos, quando esse cabeçalho é reconhecido. Em layouts que compartilham o cabeçalho, a expansão escolhe o ajuste correspondente.","Ative aqui e ajuste o tamanho abaixo. Se não aparecer, abra o painel e gere um diagnóstico para registrar o cabeçalho da sua ROM."),
             FeatureGuide("Personalizar a barra","Liga o anel nesta orientação. O módulo precisa estar ativado no LSPosed e carregado no SystemUI. Desligar devolve os indicadores originais.","Comece aqui. Depois abra Visual para ajustar o desenho e Efeitos para escolher o comportamento."),
@@ -36,6 +40,10 @@ internal data class FeatureGuide(val title:String,val explanation:String,val use
             FeatureGuide("Expansão ao acender","Expande o anel quando a tela acende e recolhe ao apagar. A velocidade da entrada controla este movimento, sem alterar o check de 3 segundos.","Use para acompanhar o ligar e desligar da tela."),
             FeatureGuide("Ocultar na câmera","Quando o módulo detecta uso da câmera, esconde o anel e seus toques. O check de desbloqueio tem prioridade; nenhum aplicativo é identificado nos logs.","Use para deixar a área da câmera mais limpa durante o uso."),
         )
-        fun find(label:String)=entries.firstOrNull { UiText.t(it.title)==label || (it.title=="Movimento suave"&&label in listOf("Animações","Animations","Animaciones")) }
+        fun find(label:String)=entries.firstOrNull { UiText.t(it.title)==label || (it.title=="Movimento suave"&&label in listOf("Animações","Animations","Animaciones")) } ?:
+            AuroraOptions.KEYS.firstOrNull {AuroraText.title(it)==label}?.let {key->
+                FeatureGuide(AuroraText.title(key),AuroraText.description(key),
+                    AuroraText.t("Use a prévia para experimentar sem aplicar. Se a função depender de outro recurso, confira os requisitos acima.","Use preview to experiment without applying. If this feature depends on another one, check the requirements above.","Usa la vista previa para probar sin aplicar. Si la función depende de otra, revisa los requisitos anteriores."))
+            }
     }
 }

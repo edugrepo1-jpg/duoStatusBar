@@ -18,6 +18,7 @@ import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.settings.*
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.Before
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
@@ -31,6 +32,8 @@ import java.util.concurrent.TimeUnit
 @Config(sdk=[35],manifest=Config.NONE,qualifiers="w393dp-h852dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class StudioUiTest {
+    @Before fun realFrameTiming() {org.robolectric.shadows.ShadowChoreographer.setPaused(true)
+        org.robolectric.shadows.ShadowChoreographer.setFrameDelay(java.time.Duration.ofMillis(16))}
     @Test fun `adaptive launcher renders the new vector mark`() {
         val context=ApplicationProvider.getApplicationContext<Context>()
         val icon=context.getDrawable(R.mipmap.ic_launcher)!!
@@ -66,6 +69,7 @@ class StudioUiTest {
         nodes(root).first {text(it)=="Fechar"&&it.config.getOrNull(SemanticsActions.OnClick)!=null}.config[SemanticsActions.OnClick].action!!.invoke();idle()
     }
     private fun capture(root:View,name:String) {
+        idle();assertTrue("Capture fixture must be attached",root.isAttachedToWindow)
         val metrics=root.resources.displayMetrics
         val w=(393*metrics.density).toInt();val maxH=(852*metrics.density).toInt()
         root.measure(View.MeasureSpec.makeMeasureSpec(w,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(maxH,if(name=="feature-explanation")View.MeasureSpec.AT_MOST else View.MeasureSpec.EXACTLY))
@@ -84,17 +88,23 @@ class StudioUiTest {
         for(dark in listOf(false,true)) {
             val controller=Robolectric.buildActivity(ComponentActivity::class.java)
             controller.get().setTheme(R.style.Theme_DuoStatusBar)
-            val activity=controller.setup().get()
+            val activity=controller.setup().visible().get()
             activity.setContent {DuoTheme(dark) {Surface(color=MaterialTheme.colorScheme.background) {DuoSettingsScreen()}}}
             try {
                 val root=activity.findViewById<View>(android.R.id.content);idle()
                 val mode=if(dark)"dark" else "light"
                 capture(root,"home-$mode")
-                assertTrue(nodes(root).any {text(it).contains("Personalizar a barra")})
+                assertTrue(nodes(root).any {it.config.getOrNull(SemanticsProperties.TestTag)=="feature-toggle"&&it.config.getOrNull(SemanticsProperties.Role)==Role.Switch})
                 for(page in listOf(StudioPage.VISUAL,StudioPage.EFFECTS,StudioPage.MORE)) {
                     click(root,"nav-${page.name}")
                     capture(root,"${page.name.lowercase()}-$mode")
                     assertTrue(nodes(root).any {text(it).contains(page.heading)})
+                    when(page) {
+                        StudioPage.VISUAL -> click(root,"settings-group-ring")
+                        StudioPage.EFFECTS -> click(root,"settings-group-movement")
+                        StudioPage.MORE -> click(root,"settings-group-advanced")
+                        else -> Unit
+                    }
                     val labels=nodes(root).map {text(it)}
                     when(page) {
                         StudioPage.VISUAL -> {assertTrue(labels.any {it=="Ícones internos"});assertFalse(labels.any {it=="Ritmo e transições"})}
@@ -112,7 +122,7 @@ class StudioUiTest {
     @Test @Config(qualifiers="w852dp-h393dp-land-xxhdpi") fun `landscape navigation keeps all categories reachable`() {
         val c=Robolectric.buildActivity(ComponentActivity::class.java)
         c.get().setTheme(R.style.Theme_DuoStatusBar)
-        val a=c.setup().get()
+        val a=c.setup().visible().get()
         a.setContent {DuoTheme {DuoSettingsScreen()}}
         try {
             val root=a.findViewById<View>(android.R.id.content);idle()
@@ -132,20 +142,21 @@ class StudioUiTest {
         DuoPrefs.write(context,DuoSettings(enabled=true),DuoOrientation.PORTRAIT)
         val controller=Robolectric.buildActivity(ComponentActivity::class.java)
         controller.get().setTheme(R.style.Theme_DuoStatusBar)
-        val activity=controller.setup().get()
+        val activity=controller.setup().visible().get()
         activity.setContent {DuoTheme {DuoSettingsScreen()}}
         try {
             val root=activity.findViewById<View>(android.R.id.content);idle();capture(root,"interaction")
-            val master=nodes(root).first {text(it).contains("Personalizar a barra")&&it.config.getOrNull(SemanticsActions.OnClick)!=null}
-            master.config[SemanticsActions.OnClick].action!!.invoke();idle();confirmFeature(false)
+            // Aurora intentionally places the master as a direct switch in its header.
+            click(root,"feature-toggle")
             assertFalse(DuoPrefs.read(context,DuoOrientation.PORTRAIT).enabled)
-            val newMaster=nodes(root).first {text(it).contains("Personalizar a barra")&&it.config.getOrNull(SemanticsActions.OnClick)!=null}
-            newMaster.config[SemanticsActions.OnClick].action!!.invoke();idle();confirmFeature(true)
+            assertFalse(nodes(root).any {it.config.getOrNull(BackdropBlurred)==true})
+            click(root,"feature-toggle")
             assertTrue(DuoPrefs.read(context,DuoOrientation.PORTRAIT).enabled)
             val search=nodes(root).first {it.config.getOrNull(SemanticsProperties.TestTag)=="studio-search"}
             search.config[SemanticsActions.SetText].action!!.invoke(AnnotatedString("NFC"));idle()
             assertTrue(nodes(root).any {text(it).contains("NFC")&&it.config.getOrNull(SemanticsActions.OnClick)!=null})
             click(root,"nav-VISUAL")
+            click(root,"settings-group-ring")
             assertTrue(nodes(root).any {text(it).contains("Desenho do anel")})
             val plus=nodes(root).first {it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("Aumentar Tamanho do anel")==true}
             val oldSize=DuoPrefs.read(context,DuoOrientation.PORTRAIT).sizePercent
@@ -156,7 +167,7 @@ class StudioUiTest {
     @Test fun `language picker renders flags and every language card accepts selection`() {
         val controller=Robolectric.buildActivity(ComponentActivity::class.java)
         controller.get().setTheme(R.style.Theme_DuoStatusBar)
-        val activity=controller.setup().get();val selected=mutableListOf<String>()
+        val activity=controller.setup().visible().get();val selected=mutableListOf<String>()
         activity.setContent {DuoTheme {Surface(modifier=androidx.compose.ui.Modifier.fillMaxSize()) {androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize(),contentAlignment=androidx.compose.ui.Alignment.Center) {LanguagePicker(true) {selected.add(it)}}}}}
         try {
             val root=activity.findViewById<View>(android.R.id.content);idle();capture(root,"language-picker")
@@ -174,7 +185,7 @@ class StudioUiTest {
             val controller=Robolectric.buildActivity(ComponentActivity::class.java)
             controller.get().resources.updateConfiguration(android.content.res.Configuration(context.resources.configuration).apply {setLocales(android.os.LocaleList.forLanguageTags(tag))},controller.get().resources.displayMetrics)
             controller.get().setTheme(R.style.Theme_DuoStatusBar)
-            val activity=controller.setup().get()
+            val activity=controller.setup().visible().get()
             activity.setContent {DuoTheme {DuoSettingsScreen()}}
             try {
                 val root=activity.findViewById<View>(android.R.id.content);idle();capture(root,"home-$tag")
@@ -193,7 +204,7 @@ class StudioUiTest {
         io.github.kvmy666.duostatusbar.i18n.UiText.initialize(context,"pt-BR")
         val controller=Robolectric.buildActivity(ComponentActivity::class.java)
         controller.get().setTheme(R.style.Theme_DuoStatusBar)
-        val activity=controller.setup().get();var changed=0
+        val activity=controller.setup().visible().get();var changed=0
         activity.setContent {DuoTheme {Surface {SettingSwitch("NFC","Mostra NFC quando ativo.",false,onChange={changed++})}}}
         try {
             val root=activity.findViewById<View>(android.R.id.content);idle();capture(root,"feature-row")

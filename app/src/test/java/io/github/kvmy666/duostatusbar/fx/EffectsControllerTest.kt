@@ -36,7 +36,7 @@ class EffectsControllerTest {
             assertEquals(1f,EffectTimeline.check(view.effects.checkMs),0f)
             assertEquals(0f,EffectTimeline.checkNormal(view.effects.checkMs),0f)
             controller.broadcast(Intent(Intent.ACTION_USER_PRESENT))
-            Shadows.shadowOf(Looper.getMainLooper()).idleFor(1350,TimeUnit.MILLISECONDS)
+            Shadows.shadowOf(Looper.getMainLooper()).idleFor(1410,TimeUnit.MILLISECONDS)
             assertTrue("late broadcast must not restart the check",EffectTimeline.check(view.effects.checkMs)<1f)
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(500,TimeUnit.MILLISECONDS)
             assertEquals(-1L,view.effects.checkMs)
@@ -90,7 +90,7 @@ class EffectsControllerTest {
         assertEquals(0f,EffectTimeline.checkNormal(view.effects.checkMs),0f)
         assertEquals(1f,view.alpha,0f)
         assertTrue(view.effects.charging)
-        Shadows.shadowOf(Looper.getMainLooper()).idleFor(1350,TimeUnit.MILLISECONDS)
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(1410,TimeUnit.MILLISECONDS)
         assertTrue(EffectTimeline.check(view.effects.checkMs) in .1f.. .9f)
         Shadows.shadowOf(Looper.getMainLooper()).idleFor(400,TimeUnit.MILLISECONDS)
         assertEquals(-1L,view.effects.checkMs)
@@ -112,7 +112,7 @@ class EffectsControllerTest {
         assertFalse(get(controller,"pocket") as Boolean)
         controller.stop();view.teardown()
     }
-    @Test fun `new volume event waits for exclusive unlock then returns to carousel with charge estimate`() {
+    @Test fun `new volume waits for exclusive unlock and restores carousel without unavailable charge forecast`() {
         val (controller,view)=fixture();val context=ApplicationProvider.getApplicationContext<Context>()
         Fx.sync(ModuleSettings.DEFAULT.copy(experienceJson=ExperienceOptions.ALL.encode()),context)
         try {
@@ -130,7 +130,8 @@ class EffectsControllerTest {
             assertNotEquals(SlotIcon.VOLUME,view.effects.slot.icon)
             val seen=mutableSetOf<SlotIcon>()
             repeat(8) {Shadows.shadowOf(Looper.getMainLooper()).idleFor(3200,TimeUnit.MILLISECONDS);view.effects.slot.icon?.let(seen::add)}
-            assertTrue(seen.containsAll(listOf(SlotIcon.BLUETOOTH,SlotIcon.BOLT,SlotIcon.CHARGE_TIME)))
+            assertTrue(seen.containsAll(listOf(SlotIcon.BLUETOOTH,SlotIcon.BOLT)))
+            assertFalse("no system prediction was supplied: do not invent a forecast slot",seen.contains(SlotIcon.CHARGE_TIME))
         } finally {controller.stop();view.teardown();Fx.sync(ModuleSettings.DEFAULT,context)}
     }
     @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)

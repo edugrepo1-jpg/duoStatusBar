@@ -1,7 +1,6 @@
 package io.github.kvmy666.duostatusbar
 
 import android.util.Log
-import de.robv.android.xposed.XposedBridge
 
 /**
  * Minimal logger used everywhere in the module.
@@ -22,6 +21,9 @@ import de.robv.android.xposed.XposedBridge
  * reason SystemUI dies (FR-21).
  */
 object L {
+    private val optionalXposedLog by lazy {
+        runCatching {Class.forName("de.robv.android.xposed.XposedBridge").getMethod("log",String::class.java)}.getOrNull()
+    }
 
     const val TAG = "DuoSB"
 
@@ -57,7 +59,7 @@ object L {
         } catch (_: Throwable) {
         }
         try {
-            XposedBridge.log("$TAG | $msg")
+            optionalXposedLog?.invoke(null,"$TAG | $msg")
         } catch (_: Throwable) {
         }
     }

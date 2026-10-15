@@ -14,6 +14,8 @@ import io.github.kvmy666.duostatusbar.settings.SettingsBridge
 /** Actual Android media and saved-screenshot events. Every registration is paired with stop. */
 internal class RuntimeExperience(private val context:Context,private val handler:Handler,
     private val changed:()->Unit,private val screenshot:()->Unit) {
+    var onNfcField:(Boolean)->Unit={}
+    private var lastNfcFieldAt=-1L
     var playback=PlaybackSnapshot();private set
     var playbackKnown=false;private set
     private var mediaEnabled=false
@@ -23,6 +25,8 @@ internal class RuntimeExperience(private val context:Context,private val handler
     private var cachedMetadata:MediaMetadata?=null
     private var cachedToken:MediaSession.Token?=null
     private var cachedColor=0
+    private val artworkCache=MediaArtworkCache()
+    private var cachedArtwork:Bitmap?=null
     private var directPlayback:PlaybackSnapshot?=null
     private var dirty=true
     private var metadataDirty=true
@@ -34,6 +38,7 @@ internal class RuntimeExperience(private val context:Context,private val handler
     private var running=false
     private var receiverRegistered=false
     private var observer:ScreenshotObserver?=null
+    private val activityListener:()->Unit={if(running)changed()}
     private var controllers=emptyList<MediaController>()
     private val failures=mutableSetOf<String>()
     private val manager by lazy { context.getSystemService(MediaSessionManager::class.java) }
@@ -45,13 +50,33 @@ internal class RuntimeExperience(private val context:Context,private val handler
     private val receiver=object:BroadcastReceiver() {
         override fun onReceive(c:Context?,intent:Intent?) {
             if(!running||intent?.action!=ACTION)return
+            if(intent.hasExtra("nfcField")) {
+                runCatching {
+                    val at=intent.getLongExtra("nfcFieldAt",-1L)
+                    val age=SystemClock.elapsedRealtime()-at
+                    if(Fx.experience.nfcParticles&&!Fx.experience.networkOnly&&at>=0&&at>lastNfcFieldAt&&age in 0..2000) {
+                        lastNfcFieldAt=at
+                        onNfcField(intent.getBooleanExtra("nfcField",false))
+                    }
+                }
+                return
+            }
+            if(intent.hasExtra("timerCommand"))return // Legacy local timers are no longer accepted.
+            if(intent.getBooleanExtra("clockSnapshot",false)) {
+                AuroraActivities.observeClock(intent.getLongExtra("clockTimerWhen",-1),intent.getLongExtra("clockStopwatchWhen",-1))
+                return
+            }
+            if(intent.getBooleanExtra("taskComplete",false)) {
+                AuroraActivities.completed(sourceIdentity(intent.getStringExtra("source")));return
+            }
             if(intent.getBooleanExtra("shot",false)) { if(Fx.experience.screenshot)screenshot();return }
             if(!mediaEnabled)return
             relayedPlayback=PlaybackSnapshot(intent.getBooleanExtra("playing",false),
                 intent.getLongExtra("position",-1).coerceAtLeast(-1),intent.getLongExtra("duration",0).coerceIn(0,7*86400000L),
                 SystemClock.elapsedRealtime(),intent.getFloatExtra("speed",1f).takeIf { it.isFinite() }?.coerceIn(0f,8f) ?: 1f,
                 intent.getIntExtra("color",0),intent.getStringExtra("title").orEmpty().take(120),
-                sourceIdentity(intent.getStringExtra("source")))
+                sourceIdentity(intent.getStringExtra("source")),
+                runCatching {intent.getParcelableExtra("artwork",Bitmap::class.java)}.getOrNull()?.takeIf {MediaArtwork.valid(it)})
             relayAt=SystemClock.elapsedRealtime();refresh()
         }
     }
@@ -61,15 +86,18 @@ internal class RuntimeExperience(private val context:Context,private val handler
     fun start() {
         if(running)return
         running=true
+        AuroraActivities.addListener(activityListener)
         configure()
     }
     fun configure() {
         if(!running)return
+        AuroraActivities.configure(Fx.experience.aurora)
         val wanted=Fx.experience.music||Fx.experience.island||Fx.enabled(8192)
         if(wanted&&!mediaEnabled) { sessionPollAt=-30000L;sessionAccessDenied=false }
         mediaEnabled=wanted
         dirty=true;metadataDirty=true
-        val relay=Fx.experience.music||Fx.experience.island||Fx.experience.screenshot||Fx.enabled(8192)
+        val relay=Fx.experience.music||Fx.experience.island||Fx.experience.screenshot||Fx.enabled(8192)||
+            Fx.experience.aurora.timer||Fx.experience.aurora.taskComplete||Fx.experience.nfcParticles
         if(relay&&!receiverRegistered)read("canal do app") {
             context.registerReceiver(receiver,IntentFilter(ACTION),SettingsBridge.PERMISSION,handler,Context.RECEIVER_EXPORTED)
             receiverRegistered=true
@@ -100,7 +128,7 @@ internal class RuntimeExperience(private val context:Context,private val handler
     private fun stopMedia() {
         replaceControllers(emptyList())
         if(sessionListenerRegistered)read("encerrar sessões") { manager?.removeOnActiveSessionsChangedListener(sessionListener) }
-        sessionListenerRegistered=false;cachedMetadata=null;cachedToken=null;cachedColor=0;directPlayback=null;dirty=true;metadataDirty=true
+        sessionListenerRegistered=false;cachedMetadata=null;cachedToken=null;cachedColor=0;cachedArtwork=null;artworkCache.clear();directPlayback=null;dirty=true;metadataDirty=true
     }
     fun refresh() {
         if(!running||!mediaEnabled)return
@@ -126,10 +154,10 @@ internal class RuntimeExperience(private val context:Context,private val handler
                 val controller=selected.first
                 if(cachedToken!=controller.sessionToken||metadataDirty) {
                     val metadata=controller.metadata
-                    cachedToken=controller.sessionToken;cachedMetadata=metadata;cachedColor=albumColor(metadata)
+                    cachedToken=controller.sessionToken;cachedMetadata=metadata;cachedColor=albumColor(metadata);cachedArtwork=artworkCache.read(metadata)
                     metadataDirty=false
                 }
-                direct=snapshot(controller,selected.second,cachedMetadata,cachedColor)
+                direct=snapshot(controller,selected.second,cachedMetadata,cachedColor,cachedArtwork)
             }
                 directPlayback=direct
             }
@@ -142,6 +170,8 @@ internal class RuntimeExperience(private val context:Context,private val handler
     }
     fun stop() {
         running=false;mediaEnabled=false
+        lastNfcFieldAt=-1L
+        AuroraActivities.removeListener(activityListener)
         observer?.stop();observer=null
         stopMedia()
         if(receiverRegistered) { read("encerrar canal") { context.unregisterReceiver(receiver) };receiverRegistered=false }
@@ -154,12 +184,12 @@ internal class RuntimeExperience(private val context:Context,private val handler
         private fun snapshot(controller:MediaController,color:Int?):PlaybackSnapshot {
             val state=controller.playbackState
             val metadata=controller.metadata
-            return snapshot(controller,state,metadata,color ?: albumColor(metadata))
+            return snapshot(controller,state,metadata,color ?: albumColor(metadata),MediaArtworkCache().read(metadata))
         }
-        fun snapshot(controller:MediaController,state:PlaybackState?,metadata:MediaMetadata?,color:Int?=null):PlaybackSnapshot {
+        fun snapshot(controller:MediaController,state:PlaybackState?,metadata:MediaMetadata?,color:Int?=null,artwork:Bitmap?=null):PlaybackSnapshot {
             return PlaybackSnapshot(state?.state==PlaybackState.STATE_PLAYING,state?.position ?: -1,
                 metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0,state?.lastPositionUpdateTime ?: 0L,
-                state?.playbackSpeed ?: 1f,color ?: albumColor(metadata),metadata?.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty().take(120),sourceIdentity(controller.packageName))
+                state?.playbackSpeed ?: 1f,color ?: albumColor(metadata),metadata?.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty().take(120),sourceIdentity(controller.packageName),artwork)
         }
         fun sourceIdentity(value:String?):String=value.orEmpty().takeIf {
             it.length in 1..200&&it.all { c -> c.isLetterOrDigit()||c=='.'||c=='_' }

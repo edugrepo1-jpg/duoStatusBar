@@ -1,64 +1,45 @@
 # DUO Recreate
 
-[![Downloads](https://img.shields.io/github/downloads/edugrepo1-jpg/duoStatusBar/total?label=downloads)](https://github.com/edugrepo1-jpg/duoStatusBar/releases) [![Release](https://img.shields.io/github/v/release/edugrepo1-jpg/duoStatusBar?display_name=tag&label=release)](https://github.com/edugrepo1-jpg/duoStatusBar/releases/latest) [![Android 13+](https://img.shields.io/badge/Android-13%2B-3DDC84)](INSTALL.es.md)
+### Tu barra, a tu manera.
 
-[Português](../README.md) · [English](README.en.md) · **Español**
+Batería, música y estados del dispositivo en un anillo personalizable, con una isla dinámica para acceder a controles rápidos.
 
-Batería y estados del dispositivo en un anillo de la barra de estado. Fork independiente **GPL-3.0** de [Duo Status Bar](https://github.com/kvmy666/duoStatusBar), de **kvmy666**, con Android Canvas.
+[![Downloads](https://img.shields.io/github/downloads/edugrepo1-jpg/duoStatusBar/total?style=flat-square)](https://github.com/edugrepo1-jpg/duoStatusBar/releases) [![Release](https://img.shields.io/github/v/release/edugrepo1-jpg/duoStatusBar?style=flat-square)](https://github.com/edugrepo1-jpg/duoStatusBar/releases/latest) [![Android 13+](https://img.shields.io/badge/Android-13%2B-3DDC84?style=flat-square)](INSTALL.es.md)
 
-**[Descargar APK](https://github.com/edugrepo1-jpg/duoStatusBar/releases/tag/v1.4.4-recreate)** · [ZIP de interfaces](downloads/DUO-Recreate-interfaces.zip) · [Galería completa](GALERIA.md) · [Versiones](https://github.com/edugrepo1-jpg/duoStatusBar/releases)
+**[Descargar APK](https://github.com/edugrepo1-jpg/duoStatusBar/releases/latest)** · [Instalación](INSTALL.es.md)
 
-Requiere **Android 13+, arm64 y un entorno LSPosed funcional**. Paquete: `io.github.RECREATE.statusbar`. Es una versión preliminar; las pruebas locales no certifican tu dispositivo OEM.
+[Português](../README.md) · [English](README.en.md) · [Español](README.es.md)
 
-<img src="images/v1.4.4/home-es-claro-01.png" width="240" alt="Inicio en español" /> <img src="images/v1.4.4/nfc-es.png" width="240" alt="Explicación de NFC e interruptor" />
+## Interfaz
 
-**[Guía de instalación con LSPosed](INSTALL.es.md)**
+<img src="images/v1.5.3/home-pt-BR-claro-01.png" width="240" alt="DUO Recreate · Light" /> <img src="images/v1.5.3/home-pt-BR-escuro-01.png" width="240" alt="DUO Recreate · Dark" />
 
-## El anillo en acción
-
-<img src="images/v1.4.4/demo-animacoes.gif" width="720" alt="Anillo: desbloqueo, transiciones, carga, música y grabación" />
-
-Demostración simulada: el Canvas de producción dibuja el anillo y los efectos en Android 15 (API 35) simulado. La carcasa y las pantallas del sistema son ilustrativas; no es una grabación de Samsung ni una validación de integración en One UI.
+<sub>Las imágenes muestran la aplicación con datos de demostración.</sub>
 
 ## Funciones
 
-- Anillo Canvas con porcentaje, puntos de señal e iconos internos. Tamaño, posición, grosor y escala de iconos hasta 200%, con ajustes independientes por orientación.
-- Veinte categorías solicitadas: Wi-Fi/datos, avión, No molestar, Bluetooth, NFC, punto de acceso, auriculares/batería, confirmación, carga, cámara y micrófono separados, alarma, VPN, GPS/brújula, silencio/vibración, música, inducción, linterna, grabación y Wi-Fi sin internet con una línea roja diagonal y pulso rápido.
-- Primero termina la salida y luego entra el siguiente icono; confirmación exclusiva al desbloquear durante tres segundos; brillo de carga, ondas/progreso/color musical, estimación de carga, captura, volumen y tiempo de grabación. El evento musical/de grabación más reciente ocupa el centro hasta terminar; pausar la música lo libera.
-- De 1 a 60 segundos por icono secundario, tiempo universal o individual, entrada/salida ajustables, dibujo de trazos y modo solo red.
-- Mantén pulsado el anillo para abrir una isla compacta; desliza hacia abajo para expandir estados, batería, música y accesos. Desliza hacia arriba en la cabecera para contraer.
-- **Visual → Paneles del sistema:** activación independiente en notificaciones y ajustes rápidos, cada uno con tamaño de 50–200%, limitado por el espacio físico.
-- Simulación interactiva antes de aplicar, temas sistema/claro/oscuro y traducciones al portugués, inglés y español.
+- Personaliza colores, tamaño, posición e iconos.
+- Sigue la música con portada circular, efectos y controles de reproducción.
+- Prueba y ajusta animaciones, desbloqueo y transiciones en la vista previa.
+- Encuentra todo en Inicio, Visual, Efectos y Ajustes.
 
-Los estados desconocidos no se inventan. Cuando los auriculares Bluetooth ocupan el centro, el anillo y el número superior muestran su batería y luego vuelven a la del teléfono. No hay porcentaje duplicado debajo del icono. Sin un nivel válido, permanece la batería del teléfono. Personaliza los colores **0–20%, 21–80% y 81–100%** en **Visual → Colores de batería**. Sensores, música, capturas y privacidad dependen de las API y permisos de la ROM.
+<details>
+<summary>Interfaz · Dynamic Island</summary>
 
-## Instalación y uso
+<img src="images/v1.5.3/ilha-glass-capa-horizontal.png" width="680" alt="DUO Recreate · Music controls" />
 
-1. Descarga el APK en **Assets** de la versión. Si ya utilizas Recreate, instala encima: conserva paquete, firma y ajustes.
-2. Elige un idioma al iniciar. Activa Recreate en LSPosed con **System UI** como ámbito y reinicia. Desactiva módulos Duo antiguos para evitar dos inyecciones.
-3. Abre **Inicio → Personalizar la barra → Configurar** y activa el interruptor azul. Las opciones Configurar muestran explicación y control sobre un fondo desenfocado; al cerrar desaparece el desenfoque.
-4. Prueba la vista interactiva en **Efectos**. Los cambios simulados solo llegan a la barra al tocar **Aplicar en la barra**.
-5. Concede accesos opcionales a música/capturas en **Música y captura**, si los necesitas. Reinicia System UI después de actualizar para cargar el módulo nuevo.
+</details>
 
-Para migrar desde el paquete Canvas anterior firmado, mantenlo instalado hasta abrir Recreate una vez. La importación única no incluye logs, permisos privilegiados ni autorización de root.
+## Instalación
 
-## Diagnósticos y mantenimiento
+**Android 13+ · root necesario · portugués, inglés y español**
 
-Guarda o comparte el diagnóstico en **Ajustes**, sin conceder root a la aplicación. Incluye fabricante, modelo, Android, kernel, módulo, funciones habilitadas/detectadas/ejecutadas, errores, estados sin acceso y contadores limitados. Excluye identificadores privados y contenido de notificaciones/música. Revisa cualquier texto que añadas antes de compartirlo.
+1. Instala el APK y elige el idioma.
+2. En LSPosed, activa DUO Recreate para System UI y reinicia el teléfono. Para probar sin LSPosed, abre Ajustes → Avanzado → Root sin LSPosed y autoriza en el gestor root.
+3. Activa la barra en la parte superior de Inicio. Personaliza en Visual y prueba efectos en la vista previa.
 
-La batería observada corresponde al **teléfono completo**; no mide mAh ni ahorro atribuible al módulo. La telemetría no añade temporizador ni wakelock. Abre el panel que falta antes de generar un diagnóstico. Las cabeceras no reconocidas conservan sus iconos originales.
+Modo LSPosed disponible; el modo root independiente es experimental. La ocultación de iconos y el soporte de paneles varían según la ROM.
 
-[Validación ejecutada](fork/VALIDACAO.md) · [Cambios de esta versión](fork/UI-E-PAINEIS.md) · [Auditoría](fork/AUDITORIA.md) · [Historial completo](fork/HISTORICO-COMPLETO.md)
+---
 
-Las actualizaciones proceden de este fork, con comprobación SHA-256, paquete, firma instalada y código de versión superior. Se desactivaron el contacto/apoyo y envío automático de logs al desarrollador original; se conservan autoría y GPL.
-
-Compila con Java 17+, SDK/Build Tools 36 y Gradle 8.13:
-
-```sh
-./gradlew :app:testDebugUnitTest :app:assembleDebug
-python3 tools/route-module-logs.py --check
-```
-
-Firma con tu propia clave protegida. Una firma diferente no actualiza la distribución instalada. No publiques claves ni logs privados. Los archivos Rive históricos no se incluyen en el renderizador/APK.
-
-[Licencia](../LICENSE) · [Documentación original](fork/UPSTREAM-README.md). Sin afiliación con Apple, Samsung o Xiaomi. El desenfoque GPU, los sensores, el ajuste OEM y la autonomía física requieren pruebas en el dispositivo. Las imágenes de la galería son renderizaciones nativas con estados simulados.
+Inspirado en [Duo Status Bar](https://github.com/kvmy666/duoStatusBar), de **kvmy666**. [GPL-3.0](../LICENSE).

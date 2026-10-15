@@ -12,7 +12,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.Display
-import android.view.Surface
 import android.view.View
 import android.view.ViewGroup
 import de.robv.android.xposed.XC_MethodHook
@@ -55,6 +54,13 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
     /** The orientation whose settings are currently applied, so a config change can switch sets. */
     private var appliedOrientation = Configuration.ORIENTATION_UNDEFINED
+    private var rootBackend=false
+    private var runtimeHooksInstalled=false
+    private fun rootSelected(ctx:Context):Boolean {
+        runCatching {ctx.contentResolver.call(android.net.Uri.parse("content://${DuoPrefs.AUTHORITY}"),"runtime_backend",null,null)}
+            .getOrNull()?.getString("mode")?.let {rootBackend=it=="root"}
+        return rootBackend
+    }
 
     /** The next [settingsApply] came from a rotation, so the saved size for that orientation is drawn. */
     private val orientationPending = AtomicBoolean(false)
@@ -70,6 +76,17 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
     /** The pulled-down shade's header, handed over by [hookShadeHeader]. */
     private var shadeHeader: View? = null
+
+    private val attachWork = RootBoundWork(handler) { statusBarRoot }
+    private val shadeSettleWork = RootBoundWork(handler) { shadeRoot }
+
+    private fun stopRuntime() {
+        attachWork.cancel()
+        shadeSettleWork.cancel()
+        val activeMonitor = monitor
+        monitor = null
+        stopDuoRuntime(activeMonitor, host)
+    }
 
     /** Sends status and the one-shot diagnostic dump to the app. */
     private val reporter = HookReporter(
@@ -97,11 +114,13 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     private val settingsApply = Runnable {
         val ctx = app ?: return@Runnable
         L.guard("DuoHook settings changed") {
+            if(rootSelected(ctx)){stopRuntime();return@guard}
+            if(!runtimeHooksInstalled){enable(ctx,0);return@guard}
             val applySavedSize = orientationPending.getAndSet(false)
             val stage = DuoGuard(ctx).stage()
             val settings = host?.refreshSettings(applySavedSize)
             when {
-                stage == DuoGuard.OFF -> host?.teardown()
+                stage == DuoGuard.OFF -> stopRuntime()
                 host?.duo == null -> scheduleAttach(attempt = 0)
                 else -> monitor?.refresh()
             }
@@ -137,7 +156,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     /** The single host for this process, created on first use. */
     private fun ensureHost(ctx: Context): DuoIconHost {
         host?.let { return it }
-        return DuoIconHost(ctx).also { host = it }
+        return DuoIconHost(ctx) { stopRuntime() }.also { host = it }
     }
 
     /**
@@ -187,8 +206,15 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      * windows - by its layout-params type.
      */
     private fun adoptExistingStatusBarWindow() {
-        if (statusBarRoot != null) return
         L.guard("DuoHook existing window") {
+            if(shadeRoot==null) {
+                AppContextResolver.findExistingNotificationShadeWindow()?.let {found ->
+                    shadeRoot=found
+                    L.i("existing shade window found: ${found.javaClass.name}")
+                    if(host?.duo!=null)attachExtraBars(found)
+                }
+            }
+            if(statusBarRoot!=null)return@guard
             val found = AppContextResolver.findExistingStatusBarWindow() ?: return@guard
             statusBarRoot = found
             L.i("existing status bar window found: ${found.javaClass.name}")
@@ -226,6 +252,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      */
     private fun enable(ctx: Context, attempt: Int) {
         L.guard("DuoHook enable #$attempt") {
+            if(rootSelected(ctx)){stopRuntime();L.i("Backend root selecionado; injeção SystemUI suspensa");return@guard}
+            // Pick the visible profile before the first provider/stage read, including late injection.
+            DuoSettingsClient.useOrientation(orientationFrom(ctx))
             val guard = DuoGuard(ctx)
             val stage = guard.stage()
             if (attempt == 0) {
@@ -267,6 +296,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             // request still arrives when the module reads as off. Orientation is installed here, once
             // we know a rotation might need to attach the other set.
             hookOrientation()
+            runtimeHooksInstalled=true
             // The window may already have been captured by the early addView hook; attach now.
             if (stage == DuoGuard.OFF) {
                 L.i("this orientation is off - waiting to apply the other orientation")
@@ -318,6 +348,10 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             }
             val receiver = object : BroadcastReceiver() {
                 override fun onReceive(receiverContext: Context?, intent: Intent?) {
+                    intent?.getStringExtra(io.github.kvmy666.duostatusbar.settings.SettingsBridge.EXTRA_RUNTIME_BACKEND)?.let {
+                        rootBackend=it=="root"
+                        if(rootBackend){handler.removeCallbacks(settingsApply);stopRuntime();return}
+                    }
                     // The size only takes effect on a fresh start, so the app asks for one here. This
                     // module is the only side that can do it: it lives inside System UI, and killing its
                     // own process makes Android bring System UI straight back.
@@ -379,6 +413,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     private fun hookOrientation() {
         val ctx = app ?: return
         appliedOrientation = orientationFrom(ctx)
+        DuoSettingsClient.useOrientation(appliedOrientation)
         L.guard("DuoHook orientation") {
             ctx.registerComponentCallbacks(object : ComponentCallbacks {
                 override fun onConfigurationChanged(newConfig: Configuration) {
@@ -394,7 +429,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                 override fun onDisplayRemoved(displayId: Int) {}
 
                 override fun onDisplayChanged(displayId: Int) {
-                    noteCurrentOrientation(ctx)
+                    if (displayId == Display.DEFAULT_DISPLAY) noteCurrentOrientation(ctx)
                 }
             }, handler)
             L.i("orientation listener installed")
@@ -402,25 +437,19 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     }
 
     /**
-     * The orientation to draw. Resources and the display can update a moment apart; a display that
-     * has already left the set we are drawing wins, otherwise the configuration does, which is the
-     * same value a later settings read uses.
+     * Resources can lag the display across several layout/configuration callbacks. The display must
+     * remain authoritative even after its value was applied, or that lag switches back to the old
+     * profile until the next callback and can disable/restart the whole monitor in the meantime.
      */
     private fun noteCurrentOrientation(ctx: Context) {
-        val configured = ctx.resources.configuration.orientation
-        val fromDisplay = orientationFromRotation(displayRotation(ctx))
-        if (fromDisplay != Configuration.ORIENTATION_UNDEFINED && fromDisplay != appliedOrientation) {
-            noteOrientation(fromDisplay)
-            return
-        }
-        noteOrientation(configured)
+        noteOrientation(orientationFrom(ctx))
     }
 
     /** What is on screen right now, for the initial value so the first layout does not re-apply. */
     private fun orientationFrom(ctx: Context): Int {
-        val fromDisplay = orientationFromRotation(displayRotation(ctx))
-        if (fromDisplay != Configuration.ORIENTATION_UNDEFINED) return fromDisplay
-        return ctx.resources.configuration.orientation
+        val size=android.graphics.Point()
+        runCatching {ctx.getSystemService(DisplayManager::class.java)?.getDisplay(Display.DEFAULT_DISPLAY)?.getRealSize(size)}
+        return RuntimeOrientation.current(displayRotation(ctx),ctx.resources.configuration.orientation,size.x,size.y)
     }
 
     private fun displayRotation(ctx: Context): Int? = try {
@@ -429,12 +458,6 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             ?.rotation
     } catch (_: Throwable) {
         null
-    }
-
-    private fun orientationFromRotation(rotation: Int?): Int = when (rotation) {
-        Surface.ROTATION_90, Surface.ROTATION_270 -> Configuration.ORIENTATION_LANDSCAPE
-        Surface.ROTATION_0, Surface.ROTATION_180 -> Configuration.ORIENTATION_PORTRAIT
-        else -> Configuration.ORIENTATION_UNDEFINED
     }
 
     /** Applies [next] when it is a real orientation and not the one already drawn. */
@@ -488,6 +511,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
 
     /** The bar inflates its children over a few seconds; retry until the icon strip exists. */
     private fun scheduleAttach(attempt: Int) {
+        val requestedRoot = statusBarRoot ?: return
         if (attempt > MAX_ATTEMPTS) {
             L.i("giving up after $MAX_ATTEMPTS attempts - status bar left untouched")
             // A ROM the module could not attach on must still leave evidence: send the same diagnostic
@@ -502,12 +526,18 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
             }
             return
         }
-        handler.postDelayed({
+        attachWork.post(requestedRoot, if (attempt == 0) FIRST_DELAY_MS else RETRY_MS) {
             L.guard("DuoHook attach #$attempt") {
-                val root = statusBarRoot ?: return@guard
+                val root = requestedRoot
                 // Prefer the Application, but fall back to the bar window's own context: on a ROM where
                 // the module is injected late the Application may never have been captured.
                 val ctx = app ?: root.context
+                if(rootSelected(ctx)){stopRuntime();return@guard}
+                val stage = DuoGuard(ctx).stage()
+                if (stage == DuoGuard.OFF && !DuoSettingsClient.providerUnreachable) {
+                    stopRuntime()
+                    return@guard
+                }
                 val attached = ensureHost(ctx).attach(root)
                 if (attached) {
                     if (monitor == null) {
@@ -524,7 +554,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                     scheduleAttach(attempt + 1)
                 }
             }
-        }, if (attempt == 0) FIRST_DELAY_MS else RETRY_MS)
+        }
     }
 
     /**
@@ -569,13 +599,14 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
         L.guard("DuoHook layout listener") {
             if (layoutWindows.put(root,true)!=null)return@guard
             root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                if (statusBarRoot !== root) return@addOnLayoutChangeListener
                 L.guard("DuoHook onLayout") {
                     // Hide pass only. Do NOT re-read system state here: the status bar re-lays out on
                     // every clock tick, and refreshing Wi-Fi/cell/etc plus re-rendering Rive on each one
                     // kept SystemUI awake at ~1 Hz — the battery drain. State is already broadcast-driven.
                     // Orientation is an int compare and only posts work when it actually changed.
                     // The display listener covers a rotation that has not reached this configuration yet.
-                    app?.let { noteOrientation(it.resources.configuration.orientation) }
+                    noteCurrentOrientation(app ?: root.context)
                     host?.reapplyHiding()
                 }
             }
@@ -589,13 +620,15 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
     private fun attachShadeLayoutListener(shade:View) {
             if (shadeLayoutWindows.put(shade,true)!=null)return
             shade.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                if (shadeRoot !== shade || host?.duo == null) return@addOnLayoutChangeListener
                 L.guard("DuoHook onShadeLayout") {
                     attachExtraBars(shade)
                     // Opening the shade re-shows the main bar's icon views, so the hide pass has to run
                     // again here - the status bar's own layout pass does not fire for a shade drag. The
                     // ROM also re-shows them *after* the drag settles, so this runs again a moment later.
                     host?.reapplyHiding()
-                    handler.postDelayed({
+                    shadeSettleWork.post(shade, SHADE_SETTLE_MS) {
+                        if(host?.duo == null)return@post
                         L.guard("DuoHook shade settle") {
                             host?.reapplyHiding()
                             shadeHeader?.let { host?.attachShadeHeader(it) }
@@ -606,7 +639,7 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
                                 reporter.captureExtras(Diag.treeText("shade header (as last laid out)", it))
                             }
                         }
-                    }, SHADE_SETTLE_MS)
+                    }
                 }
             }
     }
@@ -619,7 +652,9 @@ class DuoHook(private val lp: XC_LoadPackage.LoadPackageParam) {
      * why the lock screen and the shade looked untouched until they were handled.
      */
     private fun attachExtraBars(shade: View) {
+        if (shadeRoot !== shade) return
         val host = host ?: return
+        if(host.duo==null)return
         attachShadeLayoutListener(shade)
         hookStatusBarTouch(shade)
         host.attachExtra("keyguard bar", shade, "system_icons")

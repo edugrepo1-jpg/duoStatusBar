@@ -17,7 +17,6 @@ private val effectOptions get()=listOf(
     EffectOption(16,UiText.t("Aviso de fones"),UiText.t("Exibe os fones e a bateria quando a leitura está disponível.")),
     EffectOption(256,UiText.t("Brilho durante a carga"),UiText.t("Brilho inicial por 3 segundos e movimento nos arcos durante a carga.")),
     EffectOption(512,UiText.t("Bateria fraca"),UiText.t("Três pulsos abaixo de 10% e um aviso discreto.")),
-    EffectOption(1024,UiText.t("Acabamento de vidro"),UiText.t("Borda delicada, transparência e desfoque quando disponível.")),
     EffectOption(2048,UiText.t("Movimento com molas"),UiText.t("Mais suavidade nas expansões e transições.")),
     EffectOption(2,UiText.t("Alinhamento automático"),UiText.t("Alinha a altura ao relógio e preserva a posição escolhida.")),
     EffectOption(128,UiText.t("Expansão ao acender"),UiText.t("O anel se expande ao acender a tela e se recolhe ao apagar.")),
@@ -39,10 +38,11 @@ internal fun GeometrySection(settings:DuoSettings,onUpdate:(DuoSettings)->Unit,s
 }
 @Composable
 internal fun EffectsSection(settings:DuoSettings,onUpdate:(DuoSettings)->Unit,search:SearchGate,page:StudioPage=StudioPage.EFFECTS) {
+    val topic=LocalSettingsTopic.current
     val groups=listOf(UiText.t("Ícones e confirmação") to setOf(1,4,8192,4096,8,16),UiText.t("Energia") to setOf(256,512),UiText.t("Acabamento e contexto") to setOf(1024,2048,2,128,32,64))
     groups.forEach { (title,bits) ->
-        val allowed=when(page){StudioPage.VISUAL->setOf(2,1024);StudioPage.MORE->setOf(32,64);else->setOf(1,4,8192,4096,8,16,256,512,2048,128)}
-        val options=effectOptions.filter { it.bit in bits && it.bit in allowed && BuildConfig.FEATURE_MASK and it.bit!=0 && (search(title)||search(it.label,it.detail)) }
+        val allowed=when(page){StudioPage.VISUAL->setOf(2);StudioPage.MORE->emptySet();else->setOf(1,4,8192,4096,8,16,256,512,2048,128,32,64)}
+        val options=effectOptions.filter { it.bit in bits && it.bit in allowed && effectInTopic(it.bit,topic) && BuildConfig.FEATURE_MASK and it.bit!=0 && (search(title)||search(it.label,it.detail)) }
         if(options.isNotEmpty())StudioCard {
             SectionTitle(title)
             options.forEachIndexed { index,option ->
@@ -53,4 +53,14 @@ internal fun EffectsSection(settings:DuoSettings,onUpdate:(DuoSettings)->Unit,se
             }
         }
     }
+}
+
+internal fun effectInTopic(bit:Int,topic:String):Boolean=when(topic) {
+    "unlock"->bit in setOf(1,2,128)
+    "energy"->bit in setOf(256,512)
+    "indicators"->bit in setOf(4,8192,4096,8,16,32,64)
+    "movement"->bit==2048
+    "position"->bit==2
+    "media","island","island-look","colors","ring","percentage"->false
+    else->true
 }

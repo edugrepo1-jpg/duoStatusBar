@@ -23,7 +23,7 @@ import io.github.kvmy666.duostatusbar.settings.DuoPrefs
  * events are broadcasts; Wi-Fi and cellular are read through [SystemReaders]. Nothing polls, and no
  * hook name is guessed (FR-26); if a read fails the element keeps its last value (FR-21).
  */
-internal class DuoStateMonitor(private val context: Context, private val host: DuoIconHost) {
+internal class DuoStateMonitor(private val context: Context, private val host: StateHost) {
 
     private var level = 100
     /** What the ring is actually drawn at; it chases [level] so the fill animates instead of jumping. */
@@ -404,7 +404,7 @@ internal class DuoStateMonitor(private val context: Context, private val host: D
     private fun render() {
         if (effectsPaused) return
         // Every element the host owns - the main bar's and, on the lock screen, the keyguard bar's.
-        if (host.duo == null) return
+        if (!host.rendererReady) return
         try {
             val visual = DuoMapping.visual(
                     level = displayedLevel,

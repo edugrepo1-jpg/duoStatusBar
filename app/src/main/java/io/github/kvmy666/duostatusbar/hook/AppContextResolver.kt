@@ -68,11 +68,21 @@ internal object AppContextResolver {
      * the window, so it is read back from `WindowManagerGlobal.mViews` - the process's own list of added
      * windows - by its layout-params type.
      */
-    fun findExistingStatusBarWindow(): View? = try {
+    fun findExistingStatusBarWindow(): View? {
+        val windows=existingWindows()
+        return windows.firstOrNull {(it.layoutParams as? android.view.WindowManager.LayoutParams)?.type==TYPE_STATUS_BAR}
+            ?: windows.firstOrNull {(it.layoutParams as? android.view.WindowManager.LayoutParams)?.type==TYPE_NOTIFICATION_SHADE}
+    }
+
+    fun findExistingNotificationShadeWindow():View?=existingWindows().firstOrNull {
+        (it.layoutParams as? android.view.WindowManager.LayoutParams)?.type==TYPE_NOTIFICATION_SHADE
+    }
+
+    private fun existingWindows():List<View> = try {
         val cls = Class.forName("android.view.WindowManagerGlobal")
         val instance = cls.getMethod("getInstance").invoke(null)
         val roots = cls.getDeclaredField("mViews").also { it.isAccessible = true }.get(instance) as? List<*>
-        roots?.firstNotNullOfOrNull { root ->
+        val windows=roots.orEmpty().mapNotNull { root ->
             val view = when (root) {
                 is View -> root
                 null -> null
@@ -83,11 +93,11 @@ internal object AppContextResolver {
                     null
                 }
             }
-            val type = (view?.layoutParams as? android.view.WindowManager.LayoutParams)?.type
-            if (view != null && (type == TYPE_STATUS_BAR || type == TYPE_NOTIFICATION_SHADE)) view else null
+            view?.takeUnless {it.display?.displayId?.let {id->id!=android.view.Display.DEFAULT_DISPLAY}==true}
         }
+        windows
     } catch (t: Throwable) {
         L.w("existing window scan: ${t.javaClass.simpleName}: ${t.message}")
-        null
+        emptyList()
     }
 }

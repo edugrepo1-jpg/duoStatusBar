@@ -19,3 +19,6 @@
 
 # WorkManager instantiates the worker by name; keep it resolvable across updates.
 -keep class io.github.kvmy666.duostatusbar.settings.UpdateWorker { public <init>(...); }
+
+# Standalone root app_process entry is outside the Android manifest.
+-keep class io.github.kvmy666.duostatusbar.standalone.RootOverlayMain { public static void main(java.lang.String[]); }

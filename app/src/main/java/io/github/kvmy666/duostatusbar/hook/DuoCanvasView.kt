@@ -41,13 +41,21 @@ internal class DuoCanvasView(context: Context, part: DuoPart = DuoPart.ALL) : Vi
     var globalPercent = 100
     var arrivalEnabled = true
     var effects = EffectFrame()
-        set(value) { val changed=field.hideCells!=value.hideCells;field = value; safe("efeitos") { if(changed){changedAt=SystemClock.uptimeMillis();advance()} else invalidate() } }
+        set(value) {
+            if(field==value)return
+            val changed=field.hideCells!=value.hideCells;field=value
+            // Keep the newest state while an island/window hides us. Resuming consumes it once;
+            // hidden status icons do not need an invalidation on every controller animation tick.
+            if(!active||!isShown||windowVisibility!=VISIBLE)return
+            safe("efeitos") {if(changed){changedAt=SystemClock.uptimeMillis();advance()} else invalidate()}
+        }
     var continuumX = 0f
     var continuumY = 0f
     var lastAlignment = Float.NaN
     private val effectPainter = EffectPainter()
-    private val glass = GlassBackdrop(this)
     private var failed = false
+    private var failureAction:(()->Unit)?=null
+    private var failureNotified=false
     private var lastEvidenceFeature: TelemetryFeature? = null
     private val effectEvidence=BooleanArray(TelemetryFeature.entries.size)
     private fun effectObserved(feature:TelemetryFeature,active:Boolean) {
@@ -66,7 +74,11 @@ internal class DuoCanvasView(context: Context, part: DuoPart = DuoPart.ALL) : Vi
     private var boltAmount = 0f
     private var cellVisibility=1f
     private var pending = false
+    private var touchDown=false
+    private var touchReleasedAt=-1L
+    private var visibilityReady = false
     private val middleSwap=SequentialSwap()
+    private val batterySourceSwap=BatterySourceSwap()
     private val numberBounds=android.graphics.Rect()
     private val middleWeights = FloatArray(5)
     private var oldNetworkText = ""
@@ -78,8 +90,10 @@ internal class DuoCanvasView(context: Context, part: DuoPart = DuoPart.ALL) : Vi
         textAlign = Paint.Align.CENTER; typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
     }
     private val bounds = RectF()
+    private val outline=Paint(Paint.ANTI_ALIAS_FLAG).apply {style=Paint.Style.STROKE;strokeCap=Paint.Cap.ROUND;strokeJoin=Paint.Join.ROUND}
     private val roundedBolt = CornerPathEffect(1.4f)
     private val tick = Runnable { pending = false; safe("quadro") { advance() } }
+    init { visibilityReady = true }
 
     private inline fun safe(where: String, action: () -> Unit) {
         try { action() } catch (error: Throwable) {
@@ -89,7 +103,14 @@ internal class DuoCanvasView(context: Context, part: DuoPart = DuoPart.ALL) : Vi
 
     override fun start(): Boolean = !failed
     override fun onReady(action: () -> Unit) { safe("pronto") { if (!failed) action() } }
-    override fun onFailed(action: () -> Unit) = Unit
+    override fun onFailed(action: () -> Unit) { failureAction=action;notifyFailure() }
+    private fun notifyFailure() {
+        if(!failed||failureNotified)return
+        val action=failureAction ?: return
+        failureNotified=true;failureAction=null
+        // Restoration removes Views: run after the current parent/Canvas draw has returned.
+        android.os.Handler(android.os.Looper.getMainLooper()).post {safe("recuperação") {action()}}
+    }
     override fun render(v: DuoVisual) = safe("estado") {
         if (target == v && shown != null) return@safe
         middleSwap.update(v.middleMode,SystemClock.uptimeMillis(),animationsEnabled&&active)
@@ -116,9 +137,10 @@ internal class DuoCanvasView(context: Context, part: DuoPart = DuoPart.ALL) : Vi
     }
 
     override fun setRenderActive(active: Boolean) = safe("atividade") {
+        if(this.active==active)return@safe
         this.active = active
         if (!active) {
-            removeCallbacks(tick); pending = false; revealAt = -1L
+            removeCallbacks(tick); pending = false; revealAt = -1L;touchDown=false;touchReleasedAt=-1L
         } else {
             lastFrame = 0L
             advance()
@@ -126,13 +148,20 @@ internal class DuoCanvasView(context: Context, part: DuoPart = DuoPart.ALL) : Vi
     }
 
     override fun teardown() = safe("encerramento") {
-        glass.release()
         active = false; removeCallbacks(tick); pending = false; revealAt = -1L
+        touchDown=false;touchReleasedAt=-1L
         target = null; shown = null
+        batterySourceSwap.clear()
+        failureAction=null
+    }
+    fun touchResponse(pressed:Boolean) {
+        if(!effects.aurora.touchResponse||!effects.motionEnabled||!animationsEnabled||!active)return
+        if(!pressed&&!touchDown)return
+        touchDown=pressed;touchReleasedAt=if(pressed)-1L else SystemClock.uptimeMillis()
+        advance()
     }
 
     override fun onDetachedFromWindow() {
-        glass.release()
         safe("desanexar") { removeCallbacks(tick); pending = false; lastFrame = 0L }
         super.onDetachedFromWindow()
     }
@@ -142,13 +171,26 @@ internal class DuoCanvasView(context: Context, part: DuoPart = DuoPart.ALL) : Vi
         safe("anexar") { lastFrame = 0L; advance() }
     }
 
+    override fun onVisibilityChanged(changedView:View,visibility:Int) {
+        super.onVisibilityChanged(changedView,visibility)
+        if(visibilityReady)safe("visibilidade") { updateVisibility() }
+    }
+    override fun onWindowVisibilityChanged(visibility:Int) {
+        super.onWindowVisibilityChanged(visibility)
+        if(visibilityReady)safe("janela") { updateVisibility() }
+    }
+    private fun updateVisibility() {
+        if(isShown&&windowVisibility==VISIBLE) { lastFrame=0L;advance() }
+        else {removeCallbacks(tick);pending=false;lastFrame=0L}
+    }
+
     private fun advance() {
         val v = target ?: return
         val now = SystemClock.uptimeMillis()
         val dt = if (lastFrame == 0L) 16L else (now - lastFrame).coerceIn(0, 64)
         lastFrame = now
         val old = shown ?: v
-        val settled = !animationsEnabled || now - changedAt > 1600L
+        val settled = !animationsEnabled || !active || !isShown || windowVisibility!=VISIBLE || now - changedAt > 1600L
         val colorStep = if (settled) 1f else CanvasMotion.step(dt, 130f)
         val levelStep = if (settled) 1f else CanvasMotion.step(dt, 70f)
         val geometryStep = if (settled) 1f else CanvasMotion.step(dt, 190f)
@@ -182,9 +224,10 @@ internal class DuoCanvasView(context: Context, part: DuoPart = DuoPart.ALL) : Vi
         if (revealAt >= 0 && now - revealAt >= revealDuration) revealAt = -1
         invalidate()
         // Stop at convergence, and always stop while hidden: no lifetime idle render loop.
-        val moving = middleSwap.moving(now) || abs(cellVisibility-if(effects.hideCells)0f else 1f)>.001f || (!settled && shown != v) || revealAt >= 0 ||
+        val touchMoving=effects.aurora.touchResponse&&touchReleasedAt>=0&&now-touchReleasedAt<180
+        val moving = touchMoving||middleSwap.moving(now) || abs(cellVisibility-if(effects.hideCells)0f else 1f)>.001f || (!settled && shown != v) || revealAt >= 0 ||
             abs(visibilityAmount - if (v.visible) 1f else 0f) > 0.001f
-        if (active && moving && !pending && isAttachedToWindow) {
+        if (active && moving && !pending && isAttachedToWindow && isShown && windowVisibility==VISIBLE) {
             pending = true; postOnAnimation(tick)
         }
     }
@@ -199,6 +242,7 @@ internal class DuoCanvasView(context: Context, part: DuoPart = DuoPart.ALL) : Vi
                 RuntimeTelemetry.increment(TelemetryCounter.CANVAS_DRAW)
                 val feature=when {
                     part!=DuoPart.INDICATORS&&effects.checkMs>=120&&EffectTimeline.check(effects.checkMs)>.01f -> TelemetryFeature.UNLOCK_CHECK
+                    part!=DuoPart.RING&&AuroraRender.headphone(effects)&&effects.checkMs<0&&effects.headphoneConnectMs>=120 -> TelemetryFeature.AIRPODS
                     part!=DuoPart.RING&&effects.audioMs>=120&&EffectTimeline.audio(effects.audioMs)>.01f -> TelemetryFeature.AIRPODS
                     part!=DuoPart.RING&&effects.slot.icon!=null&&effects.slot.opacity>.01f&&effects.checkMs<0&&effects.audioMs<0 -> TelemetryFeature.valueOf(effects.slot.icon!!.name)
                     else -> null
@@ -208,12 +252,13 @@ internal class DuoCanvasView(context: Context, part: DuoPart = DuoPart.ALL) : Vi
                 effectObserved(TelemetryFeature.CRITICAL_PULSE,effects.pulseMs>=0||effects.criticalDot)
                 effectObserved(TelemetryFeature.FADE,effects.slot.icon!=null&&effects.slot.opacity in .001f.. .999f)
                 effectObserved(TelemetryFeature.DRAW_ICONS,effects.drawIcons&&effects.slot.icon!=null&&effects.slot.reveal in .001f.. .999f)
-                effectObserved(TelemetryFeature.GLASS,effects.glass)
+                effectObserved(TelemetryFeature.GLASS,false)
                 effectObserved(TelemetryFeature.SPRING,effects.spring&&effects.slot.icon!=null&&effects.slot.scale<.999f)
-                effectObserved(TelemetryFeature.ALBUM_COLORS,effects.musicPlaying&&effects.albumColor!=0&&!effects.charging&&effects.checkMs<0)
+                effectObserved(TelemetryFeature.ALBUM_COLORS,false)
             }
         } catch (error: Throwable) {
             failed = true
+            removeCallbacks(tick);pending=false;notifyFailure()
             RuntimeTelemetry.increment(TelemetryCounter.CANVAS_FAILURE)
             lastEvidenceFeature?.let { RuntimeTelemetry.probe(it,false) }
             safe("falha no desenho") { L.w("Canvas: ${error.javaClass.simpleName}: ${error.message}") }
@@ -226,12 +271,22 @@ internal class DuoCanvasView(context: Context, part: DuoPart = DuoPart.ALL) : Vi
     private fun drawElement(canvas: Canvas) {
         val current = shown ?: return
         if (width <= 0 || height <= 0 || visibilityAmount < 0.001f) return
-        val headsetLevel=BatteryPresentation.headphoneLevel(effects)
-        val displayed=BatteryPresentation.visual(current,effects,headsetLevel)
+        val confirmingHeadphones=AuroraRender.headphone(effects)&&effects.checkMs<0
+        val incomingHeadset=if(confirmingHeadphones)effects.headphoneBattery.takeIf {it in 0..100} else BatteryPresentation.headphoneLevel(effects)
+        val incomingFrame=BatteryPresentation.frameForSource(current,effects,incomingHeadset)
+        val selectedSource=batterySourceSwap.present(BatteryPresentation.visual(current,incomingFrame,incomingHeadset),incomingHeadset,effects)
+        val headsetLevel=selectedSource.headphoneLevel
+        // Custom discharge bands cannot replace the charging colour/effect. The headset is a
+        // separate, noncharging source and retains its chosen bands even while the phone charges.
+        val batteryFrame=BatteryPresentation.frameForSource(current,effects,headsetLevel)
+        val displayed=if(headsetLevel==null&&(current.charging||effects.charging))selectedSource.visual.copy(tint=current.tint) else selectedSource.visual
         val mapped = part.apply(displayed)
         // Phone charging/critical overlays must never suggest that a headset is charging.
-        val batteryEffects=if(headsetLevel!=null)effects.copy(charging=false,chargeMs=-1,pulseMs=-1,criticalDot=false,albumColor=0,musicProgress=-1f) else effects
-        val v = mapped.copy(tint = if(headsetLevel!=null||effects.batteryColors!=null)mapped.tint else effectPainter.tint(mapped.tint, batteryEffects))
+        val batteryEffects=if(headsetLevel!=null)batteryFrame.copy(charging=false,chargeMs=-1,pulseMs=-1,criticalDot=false,albumColor=0,musicProgress=-1f) else batteryFrame
+        val glow=maxOf(AuroraRender.glow(effects),if(confirmingHeadphones).65f*AuroraRender.headphoneOpacity(effects) else 0f)
+        val presentationTint=CanvasMotion.blend(if(headsetLevel!=null||batteryFrame.batteryColors!=null)mapped.tint else effectPainter.tint(mapped.tint,batteryEffects),0xFF71E3B1.toInt(),glow)
+        val v = mapped.copy(tint=CanvasMotion.blend(presentationTint,0xFF71E3B1.toInt(),AuroraRender.taskGlow(effects)),
+            fgColor=CanvasMotion.blend(mapped.fgColor,0xFF71E3B1.toInt(),glow))
         val scale = minOf(width / 120f, height / 136f)
         canvas.translate(continuumX, continuumY)
         canvas.translate((width - 120f * scale) / 2f, (height - 136f * scale) / 2f)
@@ -244,34 +299,45 @@ internal class DuoCanvasView(context: Context, part: DuoPart = DuoPart.ALL) : Vi
         val visibilityScale = 0.72f + 0.28f * CanvasMotion.overshoot(visibilityAmount)
         val arrivalScale = if (revealAt < 0) 1f else 0.82f + 0.18f * (if (effects.spring) EffectTimeline.spring(r) else CanvasMotion.overshoot(r))
         canvas.scale(visibilityScale * arrivalScale, visibilityScale * arrivalScale)
+        if(effects.aurora.touchResponse&&effects.motionEnabled&&animationsEnabled) {
+            val compression=if(touchDown).96f else if(touchReleasedAt>=0) .96f+.04f*EffectTimeline.smooth((SystemClock.uptimeMillis()-touchReleasedAt)/180f) else 1f
+            canvas.scale(compression,compression)
+        }
         val opacity = visibilityAmount * (r * 4).coerceIn(0f, 1f)
         val contraction = 1f - .05f * EffectTimeline.smooth(effects.checkMs / 80f) * (1f - EffectTimeline.smooth((effects.checkMs - 120) / 280f))
         val audioExpansion = if (effects.audioMs < 0) 0f else minOf(EffectTimeline.smooth(effects.audioMs / 200f), EffectTimeline.smooth((4000 - effects.audioMs) / 250f))
         canvas.scale(contraction * (1f + .05f * audioExpansion), contraction)
-        if (v.ringOpacity > 0f) {
-            glass.draw(canvas, effects.glass, scale * globalScale, opacity)
-            effectPainter.background(canvas, v.fgColor, effects, .5f * resources.displayMetrics.density / (scale * globalScale).coerceAtLeast(.01f))
-        }
-        val f = thickPercent.coerceIn(1, 300) / 100f
+        val f = AuroraRender.thickness(thickPercent,effects.aurora.safeGeometry)
+        val drawingFrame=if(effects.aurora.safeGeometry)batteryEffects.copy(iconRadius=minOf(batteryEffects.iconRadius,55.5f-8f*f-4f)) else batteryEffects
+        val buildRing=AuroraRender.build(effects,0)
+        val buildNumber=AuroraRender.build(effects,1)
+        val buildCells=AuroraRender.build(effects,2)
+        val sourceOpacity=AuroraRender.sourceOpacity(effects)
         val radius = (111f - 8f * f) / 2f
         bounds.set(-radius, -radius, radius, radius)
         stroke.strokeWidth = 8f * f
         if (v.ringOpacity > 0f) {
-            stroke.color = alpha(v.fgColor, opacity * v.trackOpacity * v.ringOpacity)
-            arc(canvas, v.leftArc, 270f + RingGeometry.LEFT_START * 360f)
-            arc(canvas, v.rightArc, 270f + RingGeometry.RIGHT_START * 360f)
-            stroke.color = alpha(v.tint, opacity * v.ringOpacity)
-            arc(canvas, v.trimLeftEnd, 270f + RingGeometry.LEFT_START * 360f)
-            arc(canvas, v.trimRightEnd, 270f + RingGeometry.RIGHT_START * 360f)
+            val ringOpacity=opacity*v.ringOpacity*sourceOpacity
+            if(effects.aurora.adaptiveContrast) {
+                outline.color=alpha(AuroraRender.opposite(mapped.fgColor),ringOpacity*.7f);outline.strokeWidth=stroke.strokeWidth+2f
+                if(v.leftArc*buildRing>0)canvas.drawArc(bounds,270f+RingGeometry.LEFT_START*360f,v.leftArc*buildRing*360f,false,outline)
+                if(v.rightArc*buildRing>0)canvas.drawArc(bounds,270f+RingGeometry.RIGHT_START*360f,v.rightArc*buildRing*360f,false,outline)
+            }
+            stroke.color = alpha(v.fgColor, ringOpacity * v.trackOpacity)
+            arc(canvas, v.leftArc*buildRing, 270f + RingGeometry.LEFT_START * 360f)
+            arc(canvas, v.rightArc*buildRing, 270f + RingGeometry.RIGHT_START * 360f)
+            stroke.color = alpha(v.tint, ringOpacity)
+            arc(canvas, v.trimLeftEnd*buildRing, 270f + RingGeometry.LEFT_START * 360f)
+            arc(canvas, v.trimRightEnd*buildRing, 270f + RingGeometry.RIGHT_START * 360f)
         }
-        val slotAlpha = opacity * v.indicatorsOpacity * EffectTimeline.checkNormal(effects.checkMs) * EffectTimeline.audioNormal(effects.audioMs)
+        val slotAlpha = opacity * v.indicatorsOpacity * EffectTimeline.checkNormal(effects.checkMs) * EffectTimeline.audioNormal(effects.audioMs)*(if(confirmingHeadphones)0f else AuroraRender.headphoneReturnOpacity(effects))
         val cycleIcon = effects.slot.icon
         if (slotAlpha > 0f && cycleIcon != null) {
             val saved = canvas.save(); canvas.scale(effects.slot.scale, effects.slot.scale)
             when (cycleIcon) {
                 SlotIcon.WIFI -> {
                     val requested=effects.iconPercent.coerceIn(60,200)/100f
-                    val factor=if(requested<=1)requested else minOf(requested,((55.5f-8f*f-2f)/28f).coerceAtLeast(1f))
+                    val factor=AuroraRender.iconScale(requested,55.5f-8f*f-2f,28f,effects.aurora.safeGeometry)
                     canvas.scale(factor,factor)
                     drawWifi(canvas,v,slotAlpha*effects.slot.opacity)
                 }
@@ -287,20 +353,25 @@ internal class DuoCanvasView(context: Context, part: DuoPart = DuoPart.ALL) : Vi
             label(canvas, oldNetworkText, -.5f, 1f, 30f, 2f, v.fgColor,
                 slotAlpha * middleWeights[DuoMapping.MIDDLE_NETWORK])
         }
-        effectPainter.foreground(canvas, if (cycleIcon == null) batteryEffects.copy(slot = SlotFrame(null)) else batteryEffects,
-            v.fgColor, thickPercent, opacity, v.ringOpacity > 0f, v.indicatorsOpacity > 0f,v.leftArc,v.rightArc)
+        effectPainter.foreground(canvas, if (cycleIcon == null) drawingFrame.copy(slot = SlotFrame(null)) else drawingFrame,
+            v.fgColor, if(effects.aurora.safeGeometry)thickPercent.coerceIn(1,160) else thickPercent, opacity, v.ringOpacity > 0f, v.indicatorsOpacity > 0f,v.leftArc*buildRing,v.rightArc*buildRing)
         if (v.ringOpacity <= 0f) return
         val ringAlpha = opacity * v.ringOpacity
         val cells = floatArrayOf(v.cell1Opacity, v.cell2Opacity, v.cell3Opacity, v.cell4Opacity)
         val moons = floatArrayOf(v.moon1Opacity, v.moon2Opacity, v.moon3Opacity, v.moon4Opacity)
+        val cellColor=CanvasMotion.blend(v.fgColor,0xFF71E3B1.toInt(),AuroraRender.glow(effects))
         for (i in 0..3) if (cellVisibility>.001f) {
-            fill.color = alpha(v.fgColor, ringAlpha * cells[i]*cellVisibility)
-            canvas.drawCircle(CELL_X[i], CELL_Y[i], 5.5f*cellVisibility, fill)
+            val cellAlpha=ringAlpha*cells[i]*cellVisibility*buildCells
+            if(effects.aurora.adaptiveContrast&&cellAlpha>.001f) {
+                fill.color=alpha(AuroraRender.opposite(mapped.fgColor),cellAlpha*.7f);canvas.drawCircle(CELL_X[i],CELL_Y[i],6.5f*cellVisibility*buildCells,fill)
+            }
+            fill.color = alpha(cellColor, cellAlpha)
+            canvas.drawCircle(CELL_X[i], CELL_Y[i], 5.5f*cellVisibility*buildCells, fill)
             glyph(canvas, CanvasPaths.moon, CELL_X[i], CELL_Y[i], DotMoonMotion.DOT_SCALE * moons[i]*cellVisibility,
-                v.fgColor, ringAlpha * moons[i]*cellVisibility)
+                cellColor, ringAlpha * moons[i]*cellVisibility*buildCells)
         }
         glyph(canvas, CanvasPaths.moon, DotMoonMotion.CENTER_X, DotMoonMotion.CENTER_Y,
-            DotMoonMotion.DOT_SCALE * v.centerMoonOpacity, v.fgColor, ringAlpha * v.centerMoonOpacity)
+            DotMoonMotion.DOT_SCALE * v.centerMoonOpacity, cellColor, ringAlpha * v.centerMoonOpacity*buildCells)
         if (headsetLevel==null && boltAmount > .001f) {
             fill.pathEffect = roundedBolt
             glyph(canvas, CanvasPaths.bolt, 0f, -49.5f * boltAmount,
@@ -308,8 +379,9 @@ internal class DuoCanvasView(context: Context, part: DuoPart = DuoPart.ALL) : Vi
                 v.tint, ringAlpha * boltAmount)
             fill.pathEffect = null
         }
+        val numberColor=CanvasMotion.blend(if(headsetLevel!=null||batteryFrame.batteryColors!=null)presentationTint else v.fgColor,0xFF71E3B1.toInt(),AuroraRender.glow(effects))
         label(canvas, v.percentText.trim(), 0f, v.percentY + RingGeometry.PERCENT_BOX_HALF,
-            v.percentFontSize, 2.4f, if(headsetLevel!=null||effects.batteryColors!=null)v.tint else v.fgColor, ringAlpha * v.percentOpacity)
+            v.percentFontSize, 2.4f, numberColor, ringAlpha * v.percentOpacity*buildNumber*sourceOpacity)
     }
 
     private fun arc(canvas: Canvas, fraction: Float, start: Float) {
@@ -319,6 +391,12 @@ internal class DuoCanvasView(context: Context, part: DuoPart = DuoPart.ALL) : Vi
     private val wifiGlyph=WifiGlyph()
     private fun drawWifi(canvas: Canvas, v: DuoVisual, opacity: Float) {
         if(opacity<.001f)return
+        if(effects.aurora.adaptiveContrast) {
+            val save=canvas.save();canvas.scale(1.06f,1.06f)
+            wifiGlyph.draw(canvas,AuroraRender.opposite(v.fgColor),opacity*.7f,v.wifiOuterOpacity,v.wifiMidOpacity,
+                if(v.wifiLevel>0)1f else .3f,if(effects.drawIcons)effects.slot.reveal else 1f)
+            canvas.restoreToCount(save)
+        }
         wifiGlyph.draw(canvas,v.fgColor,opacity,v.wifiOuterOpacity,v.wifiMidOpacity,
             if(v.wifiLevel>0)1f else .3f,if(effects.drawIcons)effects.slot.reveal else 1f)
     }
@@ -338,6 +416,11 @@ internal class DuoCanvasView(context: Context, part: DuoPart = DuoPart.ALL) : Vi
         text.textSize = size; text.color = alpha(color, opacity)
         text.style = Paint.Style.FILL_AND_STROKE; text.strokeWidth = weight
         text.getTextBounds(value,0,value.length,numberBounds)
+        if(effects.aurora.adaptiveContrast) {
+            outline.textSize=size;outline.typeface=text.typeface;outline.textAlign=Paint.Align.CENTER;outline.strokeWidth=weight+2f
+            outline.color=alpha(AuroraRender.opposite(color),opacity*.7f)
+            canvas.drawText(value,x,y-(numberBounds.top+numberBounds.bottom)/2f,outline)
+        }
         canvas.drawText(value, x, y - (numberBounds.top + numberBounds.bottom) / 2f, text)
     }
 

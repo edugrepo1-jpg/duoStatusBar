@@ -38,7 +38,7 @@ internal object UpdateChecker {
     private const val GITHUB_API =
         "https://api.github.com/repos/edugrepo1-jpg/duoStatusBar/releases?per_page=20"
 
-    private val SEMVER = Regex("""(\d+)\.(\d+)(?:\.(\d+))?(?:-([0-9A-Za-z.]+))?""")
+    private val SEMVER = Regex("""(\d+)\.(\d+)(?:\.(\d+))?(?:-([0-9A-Za-z.-]+))?""")
 
     /** The newest release (stable or pre-release), or null when it cannot be read. */
     fun check(): UpdateInfo? = githubRelease()
@@ -132,14 +132,15 @@ internal object UpdateChecker {
         for (i in 0 until array.length()) {
             val r = array.optJSONObject(i) ?: continue
             if (r.optBoolean("draft", false)) continue
-            val raw = r.optString("name").ifEmpty { r.optString("tag_name") }
+            val raw = r.optString("tag_name").ifEmpty { r.optString("name") }
             val version = parseVersion(raw) ?: continue
+            val asset = apkAsset(r)
             out.add(
                 UpdateInfo(
                     version = version,
                     url = r.optString("html_url").ifEmpty { RELEASES_PAGE },
-                    apkUrl = apkAssetUrl(r),
-                    sha256 = apkAssetSha(r),
+                    apkUrl = asset?.first.orEmpty(),
+                    sha256 = asset?.second.orEmpty(),
                     prerelease = r.optBoolean("prerelease", false)
                 )
             )
@@ -147,26 +148,19 @@ internal object UpdateChecker {
         return out.filter { it.url.startsWith(RELEASES_PAGE+"/") && (it.apkUrl.isEmpty() || UpdateDownloadPolicy.trustedAsset(it.apkUrl)) }
     }
 
-    private fun apkAssetUrl(release: JSONObject): String {
-        val assets = release.optJSONArray("assets") ?: return ""
-        for (i in 0 until assets.length()) {
-            val a = assets.optJSONObject(i) ?: continue
-            if (a.optString("name").endsWith(".apk", ignoreCase = true)) {
-                return a.optString("browser_download_url")
-            }
-        }
-        return ""
-    }
-
-    private fun apkAssetSha(release: JSONObject): String {
-        val assets = release.optJSONArray("assets") ?: return ""
+    private fun apkAsset(release: JSONObject): Pair<String,String>? {
+        val assets = release.optJSONArray("assets") ?: return null
+        var fallback:Pair<String,String>?=null
         for (i in 0 until assets.length()) {
             val a = assets.optJSONObject(i) ?: continue
             if (!a.optString("name").endsWith(".apk", ignoreCase = true)) continue
-            val digest = a.optString("digest")
-            Regex("""sha256:([0-9a-fA-F]{64})""").find(digest)?.let { return it.groupValues[1].lowercase() }
+            val url=a.optString("browser_download_url")
+            if(!UpdateDownloadPolicy.trustedAsset(url))continue
+            val digest=Regex("""sha256:([0-9a-fA-F]{64})""").matchEntire(a.optString("digest"))?.groupValues?.get(1)?.lowercase().orEmpty()
+            if(digest.isNotEmpty())return url to digest
+            if(fallback==null)fallback=url to ""
         }
-        return ""
+        return fallback
     }
 
     /** The first `x.y` / `x.y.z` / `x.y.z-pre` in [raw], or null. Pure, unit-tested. */
@@ -196,7 +190,7 @@ internal object UpdateChecker {
                 m.groupValues[2].toIntOrNull() ?: 0,
                 m.groupValues[3].ifEmpty { "0" }.toIntOrNull() ?: 0
             ),
-            pre = m.groupValues[4]
+            pre = m.groupValues[4].takeUnless { it in setOf("canvas-recreate","recreate","aurora-recreate") }.orEmpty()
         )
     }
 

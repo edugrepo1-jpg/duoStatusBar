@@ -46,7 +46,68 @@ class BatteryPresentationTest {
         val frame=EffectFrame(slot=SlotFrame(SlotIcon.AIRPODS),headphoneBattery=20,batteryColors=colors)
         assertEquals(options.batteryLow,BatteryPresentation.visual(phone(81),frame).tint)
         assertEquals(options.batteryHigh,BatteryPresentation.visual(phone(81),frame.copy(slot=SlotFrame(SlotIcon.WIFI))).tint)
-        assertEquals(options.batteryMid,BatteryPresentation.visual(phone(80,charging=true),frame.copy(headphoneBattery=-1)).tint)
+        assertEquals(options.batteryMid,BatteryPresentation.visual(phone(80),frame.copy(headphoneBattery=-1)).tint)
         assertFalse(ExperienceOptions.decode("{}").customBatteryColors)
+    }
+    @Test fun `discharge bands are suspended for phone charging and return without rewriting preferences`() {
+        val colors=BatteryBandColors(0xFFAA1122.toInt(),0xFF2233AA.toInt(),0xFF11BB22.toInt())
+        val frame=EffectFrame(slot=SlotFrame(SlotIcon.WIFI),batteryColors=colors)
+        for(deviceCharging in listOf(false,true))for(effectCharging in listOf(false,true)) {
+            val device=phone(80,charging=deviceCharging)
+            val input=frame.copy(charging=effectCharging)
+            val result=BatteryPresentation.visual(device,input)
+            val presentation=BatteryPresentation.frameForSource(device,input)
+            if(deviceCharging||effectCharging) {
+                assertEquals(device,result);assertNull(presentation.batteryColors)
+            } else {assertEquals(colors.middle,result.tint);assertSame(input,presentation)}
+            assertEquals("The user's saved palette is immutable",colors,input.batteryColors)
+        }
+        assertEquals(colors.middle,BatteryPresentation.visual(phone(80),frame).tint)
+    }
+    @Test fun `headset keeps its palette while phone charging is suspended independently`() {
+        val colors=BatteryBandColors(0xFFAA1122.toInt(),0xFF2233AA.toInt(),0xFF11BB22.toInt())
+        val frame=EffectFrame(slot=SlotFrame(SlotIcon.AIRPODS),headphoneBattery=20,charging=true,batteryColors=colors)
+        val device=phone(80,charging=true)
+        assertSame(frame,BatteryPresentation.frameForSource(device,frame))
+        val headset=BatteryPresentation.visual(device,frame)
+        assertEquals(colors.low,headset.tint);assertEquals("20",headset.percentText);assertFalse(headset.charging)
+        val withoutHeadphones=frame.copy(slot=SlotFrame(SlotIcon.WIFI))
+        assertEquals(device,BatteryPresentation.visual(device,withoutHeadphones))
+        assertNull(BatteryPresentation.frameForSource(device,withoutHeadphones).batteryColors)
+    }
+    @Test fun `source changes only at invisible midpoint retaining actual prior percentage`() {
+        val swap=BatterySourceSwap()
+        val phone=phone(72)
+        val frame=EffectFrame(aurora=AuroraOptions(setOf("batterySource")),headphoneBattery=15,slot=SlotFrame(SlotIcon.AIRPODS))
+        val headphones=BatteryPresentation.visual(phone,frame)
+        assertEquals("72",swap.present(phone,null,frame.copy(batterySourceMs=-1)).visual.percentText)
+        for(age in listOf(0L,100L,299L)) {
+            val selected=swap.present(headphones,15,frame.copy(batterySourceMs=age))
+            assertEquals("72",selected.visual.percentText);assertNull(selected.headphoneLevel)
+        }
+        assertEquals(0f,AuroraRender.sourceOpacity(frame.copy(batterySourceMs=300)),0f)
+        for(age in listOf(300L,500L,599L)) {
+            val selected=swap.present(headphones,15,frame.copy(batterySourceMs=age))
+            assertEquals("15",selected.visual.percentText);assertEquals(15,selected.headphoneLevel)
+        }
+        swap.present(headphones,15,frame.copy(batterySourceMs=-1))
+        assertEquals("15",swap.present(phone,null,frame.copy(batterySourceMs=0)).visual.percentText)
+        assertEquals("72",swap.present(phone,null,frame.copy(batterySourceMs=300)).visual.percentText)
+    }
+    @Test fun `disabling source animation snaps once and never retains an obsolete headset`() {
+        val swap=BatterySourceSwap();val phone=phone()
+        val frame=EffectFrame(aurora=AuroraOptions(setOf("batterySource")),headphoneBattery=15,slot=SlotFrame(SlotIcon.AIRPODS))
+        val headphones=BatteryPresentation.visual(phone,frame)
+        swap.present(headphones,15,frame)
+        assertEquals(phone,swap.present(phone,null,frame.copy(batterySourceMs=100,motionEnabled=false)).visual)
+        assertEquals(phone,swap.present(phone,null,frame.copy(batterySourceMs=100,aurora=AuroraOptions())).visual)
+    }
+    @Test fun `unlock retains exclusive battery presentation without a simultaneous source fade`() {
+        val swap=BatterySourceSwap();val phone=phone()
+        val frame=EffectFrame(aurora=AuroraOptions(setOf("batterySource")),headphoneBattery=15,slot=SlotFrame(SlotIcon.AIRPODS))
+        swap.present(BatteryPresentation.visual(phone,frame),15,frame)
+        val unlock=frame.copy(checkMs=300,batterySourceMs=300)
+        assertEquals(phone,swap.present(phone,null,unlock).visual)
+        assertEquals(1f,AuroraRender.sourceOpacity(unlock),0f)
     }
 }

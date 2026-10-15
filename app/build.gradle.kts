@@ -13,25 +13,6 @@ val keystoreProperties = Properties().apply {
     }
 }
 
-/**
- * Local secrets from the git-ignored `.env`, or the environment (CI). The Telegram bot token is baked
- * into the APK so the "Collect full log" button can upload the file to the developer's chat in one tap;
- * it is a dedicated bot token that can be revoked, never a personal one.
- */
-val localEnv = Properties().apply {
-    val file = rootProject.file(".env")
-    if (file.exists()) {
-        file.readLines()
-            .filter { it.contains("=") && !it.trimStart().startsWith("#") }
-            .forEach { line ->
-                val at = line.indexOf('=')
-                setProperty(line.substring(0, at).trim(), line.substring(at + 1).trim())
-            }
-    }
-}
-
-fun secret(name: String): String = System.getenv(name) ?: localEnv.getProperty(name) ?: ""
-
 android {
     namespace = "io.github.kvmy666.duostatusbar"
     compileSdk = 36
@@ -44,14 +25,10 @@ android {
         // AOSP path and reports through the diagnostic dump if anything is off. targetSdk stays 36.
         minSdk = 33
         targetSdk = 36
-        versionCode = 30
+        versionCode = 34
         buildConfigField("int", "FEATURE_MASK", providers.gradleProperty("duoFeatureMask").orElse("16383").get().toInt().toString())
-        versionName = "1.4.4-canvas-recreate"
-        // Telegram log delivery. Prefer the relay URL (Worker holds the bot token, so no secret is in the
-        // APK); otherwise fall back to the direct bot token; otherwise the button opens the share sheet.
-        // The relay URL is public (the Worker enforces its own rate limit), so it is baked into every
-        // build by default; `.env`/CI can still override it. Without this, a CI-built APK has no URL and
-        // the report button silently falls back to the share sheet.
+        versionName = "1.5.3-canvas-recreate"
+        // Reports use the local share chooser. No bot token or automatic relay is shipped.
         buildConfigField("String", "TELEGRAM_RELAY_URL", "\"\"")
         buildConfigField("String", "TELEGRAM_BOT_TOKEN", "\"\"")
         buildConfigField("String", "TELEGRAM_CHAT_ID", "\"\"")
@@ -78,6 +55,7 @@ android {
 
     buildTypes {
         debug {
+            isDebuggable = false
             isMinifyEnabled = false
         }
         release {

@@ -21,8 +21,11 @@ import androidx.test.core.app.ApplicationProvider
 import io.github.kvmy666.duostatusbar.R
 import io.github.kvmy666.duostatusbar.i18n.UiText
 import io.github.kvmy666.duostatusbar.settings.*
+import io.github.kvmy666.duostatusbar.fx.AuroraOptions
+import io.github.kvmy666.duostatusbar.fx.AuroraText
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.Before
 import org.junit.runner.RunWith
 import org.robolectric.*
 import org.robolectric.annotation.*
@@ -35,6 +38,8 @@ import java.util.concurrent.TimeUnit
 @Config(sdk=[35],manifest=Config.NONE,qualifiers="w393dp-h852dp-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class UiGalleryTest {
+    @Before fun realFrameTiming() {org.robolectric.shadows.ShadowChoreographer.setPaused(true)
+        org.robolectric.shadows.ShadowChoreographer.setFrameDelay(java.time.Duration.ofMillis(16))}
     private fun idle()=Shadows.shadowOf(Looper.getMainLooper()).idleFor(400,TimeUnit.MILLISECONDS)
     private fun compose(view:View):View? {
         if(view.javaClass.simpleName=="AndroidComposeView")return view
@@ -50,13 +55,14 @@ class UiGalleryTest {
     private fun click(root:View,tag:String){assertTrue(byTag(root,tag).config[SemanticsActions.OnClick].action!!.invoke());idle()}
     private fun blurred(root:View)=nodes(root).any {it.config.getOrNull(BackdropBlurred)==true}
     private fun capture(root:View,name:String,dialog:Boolean=false) {
+        idle();assertTrue("Capture fixture must be attached",root.isAttachedToWindow)
         root.measure(View.MeasureSpec.makeMeasureSpec(1179,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(2556,if(dialog)View.MeasureSpec.AT_MOST else View.MeasureSpec.EXACTLY))
         root.layout(0,0,1179,root.measuredHeight);idle()
         val b=Bitmap.createBitmap(root.width,root.height,Bitmap.Config.ARGB_8888);root.draw(Canvas(b))
         val out=File("build/ui-gallery").apply {mkdirs()}
         File(out,"$name.png").outputStream().use {assertTrue(b.compress(Bitmap.CompressFormat.PNG,100,it))};b.recycle()
     }
-    private fun activity(tag:String="pt-BR")=Robolectric.buildActivity(ComponentActivity::class.java).also { it.get().resources.updateConfiguration(android.content.res.Configuration(it.get().resources.configuration).apply {setLocales(android.os.LocaleList.forLanguageTags(tag))},it.get().resources.displayMetrics);it.get().setTheme(R.style.Theme_DuoStatusBar) }.setup()
+    private fun activity(tag:String="pt-BR")=Robolectric.buildActivity(ComponentActivity::class.java).also { it.get().resources.updateConfiguration(android.content.res.Configuration(it.get().resources.configuration).apply {setLocales(android.os.LocaleList.forLanguageTags(tag))},it.get().resources.displayMetrics);it.get().setTheme(R.style.Theme_DuoStatusBar) }.setup().visible()
 
     @Test fun `reference switch persists its state while modal is open and blur ends on close`() {
         val context=ApplicationProvider.getApplicationContext<Context>();UiText.initialize(context,"pt-BR")
@@ -65,16 +71,22 @@ class UiGalleryTest {
         try {
             val root=a.findViewById<View>(android.R.id.content);capture(root,"01-inicio-claro")
             assertFalse(blurred(root))
-            nodes(root).first {text(it).contains("Personalizar a barra")&&it.config.getOrNull(SemanticsActions.OnClick)!=null}.config[SemanticsActions.OnClick].action!!.invoke();idle()
+            // Header switch commits directly; a feature row still opens a didactic blurred modal.
+            click(root,"feature-toggle");assertFalse(DuoPrefs.read(context).enabled);assertFalse(blurred(root))
+            click(root,"feature-toggle");assertTrue(DuoPrefs.read(context).enabled);assertFalse(blurred(root))
+            click(root,"nav-EFFECTS")
+            click(root,"settings-group-indicators")
+            nodes(root).first {text(it).contains("Inclui o NFC na alternância")&&it.config.getOrNull(SemanticsActions.OnClick)!=null}.config[SemanticsActions.OnClick].action!!.invoke();idle()
             val dialog=ShadowDialog.getLatestDialog();val front=dialog.window!!.decorView
             assertTrue(blurred(root));assertTrue(dialog.isShowing)
+            capture(front,"nfc-explicacao-inicial",true)
             click(front,"feature-toggle")
-            assertFalse(DuoPrefs.read(context).enabled);assertTrue(dialog.isShowing);assertTrue(blurred(root))
+            assertEquals(0,DuoPrefs.read(context).featFlags and 4096);assertTrue(dialog.isShowing);assertTrue(blurred(root))
             assertEquals(ToggleableState.Off,byTag(front,"feature-toggle").config[SemanticsProperties.ToggleableState])
-            capture(front,"02-personalizacao-desativada",true)
-            click(front,"feature-toggle");assertTrue(DuoPrefs.read(context).enabled)
+            capture(front,"02-nfc-desativado",true)
+            click(front,"feature-toggle");assertEquals(4096,DuoPrefs.read(context).featFlags and 4096)
             assertEquals(ToggleableState.On,byTag(front,"feature-toggle").config[SemanticsProperties.ToggleableState])
-            capture(front,"03-personalizacao-ativada",true)
+            capture(front,"03-nfc-ativado",true)
             nodes(front).first {text(it)=="Fechar"&&it.config.getOrNull(SemanticsActions.OnClick)!=null}.config[SemanticsActions.OnClick].action!!.invoke();idle();assertFalse(dialog.isShowing);assertFalse(blurred(root));capture(root,"04-inicio-apos-fechar")
         } finally {c.pause().stop().destroy();idle()}
     }
@@ -100,6 +112,12 @@ class UiGalleryTest {
                     capture(root,"${page.name.lowercase()}-$suffix-01")
                     assertTrue(nodes(root).any {text(it).contains(page.heading)})
                     if(tag!="pt-BR")continue
+                    // Capture compact navigation first, then deliberately reveal each category.
+                    repeat(3) {
+                        val collapsed=nodes(root).filter {it.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("settings-group-")==true && it.config.getOrNull(SemanticsProperties.StateDescription)=="Fechado"}.mapNotNull {it.config.getOrNull(SemanticsProperties.TestTag)}
+                        collapsed.forEach { tag -> click(root,tag); capture(root,"${page.name.lowercase()}-$suffix-$tag"); click(root,"settings-back") }
+                    }
+                    capture(root,"${page.name.lowercase()}-$suffix-expanded")
                     var part=2
                     while(part<=24) {
                         val scroll=nodes(root).firstOrNull {it.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange)!=null&&it.config.getOrNull(SemanticsActions.ScrollBy)!=null}?:break
@@ -139,15 +157,17 @@ class UiGalleryTest {
     }
     @Test fun `all feature explanation cards render and switch off on and unavailable are represented`() {
         val context=ApplicationProvider.getApplicationContext<Context>()
+        UiText.initialize(context,"pt-BR")
         val field=FeatureGuide::class.java.getDeclaredField("entries").apply {isAccessible=true}
-        @Suppress("UNCHECKED_CAST") val guides=field.get(null) as List<FeatureGuide>
+        @Suppress("UNCHECKED_CAST") val existing=field.get(null) as List<FeatureGuide>
+        val guides=existing+AuroraOptions.KEYS.mapNotNull {FeatureGuide.find(AuroraText.title(it))}
         try {for((index,guide) in guides.withIndex()) {
             UiText.initialize(context,"pt-BR");val c=activity();val a=c.get();var enabled by mutableStateOf(false)
             a.setContent {DuoTheme(true){FeaturePresentation(guide.title,null,enabled,true,{}, {enabled=it})}}
             try {
                 idle();val front=ShadowDialog.getLatestDialog().window!!.decorView
-                assertTrue(nodes(front).any {text(it).contains(UiText.t("Como funciona"))})
                 capture(front,"funcao-${(index+1).toString().padStart(2,'0')}",true)
+                assertTrue("Guide ${guide.title} must expose its explanation after native layout",nodes(front).any {text(it).contains(UiText.t("Como funciona"))})
                 if(guide.title=="NFC") {click(front,"feature-toggle");capture(front,"nfc-ativado",true)}
             } finally {c.pause().stop().destroy();idle()}
         }
@@ -158,7 +178,17 @@ class UiGalleryTest {
         }
         val c=activity();val a=c.get();UiText.initialize(context,"pt-BR")
         a.setContent {DuoTheme {FeaturePresentation("NFC",UiText.t("Mostra NFC quando ativo."),false,false,{}, {})}}
-        try {idle();val front=ShadowDialog.getLatestDialog().window!!.decorView;assertNotNull(byTag(front,"feature-toggle").config.getOrNull(SemanticsProperties.Disabled));capture(front,"nfc-indisponivel",true)} finally {c.pause().stop().destroy();idle()}
+        try {
+            idle();val front=ShadowDialog.getLatestDialog().window!!.decorView
+            capture(front,"nfc-indisponivel",true)
+            val toggle=byTag(front,"feature-toggle")
+            assertNotNull("Unavailable NFC must stay disabled",toggle.config.getOrNull(SemanticsProperties.Disabled))
+            val bounds=toggle.boundsInWindow;val viewport=a.resources.displayMetrics
+            assertTrue("Unavailable toggle $bounds must remain within its physical viewport",
+                bounds.left>=0&&bounds.top>=0&&bounds.right<=viewport.widthPixels+1&&bounds.bottom<=viewport.heightPixels+1)
+            assertTrue("Unavailable toggle retains its touch area",bounds.width>=48*viewport.density-1&&bounds.height>=48*viewport.density-1)
+        } finally {c.pause().stop().destroy();idle()}
         } finally {UiText.initialize(context,"pt-BR")}
     }
 }
+
